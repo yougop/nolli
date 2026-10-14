@@ -70,7 +70,14 @@ if (befehl === 'live') {
 		[...new Set(text.match(/_app\/immutable\/[a-z]+\/[A-Za-z0-9._-]+\.js/g) ?? [])].sort();
 	let antwort;
 	try {
-		antwort = await fetch(LIVE, { signal: AbortSignal.timeout(20000) });
+		// Am Zwischenspeicher vorbei. Die Seite trägt `max-age=600`, und der
+		// Speicher des Hosters lieferte am 14.10.2026 nach einer Auslieferung
+		// noch zehn Minuten die alte index.html — `live` meldete daraufhin
+		// einen alten Stand, der längst ersetzt war. Ein Zusatz in der Adresse
+		// erzwingt eine frische Antwort; die Seite selbst ignoriert ihn.
+		const frisch = new URL(LIVE);
+		frisch.searchParams.set('stand', String(Date.now()));
+		antwort = await fetch(frisch, { signal: AbortSignal.timeout(20000), headers: { 'Cache-Control': 'no-cache' } });
 	} catch (e) {
 		console.error(`${LIVE} nicht erreichbar: ${e.message}`);
 		process.exit(2);

@@ -152,8 +152,7 @@ werkzeug/              the Nolli web app (SvelteKit, static build)
   src/lib/sprache.svelte.ts   German and English interface texts
   pruefung/            check scripts
 docs/                  screenshots for this README
-reference/             footprint vectorisation (Python), an earlier pipeline step
-archiv/                earlier concept and Python scripts, superseded by werkzeug/
+DESIGN.md              design rules of the interface (colours, type, layout)
 ```
 
 The code and comments are written in German; the interface and the package

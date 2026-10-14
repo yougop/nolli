@@ -1056,7 +1056,7 @@
 							{#if denkmale}<div><dt>{t().bereinigen.denkmal}</dt><dd class="mono">{denkmale}</dd></div>{/if}
 						</dl>
 						<p class="hinweis leise">
-							{t().bereinigen.hoehenHinweis}{#if deckung.gesamt > deckungHaeuser.gesamt}
+							{t().bereinigen.hoehenHinweis}{#if deckung.gesamt > deckungHaeuser.gesamt}{' '}
 								{t().bereinigen.teileHinweis}{/if}
 						</p>
 						<dl class="buch">

@@ -12,12 +12,12 @@ pakete/
 # bleibt lokal
 CLAUDE.md
 .claude/
-.impeccable/
-PRODUCT.md
+/.impeccable/
+/PRODUCT.md
 /package.json
 /package-lock.json
-archiv/
-reference/
-werkzeuge/
-daten/
-presse/
+/archiv/
+/reference/
+/werkzeuge/
+/daten/
+/presse/

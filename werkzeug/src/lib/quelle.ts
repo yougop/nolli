@@ -327,7 +327,10 @@ export async function sucheOrt(q: string): Promise<Treffer[]> {
 	ziel.searchParams.set('q', q.trim());
 	ziel.searchParams.set('limit', '6');
 	ziel.searchParams.set('lang', sprache.jetzt);
-	const a = await fetch(ziel, { signal: AbortSignal.timeout(12000) });
+	// 25 Sekunden: Photon antwortete am 14.10.2026 auf eine einfache Suche
+	// nach 12,7 Sekunden. Mit 12 brach die Suche ab, und die Trefferliste
+	// blieb leer, als gäbe es den Ort nicht.
+	const a = await fetch(ziel, { signal: AbortSignal.timeout(25000) });
 	if (!a.ok) throw new QuellFehler(t().quelle.ortssuche);
 	const d = await a.json();
 	return (d.features ?? []).map((f: any) => {

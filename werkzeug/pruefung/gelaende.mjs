@@ -37,7 +37,7 @@ const bisKnopf = async (t, ms, prefix) => {
 
 await s.$eval('#suchfeld', (e) => { e.value = ''; e.dispatchEvent(new Event('input', { bubbles: true })); });
 await s.type('#suchfeld', ort, { delay: 20 });
-await s.waitForSelector('.treffer button', { timeout: 20000 });
+await s.waitForSelector('.treffer button', { timeout: 40000 });
 console.log('Treffer:', await s.evaluate(() => document.querySelector('.treffer button')?.textContent?.trim()));
 await s.click('.treffer button');
 await warte(1500);

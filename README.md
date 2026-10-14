@@ -5,6 +5,12 @@ set a frame, clean up the existing fabric, and export figure-ground plans, a
 CAD drawing, a 3D context model with terrain, and a data contract that every
 later tool can rely on.
 
+**▶ Open the app: [zinssmeister.info/app/nolli](https://zinssmeister.info/app/nolli/)**
+· Project page: [zinssmeister.info/nolli](https://zinssmeister.info/nolli)
+· Companion tool for sun, irradiation and wind on the model:
+[Umbra](https://zinssmeister.info/app/umbra/) ([repository](https://github.com/yougop/umbra))
+· By [Volker Zinssmeister](https://zinssmeister.info/)
+
 Nolli runs entirely in the browser. There is no server, no account and no API
 key: the page talks directly to OpenStreetMap (Overpass), the place search
 (Photon) and an open elevation model (AWS Terrain Tiles).

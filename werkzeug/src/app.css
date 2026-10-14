@@ -1,0 +1,84 @@
+/* ---------------------------------------------------------------
+   Nolli — eine Grauleiter, ein Akzent.
+   Hell ist das Blatt, dunkel derselbe Plan auf dem Schirm.
+   --------------------------------------------------------------- */
+@font-face { font-family: Satoshi; src: url('/schrift/satoshi-400.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: Satoshi; src: url('/schrift/satoshi-500.woff2') format('woff2'); font-weight: 500; font-display: swap; }
+@font-face { font-family: Satoshi; src: url('/schrift/satoshi-700.woff2') format('woff2'); font-weight: 700; font-display: swap; }
+@font-face { font-family: 'JetBrains Mono'; src: url('/schrift/jetbrains-400.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'JetBrains Mono'; src: url('/schrift/jetbrains-500.woff2') format('woff2'); font-weight: 500; font-display: swap; }
+
+:root {
+	--grund: #fafafa;
+	--blatt: #ffffff;
+	--senke: #f2f2f2;
+	--linie: #e6e6e6;
+	--linie-stark: #cfcfcf;
+	--tinte: #111111;
+	--tinte-2: #616161;
+	--tinte-3: #737373;
+	--akzent: #a6c23f;
+	--akzent-tief: #5d7a16;
+	--akzent-flor: rgba(166, 194, 63, 0.16);
+	--warn: #8a4b12;
+	--warn-flor: rgba(138, 75, 18, 0.1);
+
+	--radial: radial-gradient(120% 90% at 50% 0%, #ffffff 0%, #f4f4f4 55%, #ededed 100%);
+	/* Mikrostruktur: gibt dem Feld um das Blatt eine Oberflaeche statt einer leeren Flaeche */
+	--korn: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='k'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23k)' opacity='0.55'/%3E%3C/svg%3E");
+	--korn-deckung: 0.055;
+	--heben: 0 1px 2px rgba(17, 17, 17, 0.05), 0 12px 32px -12px rgba(17, 17, 17, 0.14);
+	--heben-klein: 0 1px 2px rgba(17, 17, 17, 0.06);
+
+	--rund: 4px;
+	--schrift: Satoshi, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+	--mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+	--schiene: 348px;
+	--kopf: 56px;
+	--fuss: 38px;
+}
+
+:root[data-schema='dunkel'] {
+	--grund: #141618;
+	--blatt: #1b1e20;
+	--senke: #101214;
+	--linie: #2a2e31;
+	--linie-stark: #3c4145;
+	--tinte: #e9ebe8;
+	--tinte-2: #9ba1a3;
+	--tinte-3: #8d9295;
+	--akzent: #a6c23f;
+	--akzent-tief: #b9d456;
+	--akzent-flor: rgba(166, 194, 63, 0.14);
+	--warn: #d99a52;
+	--warn-flor: rgba(217, 154, 82, 0.12);
+	--radial: radial-gradient(120% 90% at 50% 0%, #1e2225 0%, #191c1e 55%, #131517 100%);
+	--korn-deckung: 0.1;
+	--heben: 0 1px 2px rgba(0, 0, 0, 0.5), 0 14px 36px -14px rgba(0, 0, 0, 0.7);
+	--heben-klein: 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+	margin: 0;
+	background: var(--grund);
+	color: var(--tinte);
+	font-family: var(--schrift);
+	font-size: 14px;
+	line-height: 1.5;
+	-webkit-font-smoothing: antialiased;
+	text-rendering: optimizeLegibility;
+}
+h1, h2, h3 { margin: 0; font-weight: 700; letter-spacing: -0.022em; text-wrap: balance; }
+button, input { font: inherit; color: inherit; }
+
+/* Messwerte immer in Ziffern gleicher Breite */
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+
+:focus-visible { outline: 2px solid var(--akzent-tief); outline-offset: 2px; border-radius: 2px; }
+::selection { background: var(--akzent-flor); }
+
+@media (prefers-reduced-motion: reduce) {
+	*, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

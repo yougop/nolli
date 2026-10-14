@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="de" data-schema="hell">
+	<head>
+		<meta charset="utf-8" />
+		<link rel="icon" href="%sveltekit.assets%/favicon.svg" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="description" content="Ort wählen, Rahmen setzen, Bestand bereinigen, als Bild und CAD ausgeben." />
+		<link rel="preload" href="%sveltekit.assets%/schrift/satoshi-500.woff2" as="font" type="font/woff2" crossorigin />
+		<link rel="preload" href="%sveltekit.assets%/schrift/jetbrains-400.woff2" as="font" type="font/woff2" crossorigin />
+		<script>
+			try {
+				const g = localStorage.getItem('nolli.schema');
+				if (g) document.documentElement.dataset.schema = g;
+				else if (matchMedia('(prefers-color-scheme: dark)').matches)
+					document.documentElement.dataset.schema = 'dunkel';
+				const l = localStorage.getItem('nolli.sprache')
+					|| (navigator.language.toLowerCase().startsWith('de') ? 'de' : 'en');
+				document.documentElement.lang = l;
+			} catch {}
+		</script>
+		%sveltekit.head%
+	</head>
+	<body data-sveltekit-preload-data="hover">
+		<!--
+		THESIS: Der Rahmen ist der Vertrag. Das Werkzeug weigert sich, ein Bild
+		auszugeben, dessen Maßstab niemand nachrechnen kann; es refüsiert die
+		Karten-Werkzeugleiste, die Einstellungen zeigt und Folgen verschweigt.
+		OWN-WORLD: Eine feine Grauleiter von #FAFAFA bis #111111, Haarlinien
+		statt Rahmen, ein einziger Akzent #A6C23F, der nur dem Rahmen, dem
+		Plangebiet und der Hauptaktion gehört. Satoshi in zwei Gewichten,
+		JetBrains Mono für jede Messung. Flächen, keine Karten.
+		STORY: Der Nutzer sucht einen Ort, zieht ein Rechteck, sieht sofort in
+		Metern was er getan hat, streicht aus dem Bestand was fällt, und geht mit
+		Bild, Zeichnung, Modell und Datenvertrag heraus.
+		FIRST VIEWPORT: Links die Karte als helle Fläche auf weichem Radialgrund,
+		darauf das Rechteck im Akzent. Rechts die Schiene: jede Bedienung steht
+		neben der Zahl, die sie erzeugt. Unten die Statuszeile mit EPSG, Maßstab,
+		Meter pro Pixel. Die Hauptaktion sitzt am Fuß der Schiene.
+		FORM: Monochrome Produktfläche, Herausforderer aus dem Wurf f4c62c82,
+		vom Nutzer gegen den zugeteilten Plotter gewählt.
+		FINISH: unreviewed and undocumented is unfinished; this build ends with
+		the finish review, the verdict, and DESIGN.md
+		-->
+		<div style="display: contents">%sveltekit.body%</div>
+	</body>
+</html>

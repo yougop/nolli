@@ -1,0 +1,50 @@
+{
+  "title": "Welche Welt soll Nolli Rahmen bewohnen?",
+  "question": "Der Wurf hat den Lichttisch zugeteilt. Behalten, eine Alternative nehmen, oder neu würfeln.",
+  "options": [
+    {
+      "id": "assigned",
+      "label": "Der Lichttisch",
+      "kicker": "DER WURF",
+      "lineage": "Zeichentisch mit Transparentauflagen und Passkreuzen",
+      "thesis": "Drei Schritte sind drei Folien über demselben Ausschnitt, gehalten von Passkreuzen an den Ecken.",
+      "palette": ["#EDF1EC", "#C4352A", "#2E5E86", "#1A1E1C", "#D8D5CE"],
+      "materials": ["leuchtendes Milchglas", "Transparentpapier", "Multiply-Überlagerung", "Rotstift"],
+      "viewport": "Das leuchtende Glas füllt den Schirm. Darauf liegt die Bestandskarte als Folie, an ihren vier Ecken Passkreuze. Rechts ein Schriftfeld nach Art eines Plankopfs: Ausschnitt, Maßstab, EPSG, Meter pro Pixel, Index. Oben stehen drei Reiter aus dem Blattrand: Rahmen, Bereinigen, Ausgeben. Der Rahmen, den du ziehst, bleibt über alle drei Schritte an exakt derselben Stelle stehen. Genau das ist die These, sichtbar gemacht.",
+      "risk": "Kippt in Kitsch, sobald Papiertextur, Schlagschatten oder gewellte Ecken dazukommen. Erlaubt ist nur die Multiply-Überlagerung und das Passkreuz, sonst bleibt alles flach und präzise.",
+      "hero": "https://impeccable.style/worlds/cards/japanese-high-density-web-hero.webp"
+    },
+    {
+      "id": "challenger-dicht",
+      "label": "Japanische Dichte",
+      "lineage": "japanische Webseiten hoher Informationsdichte",
+      "thesis": "Der Bildschirm als vollgepackter Bogen aus haarfein gerahmten Modulen mit kleinen roten Reitern.",
+      "case": "Fügt sich gut: Ein Werkzeug mit vielen laufenden Zahlen verträgt Dichte, und Architekten lesen dichte technische Bögen täglich. Verliert gegen den Lichttisch bei der einen Sache, die das Werkzeug beweisen muss, nämlich dass alle drei Schritte denselben Ausschnitt beschreiben.",
+      "hero": "https://impeccable.style/worlds/cards/japanese-high-density-web-hero.webp"
+    },
+    {
+      "id": "challenger-segment",
+      "label": "Sieben Segmente",
+      "lineage": "Weckerziffern, Zapfsäulen, Anzeigetafeln",
+      "thesis": "Jede Messung als leuchtende Ziffernzelle, bei der auch das unbeleuchtete Segment gestaltet ist.",
+      "case": "Ein schöner Gedanke steckt darin: Was nicht leuchtet, ist trotzdem da. Das passt zu entfernten Objekten, über die Buch geführt wird. Scheitert aber am Kern, weil ein Plan auf tiefschwarzem Grund in LED-Rot nicht mehr als Plan lesbar ist.",
+      "hero": "https://impeccable.style/worlds/cards/signals-instruments-seven-segment-alarm-clock-hero.webp"
+    },
+    {
+      "id": "challenger-warnstreifen",
+      "label": "Warnstreifen und Kabelbinder",
+      "lineage": "Streetwear-Grammatik mit Zitatzeichen und Schrägstreifen",
+      "thesis": "Jede Zone trägt ihren Namen in geraden Anführungszeichen, Gesperrtes bekommt den Schrägstreifen.",
+      "case": "Der Schrägstreifen für gestrichene Objekte sitzt erstaunlich richtig, und die wörtliche Beschriftung passt zu einem Werkzeug mit präzisem Fachvokabular. Die Ironie darunter untergräbt aber ein Instrument, dessen einziges Versprechen Genauigkeit ist.",
+      "hero": "https://impeccable.style/worlds/cards/textiles-weave-drape-fashion-industrial-quote-grammar-hero.webp"
+    }
+  ],
+  "reroll": true,
+  "canon": true,
+  "canonCard": {
+    "label": "Der Kategoriestandard",
+    "thesis": "Das dunkle Kartenwerkzeug, wie es die Kategorie immer baut, dafür handwerklich einwandfrei.",
+    "viewport": "Dunkles Schiefergrau, schwebende Werkzeugleiste über der Karte, ein cyanfarbener Akzent, abgerundete Karten für die Kennwerte. Vertraut ab der ersten Sekunde, von swzpln bis Mapbox Studio."
+  },
+  "steer": true
+}

@@ -1,0 +1,49 @@
+{
+  "title": "Welche Welt soll Nolli Rahmen bewohnen?",
+  "question": "Neuer Wurf: der Plotter. Behalten, eine Alternative nehmen, oder noch einmal würfeln.",
+  "options": [
+    {
+      "id": "assigned",
+      "label": "Der Plotter",
+      "kicker": "DER WURF",
+      "lineage": "Stiftplotter und die ISO-Ordnung der Strichbreiten",
+      "thesis": "Strichbreite ist keine Zier, sondern Bedeutung. Jede Ebene hat ihren Stift, und der Stift hat Nummer, Breite und Farbe.",
+      "palette": ["#C8352F", "#B8891F", "#3F7A4A", "#2B5591", "#1A1C1B", "#F4F5F3"],
+      "materials": ["Plotterpapier", "Faserstift-Strich", "Stiftkarussell", "0,13 bis 2,00 mm"],
+      "viewport": "Links das Stiftkarussell als senkrechte Reihe von Schächten, einer je Ebene: Nummer, Breite in Millimetern, Farbe, Ebenenname, Anzahl der Objekte. Es ist zugleich Navigation, Legende und die Ebenentabelle der späteren DXF-Datei. In der Mitte das Blatt, gezeichnet mit echten unterschiedlichen Strichbreiten: Straßen 0,25, Gebäude 0,35, der Rahmen 0,70, Schraffur 0,13. Unten die Plotterzeile mit Maßstab, Meter pro Pixel, Blattgröße und dem Stift, der gerade arbeitet. Die drei Schritte sind drei Blätter desselben Plots.",
+      "risk": "Ein Stiftkarussell links und eine Statuszeile unten sind einen Schritt von gewöhnlicher CAD-Software entfernt, also genau vom Kategoriestandard. Es hält nur, wenn drei Dinge kompromisslos sind: die Millimeter-treuen Strichbreiten, der Wechsel zwischen Papier und Bildschirm, und die durchgestrichenen statt verschwundenen Objekte."
+    },
+    {
+      "id": "challenger-ikeda",
+      "label": "Datamatics",
+      "lineage": "Ryoji Ikeda, Balkenfelder und Zahlenkolonnen in reinem Schwarzweiß",
+      "thesis": "Reines Schwarz auf reinem Weiß, dichte Balkenfelder, Zahlen in Monospace, gelegentlich kippt das ganze Bild ins Negativ.",
+      "case": "Verführerisch nah dran, denn Figur und Grund sind die Muttersprache des Schwarzplans, und die Ganzbild-Umkehrung wäre der Wechsel zwischen Papier und Bildschirm. Scheitert an einer harten Anforderung: Sieben Ebenen mit unterschiedlicher Bedeutung lassen sich ohne Farbe nicht auseinanderhalten. Muster statt Farbe wäre schlechter, nicht strenger.",
+      "hero": "https://impeccable.style/worlds/cards/ikeda-datamatics-hero.webp"
+    },
+    {
+      "id": "challenger-nixie",
+      "label": "Nixie-Zählwerk",
+      "lineage": "Laborzähler mit glimmenden Ziffernröhren",
+      "thesis": "Jede Messung glimmt orange in einer Glasröhre, und ein Zählerwechsel ist ein sichtbarer physischer Vorgang.",
+      "case": "Für die Messwerte wunderbar: Breite, Höhe, Meter pro Pixel als Röhrenbank, und eine Änderung wird zum Ereignis statt zu einer stillen Zahl. Als ganze Welt scheitert es am Plan selbst, denn ein Zählwerk kennt keine Zeichnung. Es wäre ein großartiges Bauteil in einer anderen Welt.",
+      "hero": "https://impeccable.style/worlds/cards/signals-instruments-nixie-laboratory-counter-hero.webp"
+    },
+    {
+      "id": "challenger-monochrom",
+      "label": "Monochrom, Behauptung und Beweis",
+      "lineage": "die monochrome Produktseite der Softwarebranche",
+      "thesis": "Eine einzige neutrale Grauleiter, ein sparsamer Akzent, und jede Aussage steht direkt neben dem Ausschnitt, der sie belegt.",
+      "case": "Sauber, glaubwürdig, und das Paar aus Bedienung und erzeugter Zahl passt gut zu einem Werkzeug, das ständig rechnet. Es ist aber der Kategoriestandard im besseren Anzug und wirft genau das weg, was hier gebraucht wird, nämlich Farbe als Träger von Bedeutung.",
+      "hero": "https://impeccable.style/worlds/cards/digital-design-canon-monochrome-product-marketing-hero.webp"
+    }
+  ],
+  "reroll": true,
+  "canon": true,
+  "canonCard": {
+    "label": "Der Kategoriestandard",
+    "thesis": "Das dunkle Kartenwerkzeug, wie es die Kategorie immer baut, dafür handwerklich einwandfrei.",
+    "viewport": "Dunkles Schiefergrau, schwebende Werkzeugleiste über der Karte, ein cyanfarbener Akzent, abgerundete Karten für die Kennwerte. Vertraut ab der ersten Sekunde, von swzpln bis Mapbox Studio."
+  },
+  "steer": true
+}

@@ -1,0 +1,15 @@
+{
+  "epsg": 32633,
+  "bbox_utm": [
+    656040.6,
+    5331412.0,
+    662040.6,
+    5335912.0
+  ],
+  "pixel_breite": 2400,
+  "pixel_hoehe": 1800,
+  "meter_pro_pixel": 2.5,
+  "breite_m": 6000.0,
+  "hoehe_m": 4500.0,
+  "quelle": "osm"
+}

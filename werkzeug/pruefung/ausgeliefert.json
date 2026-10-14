@@ -1,0 +1,102 @@
+{
+ "wann": "2026-09-17 08:36",
+ "gesamt": "2b10432d5321",
+ "dateien": {
+  "200.html": {
+   "bytes": 3007,
+   "hash": "1d0223b6cdae"
+  },
+  "_app/immutable/assets/0.ECumOKm-.css": {
+   "bytes": 2774,
+   "hash": "8aeba599f3ae"
+  },
+  "_app/immutable/assets/2.Rbn1YHA9.css": {
+   "bytes": 101832,
+   "hash": "29c5195f9815"
+  },
+  "_app/immutable/chunks/Bjy-W4x2.js": {
+   "bytes": 1365,
+   "hash": "f07424758318"
+  },
+  "_app/immutable/chunks/DCDGpBS6.js": {
+   "bytes": 26650,
+   "hash": "b64486649534"
+  },
+  "_app/immutable/chunks/DcvuNl95.js": {
+   "bytes": 46205,
+   "hash": "04e24e99905d"
+  },
+  "_app/immutable/chunks/xihTtKlq.js": {
+   "bytes": 65,
+   "hash": "0214edcff772"
+  },
+  "_app/immutable/entry/app.GlYY4AUN.js": {
+   "bytes": 4025,
+   "hash": "4353a541d8a5"
+  },
+  "_app/immutable/entry/start.DXr5jNLQ.js": {
+   "bytes": 77,
+   "hash": "af2da8f6ac52"
+  },
+  "_app/immutable/nodes/0.Cb79gTA0.js": {
+   "bytes": 237,
+   "hash": "1a89555a5765"
+  },
+  "_app/immutable/nodes/1.CvPASiXD.js": {
+   "bytes": 576,
+   "hash": "853a08fd06d0"
+  },
+  "_app/immutable/nodes/2.DTIfI5XE.js": {
+   "bytes": 1729464,
+   "hash": "92f0ef829e5c"
+  },
+  "_app/immutable/workers/maplibre-gl-worker-B71oqUJw.js": {
+   "bytes": 506998,
+   "hash": "759b81758dc3"
+  },
+  "_app/version.json": {
+   "bytes": 27,
+   "hash": "25f1e9a976f1"
+  },
+  "beispiele/hafencity.json": {
+   "bytes": 3708497,
+   "hash": "5b539737eecf"
+  },
+  "beispiele/holstenareal.json": {
+   "bytes": 5376772,
+   "hash": "17c6c3c8bc69"
+  },
+  "favicon.svg": {
+   "bytes": 316,
+   "hash": "5032bcab02e3"
+  },
+  "index.html": {
+   "bytes": 3206,
+   "hash": "bbb720c996bd"
+  },
+  "robots.txt": {
+   "bytes": 63,
+   "hash": "b033243267bc"
+  },
+  "schrift/jetbrains-400.woff2": {
+   "bytes": 31432,
+   "hash": "83c005d49d8a"
+  },
+  "schrift/jetbrains-500.woff2": {
+   "bytes": 31432,
+   "hash": "83c005d49d8a"
+  },
+  "schrift/satoshi-400.woff2": {
+   "bytes": 25516,
+   "hash": "50dca57f0b77"
+  },
+  "schrift/satoshi-500.woff2": {
+   "bytes": 25596,
+   "hash": "af02a72246f5"
+  },
+  "schrift/satoshi-700.woff2": {
+   "bytes": 25328,
+   "hash": "353a7fbfb447"
+  }
+ }
+}

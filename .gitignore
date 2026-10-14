@@ -1,0 +1,14 @@
+node_modules/
+.svelte-kit/
+build/
+.venv/
+__pycache__/
+daten/*/osm_raw.json
+*.log
+
+# erzeugte Pakete
+pakete/
+
+# bleibt lokal
+CLAUDE.md
+.claude/

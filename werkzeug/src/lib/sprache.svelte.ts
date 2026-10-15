@@ -53,7 +53,9 @@ const de = {
 		schritteLabel: 'Arbeitsschritte',
 		erstRahmen: 'Erst den Rahmen setzen und die Daten holen',
 		schema: 'Darstellung wechseln',
-		sprache: 'Sprache'
+		sprache: 'Sprache',
+		anleitung: 'Anleitung',
+		anleitungTitel: 'Was Nolli kann und wie das Paket aufgebaut ist. README auf GitHub, auf Englisch.'
 	},
 	meldungSchliessen: 'Meldung schließen',
 	sicht: {
@@ -291,7 +293,9 @@ const en: typeof de = {
 		schritteLabel: 'Steps',
 		erstRahmen: 'Set the frame and fetch the data first',
 		schema: 'Switch light/dark',
-		sprache: 'Language'
+		sprache: 'Language',
+		anleitung: 'Read me',
+		anleitungTitel: 'What Nolli does and how the package is built. README on GitHub.'
 	},
 	meldungSchliessen: 'Close message',
 	sicht: {

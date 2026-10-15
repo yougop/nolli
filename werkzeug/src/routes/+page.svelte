@@ -708,6 +708,9 @@
 			{/each}
 		</nav>
 
+		<a class="anleitung" href="https://github.com/yougop/nolli#readme" target="_blank" rel="noopener"
+			title={t().kopf.anleitungTitel}>{t().kopf.anleitung}</a>
+
 		<div class="sprachen" role="group" aria-label={t().kopf.sprache}>
 			<button type="button" class:an={sprache.jetzt === 'de'} lang="de" onclick={() => spracheSetzen('de')}>DE</button>
 			<button type="button" class:an={sprache.jetzt === 'en'} lang="en" onclick={() => spracheSetzen('en')}>EN</button>
@@ -1222,6 +1225,12 @@
 	}
 	.schritt.jetzt .ziffer { background: var(--tinte); border-color: var(--tinte); color: var(--blatt); }
 
+	.anleitung {
+		font-size: 12px; color: var(--tinte-2); white-space: nowrap;
+		text-decoration: none;
+	}
+	.anleitung:hover { color: var(--tinte); text-decoration: underline; text-underline-offset: 3px; }
+
 	.sprachen { display: flex; }
 	.sprachen button {
 		padding: 5px 8px; cursor: pointer;
@@ -1524,6 +1533,7 @@
 		.werk { grid-template-rows: auto minmax(0, 1fr) var(--fuss); }
 		.schritte { order: 3; width: 100%; margin-inline: 0; }
 		.schritt { flex: 1; justify-content: center; }
+		.anleitung { margin-left: auto; }
 		.zeile { flex-wrap: wrap; gap: 8px 16px; padding-block: 9px; height: auto; }
 		.zeile .recht { margin-left: 0; width: 100%; }
 	}

@@ -1,10 +1,10 @@
 {
- "wann": "2026-10-16 07:43",
- "gesamt": "1c3382beb8f7",
+ "wann": "2026-10-19 19:02",
+ "gesamt": "0e87193e462e",
  "dateien": {
   "200.html": {
-   "bytes": 3173,
-   "hash": "9233a058e02b"
+   "bytes": 3174,
+   "hash": "e71c4e5d1037"
   },
   "_app/immutable/assets/0.ECumOKm-.css": {
    "bytes": 2774,
@@ -14,6 +14,10 @@
    "bytes": 102734,
    "hash": "08d0ee2e35db"
   },
+  "_app/immutable/chunks/BiqqV33Z.js": {
+   "bytes": 26654,
+   "hash": "25bdd1296142"
+  },
   "_app/immutable/chunks/Bjy-W4x2.js": {
    "bytes": 1365,
    "hash": "f07424758318"
@@ -22,33 +26,29 @@
    "bytes": 46197,
    "hash": "8c668a172d0d"
   },
-  "_app/immutable/chunks/pOM19ulT.js": {
-   "bytes": 26650,
-   "hash": "d1bd7477f53d"
-  },
   "_app/immutable/chunks/xihTtKlq.js": {
    "bytes": 65,
    "hash": "0214edcff772"
   },
-  "_app/immutable/entry/app.CPQk7fkw.js": {
+  "_app/immutable/entry/app.Bfa1LgFd.js": {
    "bytes": 4025,
-   "hash": "9db0aa5a7d4a"
+   "hash": "6b71675da5cf"
   },
-  "_app/immutable/entry/start.DaROxqXz.js": {
+  "_app/immutable/entry/start.DzN_szcj.js": {
    "bytes": 77,
-   "hash": "e987a8ae0b39"
+   "hash": "5d3fd85d3816"
   },
   "_app/immutable/nodes/0.B4hb7mAY.js": {
    "bytes": 237,
    "hash": "9096370ff3f6"
   },
-  "_app/immutable/nodes/1.hhPdSdme.js": {
+  "_app/immutable/nodes/1.DQvIzigu.js": {
    "bytes": 576,
-   "hash": "f4add4d073f2"
+   "hash": "2479ed809ae0"
   },
-  "_app/immutable/nodes/2.DZ0MGRB4.js": {
-   "bytes": 1776167,
-   "hash": "e706299e1bc0"
+  "_app/immutable/nodes/2.B5GUI0AG.js": {
+   "bytes": 1779356,
+   "hash": "9252eb3e60cf"
   },
   "_app/immutable/workers/maplibre-gl-worker-B71oqUJw.js": {
    "bytes": 506998,
@@ -56,7 +56,7 @@
   },
   "_app/version.json": {
    "bytes": 27,
-   "hash": "0d6d18f6926e"
+   "hash": "424d489a4c4d"
   },
   "beispiele/hafencity.json": {
    "bytes": 3708497,
@@ -71,8 +71,8 @@
    "hash": "5032bcab02e3"
   },
   "index.html": {
-   "bytes": 3372,
-   "hash": "a8e3dc0cedcc"
+   "bytes": 3373,
+   "hash": "0c40e286706e"
   },
   "robots.txt": {
    "bytes": 63,

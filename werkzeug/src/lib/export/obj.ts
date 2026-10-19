@@ -22,9 +22,10 @@ import { drin, amRahmen } from '../schneiden';
  * 150 Meter Rand.
  *
  * Deshalb wird zerlegt: Der Teil im Rahmen steht als gewohnter Koerper, die
- * Teile davor kommen als eigene Koerper mit `_ausserhalb` im Namen. Wer nur
- * den Ausschnitt zeigen will, blendet sie aus; wer Verschattung rechnet, laesst
- * sie stehen. Die Zerlegung ist flaechentreu — an 2.611 Ringen beider
+ * Teile davor kommen als eigene Koerper mit `_ausserhalb` im Namen. Seit
+ * dem 19.10.2026 stehen sie in einer eigenen Datei (`model_outside.obj`):
+ * Das Modell selbst endet sauber an der Kante, wer Verschattung rechnet,
+ * laedt beide. Die Zerlegung ist flaechentreu — an 2.611 Ringen beider
  * Beispielgebiete geprueft, Abweichung null.
  *
  * **Mehrere Aussenteile, Hoefe ausgeschnitten.** Bis zum 14.09.2026 zog dieser
@@ -38,8 +39,15 @@ import { drin, amRahmen } from '../schneiden';
  * Grundriss, und das Gelände selbst kommt als eigener Körper dazu. Die Höhen
  * sind dann absolut, Meter über dem Meer. Ohne Gelände bleibt alles auf null.
  */
+/**
+ * `teil` wählt, was geschrieben wird. `innen` ist das Modell im Rahmen mit
+ * Gelände, sauber an der Kante abgeschnitten; `aussen` sind nur die Teile
+ * davor, als eigene Datei. Volker am 19.10.2026: Der ausgefranste Rand
+ * gehört nicht ins Modell, das man in Rhino öffnet. Für die Verschattung
+ * bleiben die Teile trotzdem greifbar.
+ */
 export function alsObj(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | null = null,
-	material: string | null = null): string {
+	material: string | null = null, teil: 'innen' | 'aussen' = 'innen'): string {
 	const zeilen: string[] = [
 		'# Nolli — context model from OpenStreetMap',
 		'# ODbL, © OpenStreetMap contributors',
@@ -138,7 +146,7 @@ export function alsObj(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | null =
 		};
 
 		const marke = o.hoeheGeschaetzt ? '_hoehe_geschaetzt' : '';
-		schreiben(`${o.ebene}_${o.id}${marke}`, aussenteile, offeneLoecher);
+		if (teil === 'innen') schreiben(`${o.ebene}_${o.id}${marke}`, aussenteile, offeneLoecher);
 
 		/**
 		 * Was vor der Rahmenkante liegt, als eigener Koerper.
@@ -147,7 +155,7 @@ export function alsObj(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | null =
 		 * keit lesbar bleibt. Ausblenden ergibt den sauberen Ausschnitt,
 		 * Stehenlassen den vollstaendigen Schattenwerfer.
 		 */
-		if (nachAussen) {
+		if (nachAussen && teil === 'aussen') {
 			const draussen = holen((t) => t.aussen, zerlegt)
 				.filter((a) => a.length >= 3)
 				.map((a) => (flaeche(a) < 0 ? a.slice().reverse() : a));
@@ -158,9 +166,13 @@ export function alsObj(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | null =
 		}
 		}
 
-		if (gelaende) {
+		if ((gelaende || material) && teil === 'innen') {
 			// Das Gelände als ein Körper, genau auf dem Rahmen, zwei Dreiecke je Masche.
-			const f = feldImRahmen(gelaende, r);
+			// Ohne Gelände, aber mit Material eine ebene Platte auf null: Die
+			// Textur braucht etwas, worauf sie liegt.
+			const f = gelaende
+				? feldImRahmen(gelaende, r)
+				: { nx: 2, ny: 2, dx: r.x1 - r.x0, dy: r.y1 - r.y0, z: new Float32Array(4) };
 			zeilen.push(`o ${objName('gelaende')}`);
 			for (let j = 0; j < f.ny; j++)
 				for (let i = 0; i < f.nx; i++)
@@ -227,6 +239,10 @@ export function alsMtl(textur: string | null): string {
 		'',
 		'newmtl building_outside',
 		'Kd 0.62 0.62 0.62',
+		'Ka 0 0 0',
+		'',
+		'newmtl tree',
+		'Kd 0.55 0.68 0.45',
 		'Ka 0 0 0',
 		'',
 		'newmtl terrain',

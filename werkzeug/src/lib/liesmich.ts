@@ -51,7 +51,7 @@ Die Feld- und Dateinamen sind englisch (Datenvertrag v${v.contract_version}), un
 
 **Rhino:** OBJ und DXF in Metern importieren, sie liegen deckungsgleich. Die Bilder passen als Textur genau auf den Rahmen von 0/0 bis ${v.width_m}/${v.height_m}.
 
-Was vor der Rahmenkante liegt, ist im Modell als eigener Körper mit \`_outside\` im Namen und grauem Material enthalten, weil es Schatten in den Rahmen wirft. Für einen sauberen Ausschnitt in Rhino \`_SelName\` mit \`*_outside\` aufrufen und die Auswahl ausblenden oder löschen.
+\`model.obj\` endet sauber an der Rahmenkante. Was von Gebäuden darüber hinausragt, liegt getrennt in \`model_outside.obj\`, auf denselben Höhen; wer Schatten von außen braucht, importiert es dazu.
 
 **Fremde Daten dazulegen (QGIS):** Aus \`grid.proj4\` ein benutzerdefiniertes Koordinatensystem anlegen, die Fremddaten dorthin projizieren und um X ${dx}, Y ${dy} verschieben. Dann liegen sie auf dem Modell. So lässt sich auch ein genaueres amtliches Geländemodell einsetzen.
 
@@ -113,7 +113,7 @@ Data contract v${v.contract_version}.
 
 **Rhino:** import OBJ and DXF in metres; they line up. The images fit exactly onto the frame from 0/0 to ${v.width_m}/${v.height_m} as a texture.
 
-Parts of buildings beyond the frame edge are in the model as separate bodies with \`_outside\` in their name and a grey material, because they cast shadows into the frame. For a clean cut-out in Rhino, run \`_SelName\` with \`*_outside\` and hide or delete the selection.
+\`model.obj\` ends cleanly at the frame edge. Whatever buildings reach beyond it is in \`model_outside.obj\`, at the same heights; import it as well if you need shadows from outside.
 
 **Adding other data (QGIS):** create a custom coordinate system from \`grid.proj4\`, reproject the other data into it and move it by X ${dx}, Y ${dy}. It then sits on the model. This is also how to bring in a more accurate official terrain model.
 

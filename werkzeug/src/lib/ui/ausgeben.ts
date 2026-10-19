@@ -76,6 +76,6 @@ export async function paket(teile: { name: string; inhalt: Blob | string }[]): P
 }
 
 export const dxf = (o: Objekt[], r: Rahmen, g: Gelaende | null = null) => alsDxf(o, r, false, g);
-export const obj = (o: Objekt[], r: Rahmen, g: Gelaende | null = null, mtl: string | null = null) =>
-	alsObj(o, r, g, mtl);
+export const obj = (o: Objekt[], r: Rahmen, g: Gelaende | null = null, mtl: string | null = null,
+	teil: 'innen' | 'aussen' = 'innen') => alsObj(o, r, g, mtl, teil);
 export { alsMtl } from '$lib/export/obj';

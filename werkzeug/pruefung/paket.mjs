@@ -40,12 +40,15 @@ await new Promise(r => setTimeout(r, 6000));
 await s.screenshot({ path: ziel + '/3d-baeume.png' });
 console.log('zur Ausgabe:', await klick('Weiter zur Ausgabe'));
 await new Promise(r => setTimeout(r, 2000));
-console.log('Baumkronen-OBJ:', await klick('Baumkronen', true));
-await new Promise(r => setTimeout(r, 4000));
+console.log('Modell-ZIP:', await klick('Modell', true));
+for (let i = 0; i < 24; i++) {
+  await new Promise(r => setTimeout(r, 2500));
+  if (fs.readdirSync(ziel).some(n => n.endsWith('_model.zip'))) break;
+}
 console.log('Paket:', await klick('Paket', true));
 for (let i = 0; i < 40; i++) {
   await new Promise(r => setTimeout(r, 5000));
-  if (fs.readdirSync(ziel).some(n => n.endsWith('.zip'))) break;
+  if (fs.readdirSync(ziel).some(n => n.endsWith('.zip') && !n.endsWith('_model.zip'))) break;
 }
 console.log('Dateien:', fs.readdirSync(ziel).join(' · '));
 await b.close();

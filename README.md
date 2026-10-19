@@ -23,8 +23,7 @@ key: the page talks directly to OpenStreetMap (Overpass), the place search
 |---|---|
 | **Images** | Figure-ground, inverted, line, use, top view, white model, data depth, 3D view — up to 4096 px, with a bare version (no buildings, no trees) of each to use as a ground texture |
 | **`drawing.dxf`** | Separate layers with pen widths (`N_BUILDINGS`, `N_STREETS`, `N_WATER`, …), labels, frame, and contour lines when terrain is on. Metres, origin at the lower-left frame corner |
-| **`model.obj`** | Extruded buildings, split cleanly at the frame edge, flagged where the height is estimated. With terrain: a terrain mesh, and every building standing on it |
-| **Tree crowns** | Separate OBJ, icosahedra at mapped or default crown diameter |
+| **Model (ZIP)** | `model.obj` with extruded buildings, cut cleanly at the frame edge and flagged where the height is estimated, plus a ground mesh textured with the top view (on the terrain when it is on, otherwise flat). `model.mtl` and `model_texture.png` come with it, so Rhino opens it textured. `model_outside.obj` holds what reaches beyond the frame, `trees.obj` the tree crowns |
 | **`frame.json`** | The data contract: frame, projection, scale, provenance, caveats, and a table of contents of the package |
 | **`data/*.json`** | Everything OpenStreetMap knows inside the frame: buildings with height and origin of the height, street network as a graph, points of interest, stops and lines, land use, trees, terrain raster |
 | **`README.md`** | Written into every package, in the interface language |
@@ -49,7 +48,7 @@ plus a 150 m margin from the [AWS Terrain Tiles](https://registry.opendata.aws/t
 - puts every building on the lowest terrain height under its footprint, so it
   sits into the slope instead of floating above it;
 - adds a terrain mesh (`terrain`, 10 m grid) to `model.obj`, heights in metres
-  above sea level;
+  above sea level, textured with the top view without buildings;
 - adds contour lines to `drawing.dxf` on `N_CONTOUR` and `N_CONTOUR_MAJOR`,
   each at its height, with an interval chosen from the height range;
 - writes the raster to `data/terrain.json` and records the source models in
@@ -74,7 +73,9 @@ grid north = true north at the centre). The exact definition is in
 `frame.json` under `grid.proj4`.
 
 - **Rhino:** import `model.obj` and `drawing.dxf` in metres; they line up.
-  Images fit exactly onto the frame from 0/0 to width/height.
+  Keep `model.mtl` and `model_texture.png` next to the OBJ. The drawing stays
+  flat on purpose, so its curves can still be hatched and extruded. Images fit
+  exactly onto the frame from 0/0 to width/height.
 - **Other data (QGIS):** create a custom coordinate system from `grid.proj4`,
   reproject your data into it and move it by −`bbox_grid[0]`, −`bbox_grid[1]`.
   The package README spells out the numbers. This is also how to replace the

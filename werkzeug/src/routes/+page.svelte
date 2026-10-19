@@ -10,6 +10,7 @@
 	import { BAUM } from '$lib/analysedaten';
 	import { baeumeAlsObj } from '$lib/export/baeume';
 	import { feldImRahmen, aequidistanz, tiefsteUnter } from '$lib/geo/gelaende';
+	import type { Rahmen } from '$lib/geo/rahmen';
 	import { DARSTELLUNGEN, darstellung as darstellungVon } from '$lib/darstellung';
 	import { laden, stempel, bild, dxf, obj, alsMtl, paket, WEBP } from '$lib/ui/ausgeben';
 	import { sucheOrt } from '$lib/quelle';
@@ -141,8 +142,8 @@
 		2 * DARSTELLUNGEN.filter((d) => d.bauweise !== 'raum').length
 		+ (raeumlich ? 1 : 0)
 		+ DATENDATEIEN.length
-		+ 5    // Modell, Materialien, Zeichnung, Vertrag, Liesmich
-		+ (z.gelaende ? 1 : 0)    // Geländetextur
+		+ 7    // Modell, Teile vor der Kante, Materialien, Textur, Zeichnung, Vertrag, Liesmich
+		+ (imRahmenBaeume ? 1 : 0)    // Kronen
 	);
 	let raum = $state<Raum | null>(null);
 	const f0 = (n: number) => zahl(Math.round(n));
@@ -206,6 +207,32 @@
 	 * Archiv selbst. Die Einzeldownloads behalten ihren langen Namen, weil sie
 	 * im Ordner „Downloads" landen und dort eine Kennung brauchen.
 	 */
+	/**
+	 * Das Modell als Satz Dateien, für das Paket und den Modell-Ausgang.
+	 *
+	 * Volker am 19.10.2026: Das Modell immer mit Material und Textur. Wer
+	 * das OBJ in Rhino öffnet, bekommt den Grund gleich mit der Aufsicht ohne
+	 * Bauten belegt — auf dem Gelände, sonst auf einer ebenen Platte. Die DXF
+	 * bleibt dafür eben: Ebene Kurven lassen sich schraffieren und
+	 * extrudieren, aufs Gelände gelegte nicht mehr.
+	 *
+	 * Was über den Rahmen hinausragt, liegt getrennt in `model_outside.obj`,
+	 * die Kronen in `trees.obj`. Beide nutzen dieselbe Materialdatei.
+	 */
+	async function modellTeile(rr: Rahmen) {
+		const textur = 'model_texture.png';
+		const teile: { name: string; inhalt: Blob | string }[] = [
+			{ name: pfadV2('modell.obj'), inhalt: obj(z.objekte, rr, z.gelaendeJetzt, 'model.mtl') },
+			{ name: 'model_outside.obj', inhalt: obj(z.objekte, rr, z.gelaendeJetzt, 'model.mtl', 'aussen') },
+			{ name: 'model.mtl', inhalt: alsMtl(textur) },
+			{ name: textur, inhalt: await bild(z.objekte, rr, 'modellaufsicht', z.bereinigt, z.beschriftung,
+				z.plangebiet, z.sichtbar, true, 'image/png', undefined) }
+		];
+		if (imRahmenBaeume)
+			teile.push({ name: 'trees.obj', inhalt: baeumeAlsObj(z.baumpunkte, rr, z.gelaendeJetzt, 'model.mtl') });
+		return teile;
+	}
+
 	async function paketSchnueren(basis: string) {
 		const rr = r!;
 		const teile: { name: string; inhalt: Blob | string }[] = [];
@@ -337,20 +364,7 @@
 			throw new Error(`Das Paket schreibt andere Datendateien, als der Knopf ankündigt.\n`
 				+ `geschrieben:   ${geschrieben}\nangekündigt: ${angekuendigt}`);
 
-		/**
-		 * Das Modell mit Materialdatei, und mit Gelände dazu dessen Textur.
-		 *
-		 * Wer das OBJ in Rhino öffnet, bekommt das Gelände gleich mit der
-		 * Aufsicht ohne Bauten belegt, Straßen und Flächen liegen sichtbar
-		 * auf dem Hang. Die DXF bleibt dafür eben: Ebene Kurven lassen sich
-		 * schraffieren und extrudieren, aufs Gelände gelegte nicht mehr.
-		 */
-		const textur = z.gelaendeJetzt ? 'model_texture.png' : null;
-		teile.push({ name: pfadV2('modell.obj'), inhalt: obj(z.objekte, rr, z.gelaendeJetzt, 'model.mtl') });
-		teile.push({ name: 'model.mtl', inhalt: alsMtl(textur) });
-		if (textur)
-			teile.push({ name: textur, inhalt: await bild(z.objekte, rr, 'modellaufsicht', z.bereinigt, z.beschriftung,
-				z.plangebiet, z.sichtbar, true, 'image/png', undefined) });
+		teile.push(...await modellTeile(rr));
 		teile.push({ name: pfadV2('zeichnung.dxf'), inhalt: dxf(z.objekte, rr, z.gelaendeJetzt) });
 		const vertrag = vertragJetzt(basis, { bilder, daten });
 		teile.push({ name: 'frame.json', inhalt: JSON.stringify(vertrag, null, 2) });
@@ -642,6 +656,12 @@
 						 * trägt jeder Körper mit `_ausserhalb`; das Gelände ist
 						 * mit der Aufsicht ohne Bauten belegt.
 						 */
+						/**
+						 * Die Teile vor der Rahmenkante, getrennt vom Modell.
+						 * Höhen wie dort; wer Schatten von außen rechnet, lädt
+						 * diese Datei dazu.
+						 */
+						model_outside: 'model_outside.obj',
 						material: {
 							file: 'model.mtl',
 							names: {
@@ -676,7 +696,7 @@
 		}));
 	}
 
-	async function ausgeben(art: 'bild' | 'dxf' | 'obj' | 'baeume' | 'vertrag' | 'paket') {
+	async function ausgeben(art: 'bild' | 'dxf' | 'obj' | 'vertrag' | 'paket') {
 		if (!r) return;
 		arbeitet = art;
 		// Ohne diese Zeile bliebe die Beschriftung stehen: das Zeichnen von
@@ -695,9 +715,7 @@
 			} else if (art === 'dxf') {
 				laden(dxf(z.objekte, r, z.gelaendeJetzt), `${basis}.dxf`, 'application/dxf');
 			} else if (art === 'obj') {
-				laden(obj(z.objekte, r, z.gelaendeJetzt), `${basis}.obj`, 'model/obj');
-			} else if (art === 'baeume') {
-				laden(baeumeAlsObj(z.baumpunkte, r, z.gelaendeJetzt), `${basis}_trees.obj`, 'model/obj');
+				laden(await paket(await modellTeile(r)), `${basis}_model.zip`, 'application/zip');
 			} else if (art === 'paket') {
 				laden(await paketSchnueren(basis), `${basis}.zip`, 'application/zip');
 			} else {
@@ -1158,13 +1176,8 @@
 							<span>{t().ausgeben.zeichnungWas}</span>
 						</button></li>
 						<li><button type="button" disabled={!!arbeitet} onclick={() => ausgeben('obj')}>
-							<strong>{t().ausgeben.modell}</strong><em class="mono">{arbeitet === 'obj' ? t().ausgeben.schreibt : t().ausgeben.modellZeile(deckung.gesamt)}</em>
+							<strong>{t().ausgeben.modell}</strong><em class="mono">{arbeitet === 'obj' ? t().ausgeben.schreibt : t().ausgeben.modellZeile(deckung.gesamt, imRahmenBaeume)}</em>
 							<span>{t().ausgeben.modellWas}</span>
-						</button></li>
-						<li><button type="button" disabled={!!arbeitet || !imRahmenBaeume}
-							onclick={() => ausgeben('baeume')}>
-							<strong>{t().ausgeben.kronen}</strong><em class="mono">{arbeitet === 'baeume' ? t().ausgeben.schreibt : t().ausgeben.kronenZeile(imRahmenBaeume)}</em>
-							<span>{t().ausgeben.kronenWas(BAUM.stammhoeheM)}</span>
 						</button></li>
 						<li><button type="button" disabled={!!arbeitet} onclick={() => ausgeben('vertrag')}>
 							<strong>{t().ausgeben.vertrag}</strong><em class="mono">{arbeitet === 'vertrag' ? t().ausgeben.schreibt : 'JSON'}</em>

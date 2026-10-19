@@ -112,6 +112,11 @@
 	const imRahmenBaeume = $derived(
 		r ? z.baumpunkte.filter((b) => b.x >= r.x0 && b.x <= r.x1 && b.y >= r.y0 && b.y <= r.y1).length : 0
 	);
+	/**
+	 * Die Kronen, die ins Modell gehen. Volker am 19.10.2026: Das Modell
+	 * enthält, was zu sehen ist — Bäume nur, wenn der Schalter an ist.
+	 */
+	const modellKronen = $derived(z.baeume ? imRahmenBaeume : 0);
 	const mitAdresse = $derived(z.objekte.filter((o) => o.adresse).length);
 	const denkmale = $derived(z.objekte.filter((o) => o.denkmal).length);
 	const darstellungJetzt = $derived(darstellungVon(z.darstellung));
@@ -143,7 +148,7 @@
 		+ (raeumlich ? 1 : 0)
 		+ DATENDATEIEN.length
 		+ 7    // Modell, Teile vor der Kante, Materialien, Textur, Zeichnung, Vertrag, Liesmich
-		+ (imRahmenBaeume ? 1 : 0)    // Kronen
+		+ (modellKronen ? 1 : 0)    // Kronen
 	);
 	let raum = $state<Raum | null>(null);
 	const f0 = (n: number) => zahl(Math.round(n));
@@ -228,7 +233,7 @@
 			{ name: textur, inhalt: await bild(z.objekte, rr, 'modellaufsicht', z.bereinigt, z.beschriftung,
 				z.plangebiet, z.sichtbar, true, 'image/png', undefined) }
 		];
-		if (imRahmenBaeume)
+		if (modellKronen)
 			teile.push({ name: 'trees.obj', inhalt: baeumeAlsObj(z.baumpunkte, rr, z.gelaendeJetzt, 'model.mtl') });
 		return teile;
 	}
@@ -1176,8 +1181,8 @@
 							<span>{t().ausgeben.zeichnungWas}</span>
 						</button></li>
 						<li><button type="button" disabled={!!arbeitet} onclick={() => ausgeben('obj')}>
-							<strong>{t().ausgeben.modell}</strong><em class="mono">{arbeitet === 'obj' ? t().ausgeben.schreibt : t().ausgeben.modellZeile(deckung.gesamt, imRahmenBaeume)}</em>
-							<span>{t().ausgeben.modellWas}</span>
+							<strong>{t().ausgeben.modell}</strong><em class="mono">{arbeitet === 'obj' ? t().ausgeben.schreibt : t().ausgeben.modellZeile(deckung.gesamt, modellKronen)}</em>
+							<span>{t().ausgeben.modellWas(z.gelaende, modellKronen > 0)}</span>
 						</button></li>
 						<li><button type="button" disabled={!!arbeitet} onclick={() => ausgeben('vertrag')}>
 							<strong>{t().ausgeben.vertrag}</strong><em class="mono">{arbeitet === 'vertrag' ? t().ausgeben.schreibt : 'JSON'}</em>

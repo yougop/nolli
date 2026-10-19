@@ -173,8 +173,9 @@ const de = {
 		zeichnungZeile: (n: number) => `DXF · ${n} Ebenen`,
 		zeichnungWas: 'Meter, Ursprung linke untere Rahmenecke',
 		modell: 'Modell',
-		modellZeile: (n: number, k: number) => `ZIP · OBJ · ${n} Körper${k ? ` · ${k} Kronen` : ''}`,
-		modellWas: 'Baukörper, Grund mit Textur, Kronen und Material für Rhino. Z nach oben, Y nach Norden, Ursprung auf der Rahmenecke',
+		modellZeile: (n: number, k: number) => `ZIP · OBJ · ${n.toLocaleString('de-DE')} Körper${k ? ` · ${k.toLocaleString('de-DE')} Kronen` : ''}`,
+		modellWas: (gelaende: boolean, kronen: boolean) =>
+			`Baukörper, ${gelaende ? 'Gelände' : 'ebener Grund'} mit Textur${kronen ? ', Baumkronen' : ''} und Material für Rhino — was die 3D-Ansicht zeigt. Gelände und Bäume dort schalten. Z nach oben, Ursprung auf der Rahmenecke`,
 		vertrag: 'Datenvertrag',
 		vertragWas: 'Bbox, Gitter, Pixelmaße, Halteliste des Bestands',
 		zeichnet: 'Zeichnet das Blatt …',
@@ -410,8 +411,9 @@ const en: typeof de = {
 		zeichnungZeile: (n) => `DXF · ${n} layers`,
 		zeichnungWas: 'Metres, origin at the lower-left frame corner',
 		modell: 'Model',
-		modellZeile: (n, k) => `ZIP · OBJ · ${n} bodies${k ? ` · ${k} crowns` : ''}`,
-		modellWas: 'Buildings, textured ground, tree crowns and materials for Rhino. Z up, Y to north, origin at the frame corner',
+		modellZeile: (n, k) => `ZIP · OBJ · ${n.toLocaleString('en-GB')} bodies${k ? ` · ${k.toLocaleString('en-GB')} crowns` : ''}`,
+		modellWas: (gelaende, kronen) =>
+			`Buildings, ${gelaende ? 'terrain' : 'flat ground'} with texture${kronen ? ', tree crowns' : ''} and materials for Rhino — what the 3D view shows. Switch terrain and trees there. Z up, origin at the frame corner`,
 		vertrag: 'Data contract',
 		vertragWas: 'Bbox, grid, pixel dimensions, record of existing fabric',
 		zeichnet: 'Drawing the sheet …',

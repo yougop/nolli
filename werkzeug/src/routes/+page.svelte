@@ -817,8 +817,8 @@
 						onclick={() => (z.baeume = !z.baeume)}
 						title={z.baumpunkte.length
 							? (raeumlich
-								? t().sicht.baeumeRaum(z.baumpunkte.length)
-								: t().sicht.baeumeFlach(z.baumpunkte.length))
+								? t().sicht.baeumeRaum(imRahmenBaeume)
+								: t().sicht.baeumeFlach(imRahmenBaeume))
 							: t().sicht.keineBaeume}
 					>{t().sicht.baeume}</button>
 					<!--
@@ -1122,7 +1122,7 @@
 							<div><dt>{t().bereinigen.netz}</dt><dd class="mono">{t().bereinigen.kanten(z.netz?.kanten.length ?? 0)}</dd></div>
 							<div><dt>{t().bereinigen.punkteZeile}</dt><dd class="mono">{z.pois.length}</dd></div>
 							<div><dt>{t().bereinigen.haltestellen}</dt><dd class="mono">{z.haltestellen.length}</dd></div>
-							<div><dt>{t().bereinigen.baeume}</dt><dd class="mono">{z.baumpunkte.length}</dd></div>
+							<div><dt>{t().bereinigen.baeume}</dt><dd class="mono">{imRahmenBaeume}</dd></div>
 							<div><dt>{t().bereinigen.nutzflaechen}</dt><dd class="mono">{z.nutzflaechen.length}</dd></div>
 							<div><dt>{t().bereinigen.uebriges}</dt><dd class="mono">{z.rest.length}</dd></div>
 						</dl>
@@ -1153,7 +1153,7 @@
 					<dl class="buch">
 						<div class="gross"><dt>{t().ausgeben.darstellung}</dt><dd>{t().darstellungen[darstellungJetzt.id].name}</dd></div>
 						<div><dt>{t().ausgeben.beschriftung}</dt><dd class="mono">{z.beschriftung ? t().ausgeben.ja : t().ausgeben.nein}</dd></div>
-						<div><dt>{t().ausgeben.baeume}</dt><dd class="mono">{z.baeume ? t().ausgeben.jaN(z.baumpunkte.length) : t().ausgeben.nein}</dd></div>
+						<div><dt>{t().ausgeben.baeume}</dt><dd class="mono">{z.baeume ? t().ausgeben.jaN(imRahmenBaeume) : t().ausgeben.nein}</dd></div>
 						<div><dt>{t().gelaende.zeile}</dt><dd class="mono">{gelaendeFeld ? t().gelaende.spanne(f0(gelaendeFeld.min), f0(gelaendeFeld.max)) : t().gelaende.eben}</dd></div>
 						<div><dt>{t().ausgeben.groesse}</dt><dd class="mono">{r?.pixelBreite} × {r?.pixelHoehe}</dd></div>
 					</dl>

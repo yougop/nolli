@@ -15,7 +15,7 @@ Nolli runs entirely in the browser. There is no server, no account and no API
 key: the page talks directly to OpenStreetMap (Overpass), the place search
 (Photon) and an open elevation model (AWS Terrain Tiles).
 
-![3D context model with terrain, Prato (Tuscany)](docs/3-terrain-3d.png)
+![3D context model with terrain, Prato (Tuscany)](docs/terrain-3d-light.png)
 
 ## What you get
 
@@ -65,7 +65,7 @@ accuracy, bring in an official terrain model (see below).
 Terrain is off by default. Then everything stands on z = 0 and the contract
 says so (`terrain_flat`).
 
-![Export with the model ZIP, HafenCity (Hamburg)](docs/4-export.png)
+![Export with the model ZIP, HafenCity (Hamburg)](docs/export-model-zip.png)
 
 ## Using the package in Rhino or QGIS
 

@@ -34,7 +34,7 @@ ${v.license}.
 | Datei | Inhalt |
 |---|---|
 | \`frame.json\` | Der Datenvertrag: Rahmen, Projektion, Maßstab, Herkunft, Inhaltsverzeichnis. **Maßgeblich.** |
-| \`model.obj\` | Baukörper, extrudiert. Meter, Z nach oben, Y nach Norden |
+| \`model.obj\` | Baukörper, extrudiert. Meter, Z nach oben, Y nach Norden. Materialien in \`model.mtl\` |
 | \`drawing.dxf\` | Zeichnung mit getrennten Ebenen (\`N_BUILDINGS\`, \`N_STREETS\`, …), Meter |
 | \`images/\` | Jede Darstellung, dazu je eine Fassung \`_bare\` ohne Baukörper und Bäume |
 | \`data/\` | Alle Daten als JSON, Feldnamen siehe unten |
@@ -51,13 +51,15 @@ Die Feld- und Dateinamen sind englisch (Datenvertrag v${v.contract_version}), un
 
 **Rhino:** OBJ und DXF in Metern importieren, sie liegen deckungsgleich. Die Bilder passen als Textur genau auf den Rahmen von 0/0 bis ${v.width_m}/${v.height_m}.
 
+Was vor der Rahmenkante liegt, ist im Modell als eigener Körper mit \`_outside\` im Namen und grauem Material enthalten, weil es Schatten in den Rahmen wirft. Für einen sauberen Ausschnitt in Rhino \`_SelName\` mit \`*_outside\` aufrufen und die Auswahl ausblenden oder löschen.
+
 **Fremde Daten dazulegen (QGIS):** Aus \`grid.proj4\` ein benutzerdefiniertes Koordinatensystem anlegen, die Fremddaten dorthin projizieren und um X ${dx}, Y ${dy} verschieben. Dann liegen sie auf dem Modell. So lässt sich auch ein genaueres amtliches Geländemodell einsetzen.
 
 ## Gelände
 
 ${ter ? `Höhen aus ${ter.source}, Modelle: ${(ter.models ?? []).join(', ') || '—'}. Im Rahmen ${ter.z_min} bis ${ter.z_max} m über dem Meer.
 
-- \`model.obj\`: Körper \`terrain\`, ein Dreiecksnetz im ${ter.grid_spacing_m}-m-Raster. Jeder Baukörper steht auf der tiefsten Geländehöhe unter seinem Grundriss (\`base_m\` in \`data/bodies.json\`). Z ist absolut, Meter über dem Meer.
+- \`model.obj\`: Körper \`terrain\`, ein Dreiecksnetz im ${ter.grid_spacing_m}-m-Raster, mit Texturkoordinaten. Das Material \`terrain\` legt \`model_texture.png\` darauf, die Aufsicht ohne Bauten; \`model.mtl\` und das Bild müssen neben dem OBJ liegen. Die Zeichnung bleibt bewusst eben, damit sich ihre Kurven schraffieren und extrudieren lassen. Jeder Baukörper steht auf der tiefsten Geländehöhe unter seinem Grundriss (\`base_m\` in \`data/bodies.json\`). Z ist absolut, Meter über dem Meer.
 - \`drawing.dxf\`: Höhenlinien alle ${ter.contour_interval_m} m auf \`N_CONTOUR\`, jede fünfte auf \`N_CONTOUR_MAJOR\`, jeweils auf ihrer Höhe.
 - \`data/terrain.json\`: das Raster selbst, mit 150 m Rand um den Rahmen.
 
@@ -94,7 +96,7 @@ ${v.license}.
 | File | Contents |
 |---|---|
 | \`frame.json\` | The data contract: frame, projection, scale, provenance, table of contents. **Authoritative.** |
-| \`model.obj\` | Extruded building bodies. Metres, Z up, Y north |
+| \`model.obj\` | Extruded building bodies. Metres, Z up, Y north. Materials in \`model.mtl\` |
 | \`drawing.dxf\` | Drawing with separate layers (\`N_BUILDINGS\`, \`N_STREETS\`, …), metres |
 | \`images/\` | Every style, plus a \`_bare\` version without buildings and trees |
 | \`data/\` | All data as JSON, field names below |
@@ -111,13 +113,15 @@ Data contract v${v.contract_version}.
 
 **Rhino:** import OBJ and DXF in metres; they line up. The images fit exactly onto the frame from 0/0 to ${v.width_m}/${v.height_m} as a texture.
 
+Parts of buildings beyond the frame edge are in the model as separate bodies with \`_outside\` in their name and a grey material, because they cast shadows into the frame. For a clean cut-out in Rhino, run \`_SelName\` with \`*_outside\` and hide or delete the selection.
+
 **Adding other data (QGIS):** create a custom coordinate system from \`grid.proj4\`, reproject the other data into it and move it by X ${dx}, Y ${dy}. It then sits on the model. This is also how to bring in a more accurate official terrain model.
 
 ## Terrain
 
 ${ter ? `Heights from ${ter.source}, models: ${(ter.models ?? []).join(', ') || '—'}. Within the frame ${ter.z_min} to ${ter.z_max} m above sea level.
 
-- \`model.obj\`: body \`terrain\`, a triangle mesh on a ${ter.grid_spacing_m} m grid. Every building stands on the lowest terrain height under its footprint (\`base_m\` in \`data/bodies.json\`). Z is absolute, metres above sea level.
+- \`model.obj\`: body \`terrain\`, a triangle mesh on a ${ter.grid_spacing_m} m grid, with texture coordinates. The material \`terrain\` puts \`model_texture.png\` on it, the top view without buildings; keep \`model.mtl\` and the image next to the OBJ. The drawing deliberately stays flat so its curves can still be hatched and extruded. Every building stands on the lowest terrain height under its footprint (\`base_m\` in \`data/bodies.json\`). Z is absolute, metres above sea level.
 - \`drawing.dxf\`: contours every ${ter.contour_interval_m} m on \`N_CONTOUR\`, every fifth on \`N_CONTOUR_MAJOR\`, each at its height.
 - \`data/terrain.json\`: the raster itself, with a 150 m margin around the frame.
 

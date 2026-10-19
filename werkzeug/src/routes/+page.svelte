@@ -11,7 +11,7 @@
 	import { baeumeAlsObj } from '$lib/export/baeume';
 	import { feldImRahmen, aequidistanz, tiefsteUnter } from '$lib/geo/gelaende';
 	import { DARSTELLUNGEN, darstellung as darstellungVon } from '$lib/darstellung';
-	import { laden, stempel, bild, dxf, obj, paket, WEBP } from '$lib/ui/ausgeben';
+	import { laden, stempel, bild, dxf, obj, alsMtl, paket, WEBP } from '$lib/ui/ausgeben';
 	import { sucheOrt } from '$lib/quelle';
 	import { t, sprache, spracheSetzen, spracheAnfangen, gebiet, zahl, englisch } from '$lib/sprache.svelte';
 	import { aufV2, vertragV2, pfadV2, darstellungV2 } from '$lib/vertrag';
@@ -141,7 +141,8 @@
 		2 * DARSTELLUNGEN.filter((d) => d.bauweise !== 'raum').length
 		+ (raeumlich ? 1 : 0)
 		+ DATENDATEIEN.length
-		+ 4    // Modell, Zeichnung, Vertrag, Liesmich
+		+ 5    // Modell, Materialien, Zeichnung, Vertrag, Liesmich
+		+ (z.gelaende ? 1 : 0)    // Geländetextur
 	);
 	let raum = $state<Raum | null>(null);
 	const f0 = (n: number) => zahl(Math.round(n));
@@ -336,7 +337,20 @@
 			throw new Error(`Das Paket schreibt andere Datendateien, als der Knopf ankündigt.\n`
 				+ `geschrieben:   ${geschrieben}\nangekündigt: ${angekuendigt}`);
 
-		teile.push({ name: pfadV2('modell.obj'), inhalt: obj(z.objekte, rr, z.gelaendeJetzt) });
+		/**
+		 * Das Modell mit Materialdatei, und mit Gelände dazu dessen Textur.
+		 *
+		 * Wer das OBJ in Rhino öffnet, bekommt das Gelände gleich mit der
+		 * Aufsicht ohne Bauten belegt, Straßen und Flächen liegen sichtbar
+		 * auf dem Hang. Die DXF bleibt dafür eben: Ebene Kurven lassen sich
+		 * schraffieren und extrudieren, aufs Gelände gelegte nicht mehr.
+		 */
+		const textur = z.gelaendeJetzt ? 'model_texture.png' : null;
+		teile.push({ name: pfadV2('modell.obj'), inhalt: obj(z.objekte, rr, z.gelaendeJetzt, 'model.mtl') });
+		teile.push({ name: 'model.mtl', inhalt: alsMtl(textur) });
+		if (textur)
+			teile.push({ name: textur, inhalt: await bild(z.objekte, rr, 'modellaufsicht', z.bereinigt, z.beschriftung,
+				z.plangebiet, z.sichtbar, true, 'image/png', undefined) });
 		teile.push({ name: pfadV2('zeichnung.dxf'), inhalt: dxf(z.objekte, rr, z.gelaendeJetzt) });
 		const vertrag = vertragJetzt(basis, { bilder, daten });
 		teile.push({ name: 'frame.json', inhalt: JSON.stringify(vertrag, null, 2) });
@@ -621,6 +635,24 @@
 						modell_namenszusaetze: {
 							_hoehe_geschaetzt: 'Height from the number of storeys or assumed, not measured',
 							_ausserhalb: 'Part outside the frame edge, belongs to the body of the same name without this suffix'
+						},
+						/**
+						 * Materialien zum Modell, neu seit Oktober 2026 und
+						 * deshalb gleich mit englischen Namen. `building_outside`
+						 * trägt jeder Körper mit `_ausserhalb`; das Gelände ist
+						 * mit der Aufsicht ohne Bauten belegt.
+						 */
+						material: {
+							file: 'model.mtl',
+							names: {
+								building: 'Buildings inside the frame',
+								building_outside: 'Parts outside the frame edge',
+								terrain: 'Terrain mesh'
+							},
+							...(z.gelaendeJetzt
+								? { terrain_texture: 'model_texture.png',
+									terrain_texture_style: 'top_view_bare, PNG, covers exactly the frame' }
+								: {})
 						},
 						zeichnung: 'zeichnung.dxf',
 						// Verlustfreies WebP, an allen Darstellungen gegen PNG

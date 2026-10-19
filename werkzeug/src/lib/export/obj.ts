@@ -38,7 +38,8 @@ import { drin, amRahmen } from '../schneiden';
  * Grundriss, und das Gelände selbst kommt als eigener Körper dazu. Die Höhen
  * sind dann absolut, Meter über dem Meer. Ohne Gelände bleibt alles auf null.
  */
-export function alsObj(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | null = null): string {
+export function alsObj(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | null = null,
+	material: string | null = null): string {
 	const zeilen: string[] = [
 		'# Nolli — context model from OpenStreetMap',
 		'# ODbL, © OpenStreetMap contributors',
@@ -48,8 +49,14 @@ export function alsObj(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | null =
 		...(gelaende
 			? [`# Z: metres above sea level. Terrain from ${gelaende.quellen.join(', ') || 'AWS Terrain Tiles'}, zoom ${gelaende.zoom}`]
 			: ['# Z: 0 is the ground, terrain not modelled']),
+		...(material ? [`mtllib ${material}`] : []),
+		'',
+		// Normale 1 zeigt nach oben, für alle Dächer.
+		'vn 0 0 1',
 		''
 	];
+	let normalen = 1;
+	let texturpunkte = 0;
 	let basis = 0;
 
 	for (const o of objekte) {
@@ -81,6 +88,7 @@ export function alsObj(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | null =
 		const schreiben = (name: string, teile: [number, number][][], loch: [number, number][][]) => {
 			if (!teile.length) return;
 			zeilen.push(`o ${objName(name)}`);
+			if (material) zeilen.push(`usemtl ${name.endsWith('_ausserhalb') ? 'building_outside' : 'building'}`);
 			for (const aussen of teile) {
 				const loecher = loch.filter((l) => drin(l[0], aussen));
 
@@ -94,11 +102,20 @@ export function alsObj(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | null =
 				const oben = (i: number) => basis + n + i + 1;
 
 				// Waende, aussen wie innen. Der Hof bekommt seine Fassaden.
+				//
+				// Jede Wand bekommt ihre eigene Normale. Ohne sie mittelt Rhino
+				// an jeder Ecke über Wand und Dach, und die Häuser sehen aus
+				// wie aus Seife. Außenringe laufen gegen, Höfe mit dem
+				// Uhrzeigersinn: (dy, −dx) zeigt deshalb bei beiden nach außen.
 				let ab = 0;
 				for (const kette of [aussen, ...loecher]) {
 					for (let i = 0; i < kette.length; i++) {
 						const a = ab + i, b = ab + ((i + 1) % kette.length);
-						zeilen.push(`f ${unten(a)} ${unten(b)} ${oben(b)} ${oben(a)}`);
+						const [x1, y1] = kette[i], [x2, y2] = kette[(i + 1) % kette.length];
+						const l = Math.hypot(x2 - x1, y2 - y1) || 1;
+						zeilen.push(`vn ${((y2 - y1) / l).toFixed(5)} ${(-(x2 - x1) / l).toFixed(5)} 0`);
+						const nn = ++normalen;
+						zeilen.push(`f ${unten(a)}//${nn} ${unten(b)}//${nn} ${oben(b)}//${nn} ${oben(a)}//${nn}`);
 					}
 					ab += kette.length;
 				}
@@ -113,7 +130,7 @@ export function alsObj(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | null =
 				}
 				const idx = earcut(flach, grenzen);
 				for (let k = 0; k < idx.length; k += 3)
-					zeilen.push(`f ${oben(idx[k])} ${oben(idx[k + 1])} ${oben(idx[k + 2])}`);
+					zeilen.push(`f ${oben(idx[k])}//1 ${oben(idx[k + 1])}//1 ${oben(idx[k + 2])}//1`);
 
 				basis += n * 2;
 			}
@@ -149,11 +166,24 @@ export function alsObj(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | null =
 				for (let i = 0; i < f.nx; i++)
 					zeilen.push(`v ${(i * f.dx).toFixed(3)} ${(j * f.dy).toFixed(3)} ${f.z[j * f.nx + i].toFixed(3)}`);
 			const ecke = (i: number, j: number) => basis + j * f.nx + i + 1;
+			// Mit Material bekommt das Netz Texturkoordinaten: Das Bild deckt
+			// genau den Rahmen ab, das Netz auch, also u = x / Breite, v = y / Höhe.
+			// Die Bildzeile oben ist Norden, und v zählt in OBJ von unten.
+			let flaeche3 = (a: number, b: number, c: number) => `f ${a} ${b} ${c}`;
+			if (material) {
+				zeilen.push('usemtl terrain');
+				for (let j = 0; j < f.ny; j++)
+					for (let i = 0; i < f.nx; i++)
+						zeilen.push(`vt ${(i / (f.nx - 1)).toFixed(6)} ${(j / (f.ny - 1)).toFixed(6)}`);
+				const vt = (v: number) => v - basis + texturpunkte;
+				flaeche3 = (a, b, c) => `f ${a}/${vt(a)} ${b}/${vt(b)} ${c}/${vt(c)}`;
+			}
 			for (let j = 0; j < f.ny - 1; j++)
 				for (let i = 0; i < f.nx - 1; i++) {
-					zeilen.push(`f ${ecke(i, j)} ${ecke(i + 1, j)} ${ecke(i + 1, j + 1)}`);
-					zeilen.push(`f ${ecke(i, j)} ${ecke(i + 1, j + 1)} ${ecke(i, j + 1)}`);
+					zeilen.push(flaeche3(ecke(i, j), ecke(i + 1, j), ecke(i + 1, j + 1)));
+					zeilen.push(flaeche3(ecke(i, j), ecke(i + 1, j + 1), ecke(i, j + 1)));
 				}
+			if (material) texturpunkte += f.nx * f.ny;
 			basis += f.nx * f.ny;
 			zeilen.push('');
 		}
@@ -177,4 +207,32 @@ function flaeche(r: [number, number][]): number {
 	let s = 0;
 	for (let i = 0, j = r.length - 1; i < r.length; j = i++) s += r[j][0] * r[i][1] - r[i][0] * r[j][1];
 	return s / 2;
+}
+
+/**
+ * Die Materialdatei zum Modell.
+ *
+ * Drei Materialien: Häuser weiß, die Teile vor der Rahmenkante grau, damit
+ * man sie sieht und auswählen kann, und das Gelände mit der Aufsicht ohne
+ * Bauten als Bild. Die Textur ist PNG, nicht WebP wie die übrigen Bilder des
+ * Pakets: Nicht jedes CAD-Programm liest WebP als Textur.
+ */
+export function alsMtl(textur: string | null): string {
+	return [
+		'# Nolli — materials for model.obj',
+		'',
+		'newmtl building',
+		'Kd 0.92 0.92 0.92',
+		'Ka 0 0 0',
+		'',
+		'newmtl building_outside',
+		'Kd 0.62 0.62 0.62',
+		'Ka 0 0 0',
+		'',
+		'newmtl terrain',
+		'Kd 1 1 1',
+		'Ka 0 0 0',
+		...(textur ? [`map_Kd ${textur}`] : []),
+		''
+	].join('\n');
 }

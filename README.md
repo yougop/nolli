@@ -23,7 +23,8 @@ key: the page talks directly to OpenStreetMap (Overpass), the place search
 |---|---|
 | **Images** | Figure-ground, inverted, line, use, top view, white model, data depth, 3D view — up to 4096 px, with a bare version (no buildings, no trees) of each to use as a ground texture |
 | **`drawing.dxf`** | Separate layers with pen widths (`N_BUILDINGS`, `N_STREETS`, `N_WATER`, …), labels, frame, and contour lines when terrain is on. Metres, origin at the lower-left frame corner |
-| **Model (ZIP)** | `model.obj` with extruded buildings, cut cleanly at the frame edge and flagged where the height is estimated, plus a ground mesh textured with the top view (on the terrain when it is on, otherwise flat). `model.mtl` and `model_texture.png` come with it, so Rhino opens it textured. With trees switched on, the crowns are one object `trees` in the same file. The model contains what the 3D view shows. The full package adds `model_outside.obj`, the parts of buildings beyond the frame |
+| **Model (ZIP)** | `model.obj`, `model.mtl` and `model_texture.png`, ready for Rhino: extruded buildings with hard edges, cut cleanly at the frame edge; the ground textured with the top view, on the terrain or flat; tree crowns as one object `trees`. It contains what the 3D view shows — switch terrain and trees there |
+| **Package (ZIP)** | Everything above plus `model_outside.obj`, the parts of buildings beyond the frame edge, which still cast shadows into it |
 | **`frame.json`** | The data contract: frame, projection, scale, provenance, caveats, and a table of contents of the package |
 | **`data/*.json`** | Everything OpenStreetMap knows inside the frame: buildings with height and origin of the height, street network as a graph, points of interest, stops and lines, land use, trees, terrain raster |
 | **`README.md`** | Written into every package, in the interface language |
@@ -34,7 +35,7 @@ key: the page talks directly to OpenStreetMap (Overpass), the place search
 |---|---|
 | **1 · Frame** | Search a place or drag a rectangle. The aspect ratio snaps; width, height, area and metres per pixel update live. Nolli checks whether a 12 m deep row of buildings is still at least 12 px wide at the chosen output size — below that, building edges merge. |
 | **2 · Clean up** | Click objects or draw a polygon to remove them or keep them. Removed objects stay visible as ghosts and are listed by ID in the contract. A site area clears everything inside and cuts streets at its boundary. |
-| **3 · Export** | One image, single files, or the complete package as a ZIP. |
+| **3 · Export** | One image, the drawing, the model, the data contract, or the complete package. |
 
 ![Frame](docs/1-frame.png)
 ![Figure-ground with data summary](docs/2-figure-ground.png)
@@ -64,7 +65,7 @@ accuracy, bring in an official terrain model (see below).
 Terrain is off by default. Then everything stands on z = 0 and the contract
 says so (`terrain_flat`).
 
-![Export](docs/4-export.png)
+![Export with the model ZIP, HafenCity (Hamburg)](docs/4-export.png)
 
 ## Using the package in Rhino or QGIS
 
@@ -72,10 +73,12 @@ The model uses a transverse Mercator projection centred on the site (scale 1,
 grid north = true north at the centre). The exact definition is in
 `frame.json` under `grid.proj4`.
 
-- **Rhino:** import `model.obj` and `drawing.dxf` in metres; they line up.
-  Keep `model.mtl` and `model_texture.png` next to the OBJ. The drawing stays
-  flat on purpose, so its curves can still be hatched and extruded. Images fit
-  exactly onto the frame from 0/0 to width/height.
+- **Rhino:** unpack the model ZIP and import `model.obj` in metres; material
+  and texture come with it, nothing to map. `drawing.dxf` lines up with it.
+  The drawing stays flat on purpose, so its curves can still be hatched,
+  extruded and capped; to put single curves on the slope, use `_Project` or
+  `_Pull` onto the terrain mesh. Images fit exactly onto the frame from 0/0
+  to width/height.
 - **Other data (QGIS):** create a custom coordinate system from `grid.proj4`,
   reproject your data into it and move it by −`bbox_grid[0]`, −`bbox_grid[1]`.
   The package README spells out the numbers. This is also how to replace the
@@ -138,7 +141,7 @@ Manual scripts in `werkzeug/pruefung/`, run against `vite preview` on port
 | Script | Checks |
 |---|---|
 | `npm run check` | Type checking (svelte-check) |
-| `pruefung/paket.mjs <dir>` | Builds a complete package for the HafenCity example |
+| `pruefung/paket.mjs <dir>` | Builds the model ZIP and the complete package for the HafenCity example |
 | `pruefung/vertrag.mjs <v1> <v2> [umbra.html]` | Contract tables are reversible; a v2 package mapped back equals a v1 package; a downstream tool's copy of the table matches |
 | `pruefung/sprache.mjs <dir>` | Walks the English interface and reports German leftovers |
 | `pruefung/gelaende.mjs <dir> [place]` | Builds a package with terrain at a real place (default: Galceti, Prato). Uses live data |

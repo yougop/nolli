@@ -1,4 +1,3 @@
-import { objName } from '../vertrag';
 import { type Gelaende, hoeheBei } from '../geo/gelaende';
 import type { Rahmen } from '$lib/geo/rahmen';
 import { BAUM } from '$lib/analysedaten';
@@ -11,8 +10,8 @@ import { BAUM } from '$lib/analysedaten';
  * woanders hin mitnimmt — nach Rhino, nach Blender, in eine Praesentation.
  * Dort ist fertige Geometrie richtig, weil das Zielprogramm sie nicht selbst
  * erzeugen kann. Seit dem 19.10.2026 kein eigener Ausgang mehr, sondern
- * `trees.obj` im Modellpaket neben `model.obj`, mit demselben Material. Das
- * kostet Platz — am HafenCity-Bestand 261 KB als Netz gegen 16 KB als
+ * ein Körper `trees` in `model.obj`, wenn die Bäume eingeschaltet sind. Das
+ * kostet Platz — am HafenCity-Bestand rund 1 MB als Netz gegen 16 KB als
  * Daten —, aber wer das Modell holt, will die Bäume in derselben Lage.
  *
  * Ikosaeder ohne Unterteilung, dieselben zwanzig Dreiecke wie in der
@@ -40,40 +39,58 @@ const FLAECHEN: [number, number, number][] = [
 	[5, 10, 6], [3, 5, 12], [7, 3, 11], [9, 7, 8], [10, 9, 2]
 ];
 
-export function baeumeAlsObj(
+/**
+ * Die Kronen als ein Körper `trees` für `model.obj`.
+ *
+ * Volker am 19.10.2026: Die Bäume gehören ins Modell, als ein einzelnes
+ * Objekt, nicht in eine eigene Datei. Die Punkt- und Normalenzähler des
+ * Modells kommen herein, damit die Verweise stimmen; zurück kommt, wie viele
+ * dazugekommen sind.
+ *
+ * Jede Dreiecksfläche bekommt ihre Normale, aus der Mitte der Krone zur
+ * Flächenmitte. Ohne sie mittelt Rhino und die Kronen werden Kugeln.
+ */
+export function kronenKoerper(
 	baeume: { x: number; y: number; krone: number; gemessen: boolean }[],
-		r: Rahmen,
-		gelaende: Gelaende | null = null,
-		material: string | null = null
-	): string {
-	const zeilen: string[] = [
-		'# Nolli — tree crowns',
-		`# Icosahedra, ${FLAECHEN.length} triangles per crown`,
-		`# Crown base ${BAUM.stammhoeheM} m, default diameter ${BAUM.vorgabeKroneM} m where not mapped`,
-		// Z nach oben wie model.obj, damit beide im selben Paket aufeinander
-		// passen. Bis zum 19.10.2026 stand hier Y nach oben, für Blender;
-		// in Rhino lagen die Kronen dann quer zum Modell.
-		'# Units metres, Z up, Y north. Origin at the lower-left frame corner.',
-		...(gelaende ? ['# Z: metres above sea level, trees stand on the terrain'] : []),
-		...(material ? [`mtllib ${material}`] : [])
-	];
-	let versatz = 0;
-	let n = 0;
+	r: Rahmen,
+	gelaende: Gelaende | null,
+	material: boolean,
+	punktBasis: number,
+	normalBasis: number
+): { zeilen: string[]; punkte: number; normalen: number; kronen: number } {
+	const zeilen: string[] = [];
+	let punkte = 0, normalen = 0, kronen = 0;
 	for (const b of baeume) {
 		if (b.x < r.x0 || b.x > r.x1 || b.y < r.y0 || b.y > r.y1) continue;
+		if (!kronen++) {
+			zeilen.push('o trees');
+			if (material) zeilen.push('usemtl tree');
+		}
 		const nenn = Math.max(0.5, b.krone / 2);
 		const rad = nenn * BAUM.silhouetteFaktor;
 		const mx = b.x - r.x0;
 		const my = b.y - r.y0;
 		const mz = (gelaende ? hoeheBei(gelaende, b.x, b.y) : 0) + BAUM.stammhoeheM + nenn;
-		zeilen.push(`o ${objName(`baum_${++n}${b.gemessen ? '' : '_krone_vorgabe'}`)}`);
-		if (material) zeilen.push('usemtl tree');
-		for (const [ex, ey, ez] of ECKEN)
-			// Ecken sind (x, y nach oben, z nach Süden) gerechnet: umstellen.
-			zeilen.push(`v ${(mx + ex * rad).toFixed(3)} ${(my - ez * rad).toFixed(3)} ${(mz + ey * rad).toFixed(3)}`);
-		for (const [a, b2, c] of FLAECHEN)
-			zeilen.push(`f ${a + versatz} ${b2 + versatz} ${c + versatz}`);
-		versatz += ECKEN.length;
+		// Ecken sind (x, y nach oben, z nach Süden) gerechnet: umstellen auf
+		// Z nach oben, Y nach Norden wie das Modell.
+		const ecken = ECKEN.map(([ex, ey, ez]) => [ex, -ez, ey] as [number, number, number]);
+		for (const [ex, ey, ez] of ecken)
+			zeilen.push(`v ${(mx + ex * rad).toFixed(3)} ${(my + ey * rad).toFixed(3)} ${(mz + ez * rad).toFixed(3)}`);
+		for (const [a, b2, c] of FLAECHEN) {
+			const [pa, pb, pc] = [ecken[a - 1], ecken[b2 - 1], ecken[c - 1]];
+			const m = [0, 1, 2].map((k) => (pa[k] + pb[k] + pc[k]) / 3);
+			const l = Math.hypot(m[0], m[1], m[2]);
+			zeilen.push(`vn ${(m[0] / l).toFixed(5)} ${(m[1] / l).toFixed(5)} ${(m[2] / l).toFixed(5)}`);
+			const nn = normalBasis + ++normalen;
+			// Umlaufsinn passend zur Normale
+			const u = [0, 1, 2].map((k) => pb[k] - pa[k]), v = [0, 1, 2].map((k) => pc[k] - pa[k]);
+			const kreuz = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+			const dreh = kreuz[0] * m[0] + kreuz[1] * m[1] + kreuz[2] * m[2] < 0;
+			const [x, y, z] = (dreh ? [a, c, b2] : [a, b2, c]).map((k) => punktBasis + punkte + k);
+			zeilen.push(`f ${x}//${nn} ${y}//${nn} ${z}//${nn}`);
+		}
+		punkte += ECKEN.length;
 	}
-	return zeilen.join('\n') + '\n';
+	if (kronen) zeilen.push('');
+	return { zeilen, punkte, normalen, kronen };
 }

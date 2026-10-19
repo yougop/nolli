@@ -1,6 +1,7 @@
 import { objName } from '../vertrag';
 import { type Gelaende, tiefsteUnter, feldImRahmen } from '../geo/gelaende';
 import earcut from 'earcut';
+import { kronenKoerper } from './baeume';
 import type { Objekt } from '../osm';
 import type { Rahmen } from '../geo/rahmen';
 import { drin, amRahmen } from '../schneiden';
@@ -47,7 +48,8 @@ import { drin, amRahmen } from '../schneiden';
  * bleiben die Teile trotzdem greifbar.
  */
 export function alsObj(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | null = null,
-	material: string | null = null, teil: 'innen' | 'aussen' = 'innen'): string {
+	material: string | null = null, teil: 'innen' | 'aussen' = 'innen',
+	baeume: { x: number; y: number; krone: number; gemessen: boolean }[] = []): string {
 	const zeilen: string[] = [
 		'# Nolli — context model from OpenStreetMap',
 		'# ODbL, © OpenStreetMap contributors',
@@ -178,17 +180,37 @@ export function alsObj(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | null =
 				for (let i = 0; i < f.nx; i++)
 					zeilen.push(`v ${(i * f.dx).toFixed(3)} ${(j * f.dy).toFixed(3)} ${f.z[j * f.nx + i].toFixed(3)}`);
 			const ecke = (i: number, j: number) => basis + j * f.nx + i + 1;
-			// Mit Material bekommt das Netz Texturkoordinaten: Das Bild deckt
-			// genau den Rahmen ab, das Netz auch, also u = x / Breite, v = y / Höhe.
-			// Die Bildzeile oben ist Norden, und v zählt in OBJ von unten.
-			let flaeche3 = (a: number, b: number, c: number) => `f ${a} ${b} ${c}`;
+			// Eine Normale je Punkt, aus dem Gefälle der Nachbarn: Das Gelände
+			// soll weich schattiert sein, anders als die Häuser.
+			//
+			// Und sie ist nötig, damit Rhino die Texturkoordinaten annimmt. Am
+			// 19.10.2026 kam das Material an, die Textur aber erst nach neuem
+			// Mapping. Rhinos eigener Export desselben Netzes hatte dieselben vt,
+			// Wert für Wert — aber jede Fläche als v/vt/vn. Ohne vn verwarf der
+			// Import die vt.
+			const zi = (i: number, j: number) =>
+				f.z[Math.min(f.ny - 1, Math.max(0, j)) * f.nx + Math.min(f.nx - 1, Math.max(0, i))];
+			for (let j = 0; j < f.ny; j++)
+				for (let i = 0; i < f.nx; i++) {
+					const gx = (zi(i + 1, j) - zi(i - 1, j)) / ((Math.min(i + 1, f.nx - 1) - Math.max(i - 1, 0)) * f.dx);
+					const gy = (zi(i, j + 1) - zi(i, j - 1)) / ((Math.min(j + 1, f.ny - 1) - Math.max(j - 1, 0)) * f.dy);
+					const l = Math.hypot(gx, gy, 1);
+					zeilen.push(`vn ${(-gx / l).toFixed(5)} ${(-gy / l).toFixed(5)} ${(1 / l).toFixed(5)}`);
+				}
+			const nBasis = normalen;
+			normalen += f.nx * f.ny;
+			const vn = (v: number) => v - basis + nBasis;
+			let flaeche3 = (a: number, b: number, c: number) => `f ${a}//${vn(a)} ${b}//${vn(b)} ${c}//${vn(c)}`;
 			if (material) {
-				zeilen.push('usemtl terrain');
+				// Texturkoordinaten: Das Bild deckt genau den Rahmen ab, das Netz
+				// auch, also u = x / Breite, v = y / Höhe. Die Bildzeile oben ist
+				// Norden, und v zählt in OBJ von unten.
 				for (let j = 0; j < f.ny; j++)
 					for (let i = 0; i < f.nx; i++)
 						zeilen.push(`vt ${(i / (f.nx - 1)).toFixed(6)} ${(j / (f.ny - 1)).toFixed(6)}`);
+				zeilen.push('usemtl terrain');
 				const vt = (v: number) => v - basis + texturpunkte;
-				flaeche3 = (a, b, c) => `f ${a}/${vt(a)} ${b}/${vt(b)} ${c}/${vt(c)}`;
+				flaeche3 = (a, b, c) => `f ${a}/${vt(a)}/${vn(a)} ${b}/${vt(b)}/${vn(b)} ${c}/${vt(c)}/${vn(c)}`;
 			}
 			for (let j = 0; j < f.ny - 1; j++)
 				for (let i = 0; i < f.nx - 1; i++) {
@@ -198,6 +220,13 @@ export function alsObj(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | null =
 			if (material) texturpunkte += f.nx * f.ny;
 			basis += f.nx * f.ny;
 			zeilen.push('');
+		}
+
+		if (teil === 'innen' && baeume.length) {
+			const k = kronenKoerper(baeume, r, gelaende, !!material, basis, normalen);
+			zeilen.push(...k.zeilen);
+			basis += k.punkte;
+			normalen += k.normalen;
 		}
 		return zeilen.join('\n');
 	}

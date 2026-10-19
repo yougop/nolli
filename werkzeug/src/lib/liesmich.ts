@@ -34,7 +34,7 @@ ${v.license}.
 | Datei | Inhalt |
 |---|---|
 | \`frame.json\` | Der Datenvertrag: Rahmen, Projektion, Maßstab, Herkunft, Inhaltsverzeichnis. **Maßgeblich.** |
-| \`model.obj\` | Baukörper, extrudiert. Meter, Z nach oben, Y nach Norden. Materialien in \`model.mtl\` |
+| \`model.obj\` | Baukörper, extrudiert. Meter, Z nach oben, Y nach Norden. Grund mit Textur, bei eingeschalteten Bäumen die Kronen als Körper \`trees\`. Materialien in \`model.mtl\` |
 | \`drawing.dxf\` | Zeichnung mit getrennten Ebenen (\`N_BUILDINGS\`, \`N_STREETS\`, …), Meter |
 | \`images/\` | Jede Darstellung, dazu je eine Fassung \`_bare\` ohne Baukörper und Bäume |
 | \`data/\` | Alle Daten als JSON, Feldnamen siehe unten |
@@ -96,7 +96,7 @@ ${v.license}.
 | File | Contents |
 |---|---|
 | \`frame.json\` | The data contract: frame, projection, scale, provenance, table of contents. **Authoritative.** |
-| \`model.obj\` | Extruded building bodies. Metres, Z up, Y north. Materials in \`model.mtl\` |
+| \`model.obj\` | Extruded building bodies. Metres, Z up, Y north. Textured ground; with trees switched on, the crowns as one object \`trees\`. Materials in \`model.mtl\` |
 | \`drawing.dxf\` | Drawing with separate layers (\`N_BUILDINGS\`, \`N_STREETS\`, …), metres |
 | \`images/\` | Every style, plus a \`_bare\` version without buildings and trees |
 | \`data/\` | All data as JSON, field names below |

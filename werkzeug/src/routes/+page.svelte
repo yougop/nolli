@@ -8,7 +8,6 @@
 	import { hoehenDeckung, ringflaeche, istTeil } from '$lib/osm';
 	import { amRahmen } from '$lib/schneiden';
 	import { BAUM } from '$lib/analysedaten';
-	import { baeumeAlsObj } from '$lib/export/baeume';
 	import { feldImRahmen, aequidistanz, tiefsteUnter } from '$lib/geo/gelaende';
 	import type { Rahmen } from '$lib/geo/rahmen';
 	import { DARSTELLUNGEN, darstellung as darstellungVon } from '$lib/darstellung';
@@ -148,7 +147,6 @@
 		+ (raeumlich ? 1 : 0)
 		+ DATENDATEIEN.length
 		+ 7    // Modell, Teile vor der Kante, Materialien, Textur, Zeichnung, Vertrag, Liesmich
-		+ (modellKronen ? 1 : 0)    // Kronen
 	);
 	let raum = $state<Raum | null>(null);
 	const f0 = (n: number) => zahl(Math.round(n));
@@ -221,20 +219,22 @@
 	 * bleibt dafür eben: Ebene Kurven lassen sich schraffieren und
 	 * extrudieren, aufs Gelände gelegte nicht mehr.
 	 *
-	 * Was über den Rahmen hinausragt, liegt getrennt in `model_outside.obj`,
-	 * die Kronen in `trees.obj`. Beide nutzen dieselbe Materialdatei.
+	 * Die Kronen stehen bei eingeschalteten Bäumen als ein Körper `trees`
+	 * in `model.obj`. Was über den Rahmen hinausragt, kommt nur ins große
+	 * Paket, als `model_outside.obj` — wer das Modell für Rhino holt,
+	 * braucht den Rand nicht.
 	 */
-	async function modellTeile(rr: Rahmen) {
+	async function modellTeile(rr: Rahmen, mitRand: boolean) {
 		const textur = 'model_texture.png';
 		const teile: { name: string; inhalt: Blob | string }[] = [
-			{ name: pfadV2('modell.obj'), inhalt: obj(z.objekte, rr, z.gelaendeJetzt, 'model.mtl') },
-			{ name: 'model_outside.obj', inhalt: obj(z.objekte, rr, z.gelaendeJetzt, 'model.mtl', 'aussen') },
+			{ name: pfadV2('modell.obj'), inhalt: obj(z.objekte, rr, z.gelaendeJetzt, 'model.mtl', 'innen',
+				modellKronen ? z.baumpunkte : []) },
 			{ name: 'model.mtl', inhalt: alsMtl(textur) },
 			{ name: textur, inhalt: await bild(z.objekte, rr, 'modellaufsicht', z.bereinigt, z.beschriftung,
 				z.plangebiet, z.sichtbar, true, 'image/png', undefined) }
 		];
-		if (modellKronen)
-			teile.push({ name: 'trees.obj', inhalt: baeumeAlsObj(z.baumpunkte, rr, z.gelaendeJetzt, 'model.mtl') });
+		if (mitRand)
+			teile.push({ name: 'model_outside.obj', inhalt: obj(z.objekte, rr, z.gelaendeJetzt, 'model.mtl', 'aussen') });
 		return teile;
 	}
 
@@ -369,7 +369,7 @@
 			throw new Error(`Das Paket schreibt andere Datendateien, als der Knopf ankündigt.\n`
 				+ `geschrieben:   ${geschrieben}\nangekündigt: ${angekuendigt}`);
 
-		teile.push(...await modellTeile(rr));
+		teile.push(...await modellTeile(rr, true));
 		teile.push({ name: pfadV2('zeichnung.dxf'), inhalt: dxf(z.objekte, rr, z.gelaendeJetzt) });
 		const vertrag = vertragJetzt(basis, { bilder, daten });
 		teile.push({ name: 'frame.json', inhalt: JSON.stringify(vertrag, null, 2) });
@@ -672,6 +672,7 @@
 							names: {
 								building: 'Buildings inside the frame',
 								building_outside: 'Parts outside the frame edge',
+								tree: 'Tree crowns, one object `trees`, present when trees are switched on',
 								terrain: 'Terrain mesh'
 							},
 							...(z.gelaendeJetzt
@@ -720,7 +721,7 @@
 			} else if (art === 'dxf') {
 				laden(dxf(z.objekte, r, z.gelaendeJetzt), `${basis}.dxf`, 'application/dxf');
 			} else if (art === 'obj') {
-				laden(await paket(await modellTeile(r)), `${basis}_model.zip`, 'application/zip');
+				laden(await paket(await modellTeile(r, false)), `${basis}_model.zip`, 'application/zip');
 			} else if (art === 'paket') {
 				laden(await paketSchnueren(basis), `${basis}.zip`, 'application/zip');
 			} else {

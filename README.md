@@ -79,12 +79,15 @@ grid north = true north at the centre). The exact definition is in
   extruded and capped; to put single curves on the slope, use `_Project` or
   `_Pull` onto the terrain mesh. Images fit exactly onto the frame from 0/0
   to width/height.
+
 - **Other data (QGIS):** create a custom coordinate system from `grid.proj4`,
   reproject your data into it and move it by −`bbox_grid[0]`, −`bbox_grid[1]`.
   The package README spells out the numbers. This is also how to replace the
   terrain with an official model, for example regional LiDAR.
 - The frame corners are also given in UTM (`utm.epsg`, `utm.bbox`) for joining
   official datasets.
+
+![The model ZIP imported into Rhino 8: textured ground, trees, nothing mapped by hand. HafenCity (Hamburg)](docs/rhino-import.png)
 
 ## Data contract (v2)
 

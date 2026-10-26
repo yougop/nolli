@@ -187,6 +187,12 @@ function schliessen(teile: RohPunkt[][]): RohPunkt[][] {
 	return fertig;
 }
 
+/** Unter der Erde: Tunnel und unterirdisch geführte Strecken, aber keine Hausdurchfahrt. */
+function unterirdisch(t: Record<string, string>): boolean {
+	return (!!t.tunnel && t.tunnel !== 'no' && t.tunnel !== 'building_passage')
+		|| t.location === 'underground';
+}
+
 /** Strasse und Hausnummer, zusammengesetzt, sofern beides dasteht. */
 function adresse(t: Record<string, string>): string | undefined {
 	const nr = t['addr:housenumber'];
@@ -271,6 +277,11 @@ export function lesen(roh: { elements: RohElement[] }, gitter: Gitter, kasten?: 
 			// eingelesen, siehe `analysedaten.ts`.
 		} else if (GRUEN.has(t.landuse ?? '') || GRUEN.has(t.leisure ?? '')) {
 			aus.push({ id, ebene: 'gruen', art: 'flaeche', ringe: flaechen, loecher, tiefe, name: t.name, zustand: 'normal' });
+		} else if (unterirdisch(t) && (t.railway || t.highway)) {
+			// Tunnel gehören nicht auf den Plan. Am 26.10.2026 in Manhattan: Der
+			// Brooklyn-Battery-Tunnel lief als breites Straßenband über die Bucht,
+			// die U-Bahn als Gleise quer durch die Blöcke. Im Netz für Wegrechnungen
+			// bleiben sie, das wird getrennt aus den Rohdaten gebaut.
 		} else if (t.railway && ['rail', 'tram', 'light_rail', 'subway'].includes(t.railway)) {
 			// Abstell- und Rangiergleise tragen ein `service`-Merkmal. Ein
 			// Bahnhofsvorfeld besteht fast nur daraus; ungewichtet wird daraus

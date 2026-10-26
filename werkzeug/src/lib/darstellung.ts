@@ -110,7 +110,7 @@ export const DARSTELLUNGEN: Darstellung[] = [
 		// die Farbe tun.
 		grund: '#E2E2DB',
 		farbe: {
-			gruen: '#BDCD98', wasser: '#B4BFC5', bahn: '#8E8E88', strasse: '#BCBCB2',
+			gruen: '#BDCD98', wasser: '#93A9B7', bahn: '#8E8E88', strasse: '#BCBCB2',
 			bau: '#CBCBC3', gebaeude: '#F2F2ED', erhalt: '#F2F2ED', gestrichen: '#D0D0C9'
 		},
 		kante: { strasse: '#8E8E85', gebaeude: '#5E5E58', erhalt: '#3A3A35' },
@@ -158,9 +158,14 @@ export const DARSTELLUNGEN: Darstellung[] = [
 		// Grau ohne Stich. Am 15.09.2026 nachgezogen: Die Warmtoene der Aufsicht
 		// summierten sich unter der Beleuchtung zu einem beigen Gesamteindruck.
 		// Farbe bleibt, wo sie etwas bedeutet — Gruen und Wasser.
+		// Wasser am 26.10.2026 dunkler und blauer: In Manhattan grenzt das
+		// Wasser fast überall an Straßen und Plätze, und das alte #B2BFC6 lag
+		// in der Helligkeit gleichauf mit der Fahrbahn #BABABA. Unter dem
+		// Licht war Land von Wasser kaum zu unterscheiden. Die Aufsicht zieht
+		// mit, sie ist die Textur des Modells für Rhino.
 		grund: '#E4E4E4',
 		farbe: {
-			gruen: '#BDCD98', wasser: '#B2BFC6', bahn: '#8C8C8C', strasse: '#BABABA',
+			gruen: '#BDCD98', wasser: '#93A9B7', bahn: '#8C8C8C', strasse: '#BABABA',
 			bau: '#C9C9C9', gebaeude: '#E0E0E0', erhalt: '#E0E0E0', gestrichen: '#CFCFCF'
 		},
 		// Die Fahrbahn liegt dunkler als der Grund, sonst verschwindet sie

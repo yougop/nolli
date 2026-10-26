@@ -234,7 +234,10 @@ class Zustand {
 			// beruehrt, fliegt wieder raus, damit die Zaehler das Blatt zeigen.
 			this.fortschritt = t().laden.sortiere(zahl(anzahl));
 			await atmen();
-			this.objekte = imRahmen(lesen(roh, r.gitter), r.x0, r.y0, r.x1, r.y1);
+			// Das Meer wird etwas über den Rahmen hinaus gefüllt; der Rand der
+			// Abfrage ist 150 m, also liegen alle Küsten bis dorthin vor.
+			this.objekte = imRahmen(lesen(roh, r.gitter, { x0: r.x0 - 50, y0: r.y0 - 50, x1: r.x1 + 50, y1: r.y1 + 50 }),
+				r.x0, r.y0, r.x1, r.y1);
 			this.fortschritt = t().laden.netz;
 			await atmen();
 			// Netz und Nutzungsflaechen reichen bewusst ueber den Rahmen hinaus,

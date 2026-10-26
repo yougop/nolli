@@ -1,6 +1,7 @@
 import { nachGitter, type Gitter } from './geo/utm';
 import { FAHRBAHN, type StiftId } from './stifte';
 import { NUTZUNG, BUCHHALTUNG } from './analysedaten';
+import { meer, type Kasten } from './geo/kueste';
 
 export type Zustand = 'normal' | 'gestrichen' | 'erhalt';
 
@@ -226,7 +227,12 @@ function hoehe(t: Record<string, string>): { m: number; geschosse?: number; gesc
 	return { m: 8, geschaetzt: true };
 }
 
-export function lesen(roh: { elements: RohElement[] }, gitter: Gitter): Objekt[] {
+/**
+ * `kasten` ist der Bereich im Ortsgitter, für den das Meer aus den
+ * Küstenlinien gefüllt wird. Ohne ihn gibt es kein Meer, nur Seen und Flüsse.
+ */
+export function lesen(roh: { elements: RohElement[] }, gitter: Gitter, kasten?: Kasten): Objekt[] {
+	const kueste: [number, number][][] = [];
 	const aus: Objekt[] = [];
 	const zu = (g: RohPunkt[]): [number, number][] =>
 		g.map((p) => { const q = nachGitter(p.lon, p.lat, gitter); return [q.x, q.y]; });
@@ -235,6 +241,8 @@ export function lesen(roh: { elements: RohElement[] }, gitter: Gitter): Objekt[]
 		const t = el.tags ?? {};
 		const id = `${el.type[0]}${el.id}`;
 		const tiefe = Object.keys(t).filter((k) => !BUCHHALTUNG.test(k)).length;
+		if (t.natural === 'coastline' && el.type === 'way' && el.geometry?.length)
+			kueste.push(zu(el.geometry));
 		const teile = el.type === 'relation'
 			? ringe(el)
 			: { aussen: el.geometry?.length ? [el.geometry] : [], innen: [] };
@@ -275,6 +283,12 @@ export function lesen(roh: { elements: RohElement[] }, gitter: Gitter): Objekt[]
 			if (b) aus.push({ id, ebene: 'strasse', art: 'linie', ringe: flaechen, breiteM: b, tiefe,
 				name: t.name, nutzung: t.highway, rang: RANG[t.highway] ?? 9, zustand: 'normal' });
 		}
+	}
+	if (kasten) {
+		let n = 0;
+		for (const m of meer(kueste, kasten))
+			aus.push({ id: `kueste${++n}`, ebene: 'wasser', art: 'flaeche', ringe: [m.ring],
+				loecher: m.loecher.length ? m.loecher : undefined, tiefe: 0, name: 'sea', zustand: 'normal' });
 	}
 	return aus;
 }

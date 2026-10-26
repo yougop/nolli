@@ -93,6 +93,8 @@ export async function holeGelaende(r: Rahmen, melde: (s: string) => void = () =>
 			})
 	);
 
+	entstoeren(mosaik, breite, hoehe);
+
 	// Abtasten: je Rasterpunkt in Grad, dann bilinear im Mosaik. Die Werte
 	// einer Kachel gelten für die Pixelmitte, daher das halbe Pixel.
 	const z = new Float32Array(nx * ny);
@@ -113,6 +115,42 @@ export async function holeGelaende(r: Rahmen, melde: (s: string) => void = () =>
 		quellen: [...quellen].sort(),
 		geholt: new Date().toISOString()
 	};
+}
+
+/**
+ * Einzelne Fehlpixel nach unten durch den Median ihrer Nachbarn ersetzen.
+ *
+ * Am 26.10.2026 in Manhattan: Mitten im Hafen, wo das Höhenmodell um −3 m
+ * liegt, standen einzelne Pixel auf bis zu −1.612 m. Im Netz wurden daraus
+ * Wände von über einem Kilometer, und Piers auf diesen Pixeln standen tief
+ * unter der Stadt. In der Kachel waren es 175 von 65.536 Pixeln.
+ *
+ * Ersetzt wird nur, was mehr als 30 m unter dem Median der 5 × 5 Nachbarn
+ * liegt. In der Manhattan-Kachel traf das genau die 175 Fehlpixel und kein
+ * anderes. Eine echte Kante — Kai, Steilhang — bleibt stehen, weil auf ihrer
+ * tiefen Seite die Mehrheit der Nachbarn ebenfalls tief liegt. Nur nach
+ * unten: Ausreißer nach oben sind nicht beobachtet, und ein Turm oder Fels
+ * soll nicht abgetragen werden.
+ */
+function entstoeren(m: Float32Array, b: number, h: number, schwelle = 30) {
+	const R = 2;
+	const kopie = m.slice();
+	const nb: number[] = [];
+	for (let y = 0; y < h; y++)
+		for (let x = 0; x < b; x++) {
+			const v = kopie[y * b + x];
+			// Vorprüfung: Nur wer tiefer liegt als ein direkter Nachbar, kommt in Frage.
+			const l = kopie[y * b + Math.max(0, x - 1)], r = kopie[y * b + Math.min(b - 1, x + 1)];
+			const o = kopie[Math.max(0, y - 1) * b + x], u = kopie[Math.min(h - 1, y + 1) * b + x];
+			if (v >= Math.max(l, r, o, u) - schwelle) continue;
+			nb.length = 0;
+			for (let yy = Math.max(0, y - R); yy <= Math.min(h - 1, y + R); yy++)
+				for (let xx = Math.max(0, x - R); xx <= Math.min(b - 1, x + R); xx++)
+					if (xx !== x || yy !== y) nb.push(kopie[yy * b + xx]);
+			nb.sort((p, q) => p - q);
+			const med = nb[nb.length >> 1];
+			if (v < med - schwelle) m[y * b + x] = med;
+		}
 }
 
 async function kachel(z: number, x: number, y: number): Promise<{ werte: Float32Array; quelle: string | null }> {

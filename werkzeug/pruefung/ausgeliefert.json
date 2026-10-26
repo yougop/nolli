@@ -1,10 +1,10 @@
 {
- "wann": "2026-10-26 12:23",
- "gesamt": "cf931c581d87",
+ "wann": "2026-10-26 12:59",
+ "gesamt": "f52cdbbfb308",
  "dateien": {
   "200.html": {
    "bytes": 3174,
-   "hash": "40682fed73ad"
+   "hash": "40c24765aa78"
   },
   "_app/immutable/assets/0.ECumOKm-.css": {
    "bytes": 2774,
@@ -18,9 +18,9 @@
    "bytes": 1365,
    "hash": "f07424758318"
   },
-  "_app/immutable/chunks/DV7-gpkV.js": {
+  "_app/immutable/chunks/DLnE-Iji.js": {
    "bytes": 26654,
-   "hash": "cd49917628ee"
+   "hash": "9ef3cc981e38"
   },
   "_app/immutable/chunks/Dg6I-oMy.js": {
    "bytes": 46197,
@@ -30,25 +30,25 @@
    "bytes": 65,
    "hash": "0214edcff772"
   },
-  "_app/immutable/entry/app.Bj79XmFW.js": {
+  "_app/immutable/entry/app.BvAIhzGx.js": {
    "bytes": 4025,
-   "hash": "3c700407aec3"
+   "hash": "456467389b9a"
   },
-  "_app/immutable/entry/start.D__nm0YZ.js": {
+  "_app/immutable/entry/start.DITq7o7Z.js": {
    "bytes": 77,
-   "hash": "f3bc037d4be0"
+   "hash": "d96e1a9c7ff5"
   },
   "_app/immutable/nodes/0.B4hb7mAY.js": {
    "bytes": 237,
    "hash": "9096370ff3f6"
   },
-  "_app/immutable/nodes/1.BDyTCCeL.js": {
+  "_app/immutable/nodes/1.DtnqTorR.js": {
    "bytes": 576,
-   "hash": "f6024a0a0f07"
+   "hash": "b40f9f02d1e6"
   },
-  "_app/immutable/nodes/2.BunaoZ5h.js": {
-   "bytes": 1779598,
-   "hash": "5cec5fe407d8"
+  "_app/immutable/nodes/2.BgCwtNVz.js": {
+   "bytes": 1782833,
+   "hash": "372d4ea3479b"
   },
   "_app/immutable/workers/maplibre-gl-worker-B71oqUJw.js": {
    "bytes": 506998,
@@ -56,7 +56,7 @@
   },
   "_app/version.json": {
    "bytes": 27,
-   "hash": "424df54c06f1"
+   "hash": "56bd734f50cb"
   },
   "beispiele/hafencity.json": {
    "bytes": 3708497,
@@ -72,7 +72,7 @@
   },
   "index.html": {
    "bytes": 3373,
-   "hash": "21dba19f9b97"
+   "hash": "c881f1191806"
   },
   "robots.txt": {
    "bytes": 63,

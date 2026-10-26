@@ -28,8 +28,7 @@ const SPIEGEL = [
  * die Verbindung an und antwortet dann minutenlang nicht; am 13.09.2026 lief
  * einer neunzig Sekunden ohne ein einziges Byte.
  */
-const GEDULD_MS = 30000;
-const FRIST_MS = 150000;
+const FRIST_MS = 210000;
 
 /**
  * Abgebrochen wird bei Stille, nicht bei Dauer.
@@ -75,19 +74,26 @@ const PAUSE_MS = 1500;
 const VERSUCHE_GESAMT = 12;
 
 /**
- * Erstkontakt kurz halten, Geduld erst nach einem Lebenszeichen.
+ * Gestaffelt fragen statt nacheinander aufgeben.
  *
  * Am 14.09.2026 gemessen: overpass.kumi.systems nahm die Verbindung an und
- * schickte danach kein einziges Byte, gleich wie lange man wartete. Zwei solche
- * Spiegel fressen sechzig der fuenfundneunzig Sekunden und nehmen dem einen
- * Spiegel, der ueberhaupt antwortet, die Wiederholungen weg. Genau daran ist
- * ein Aufruf gescheitert, der es nur auf sieben statt zwoelf Versuche brachte.
+ * schickte danach kein einziges Byte. Deshalb gab Nolli einen Spiegel nach
+ * achtzehn Sekunden ohne Antwort auf.
  *
- * Wer noch nie geantwortet hat, bekommt deshalb achtzehn Sekunden. Wer schon
- * einmal geantwortet hat, und sei es mit einer Absage, bekommt die volle
- * Geduld: Der ist erreichbar und darf fuer eine grosse Abfrage lange rechnen.
+ * Am 26.10.2026 war es umgekehrt. Downtown Manhattan, Volker kam eine Weile
+ * nicht durch. Gemessen: overpass-api.de sagte sofort 502, private.coffee nach
+ * 119 Sekunden 504 — und kumi.systems schickte nach 115 Sekunden Stille die
+ * ganzen 9,1 MB in zehn Sekunden. Der einzige Spiegel, der geliefert hätte,
+ * war nach achtzehn Sekunden schon gestrichen.
+ *
+ * Beides zugleich lösen kann nur, wer nicht abbricht, sondern dazunimmt: Wer
+ * nach achtzehn Sekunden nichts gesagt hat, darf weiterrechnen, und der
+ * nächste Spiegel wird zusätzlich gefragt. Was zuerst Daten liefert, gewinnt,
+ * die anderen werden abgebrochen. Höchstens drei Anfragen laufen so
+ * gleichzeitig, eine je Spiegel — weniger, als die alte Kette mit ihren zwölf
+ * Versuchen nacheinander schicken konnte.
  */
-const ERSTKONTAKT_MS = 18000;
+const STAFFEL_MS = 18000;
 
 /**
  * Welcher Spiegel zuletzt Daten geliefert hat.
@@ -232,29 +238,37 @@ export async function holeBestand(roh: Ecken, melde: Melder = () => {}): Promise
 	const koerper = new URLSearchParams({ data: ABFRAGE(sued, west, nord, ost) });
 	const start = Date.now();
 	const rest = () => FRIST_MS - (Date.now() - start);
-	const aufgegeben = new Set<string>();
 	let ueberlastet = false;
 	let letzterFehler = '';
 	let versuche = 0;
 
-	const hatGeantwortet = new Set<string>();
+	/** Alle laufenden Abrufe, damit der Gewinner die anderen beenden kann. */
+	const laufend = new Set<AbortController>();
+	const alleAbbrechen = () => { for (const a of laufend) a.abort(); laufend.clear(); };
 
-	/** Ein einzelner Anlauf. Sagt, ob es weitergehen soll. */
-	async function anlauf(spiegel: string): Promise<{ daten?: any; nochmal: boolean }> {
+	/**
+	 * Ein einzelner Anlauf. Sagt, ob es weitergehen soll.
+	 *
+	 * Bis zur ersten Antwort gilt nur die Gesamtfrist, danach die Stilleuhr.
+	 * `beiKopf` meldet, dass der Spiegel lebt.
+	 */
+	async function anlauf(spiegel: string, beiKopf: () => void): Promise<{ daten?: any; nochmal: boolean }> {
 		const name = new URL(spiegel).hostname;
 		const begonnen = Date.now();
-		const frist = hatGeantwortet.has(spiegel) ? GEDULD_MS : ERSTKONTAKT_MS;
 		versuche++;
 		melde(versuche === 1 ? `Frage ${name}` : `Versuch ${versuche} · ${name}`);
 		const ab = new AbortController();
-		let uhr = setTimeout(() => ab.abort(), Math.min(frist, Math.max(1000, rest())));
+		laufend.add(ab);
+		let kopf = false;
+		let uhr = setTimeout(() => ab.abort(), Math.max(1000, rest()));
 		const stelleUhr = () => {
 			clearTimeout(uhr);
 			uhr = setTimeout(() => ab.abort(), Math.min(STILLE_MS, Math.max(1000, rest())));
 		};
 		try {
 			const a = await fetch(spiegel, { method: 'POST', body: koerper, signal: ab.signal });
-			hatGeantwortet.add(spiegel);
+			kopf = true;
+			beiKopf();
 			stelleUhr();
 			const text = await lies(a, (n) => melde(`${name} · ${t().quelle.geladenKurz(mb(n))}`), stelleUhr);
 			clearTimeout(uhr);
@@ -267,7 +281,7 @@ export async function holeBestand(roh: Ecken, melde: Melder = () => {}): Promise
 				letzterFehler = t().quelle.ohneDaten(name);
 				return { nochmal: false };
 			}
-			if (a.status === 504 || a.status === 429 || /too busy|timeout/i.test(text)) {
+			if (a.status === 504 || a.status === 429 || a.status === 502 || /too busy|timeout/i.test(text)) {
 				ueberlastet = true;
 				letzterFehler = t().quelle.ausgelastet(name);
 				melde(t().quelle.ausgelastetWeiter(name));
@@ -278,14 +292,15 @@ export async function holeBestand(roh: Ecken, melde: Melder = () => {}): Promise
 			return { nochmal: false };
 		} catch (e) {
 			clearTimeout(uhr);
+			if (fertig) return { nochmal: false };   // vom Gewinner abgebrochen
 			const abbruch = e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError');
 			if (abbruch) ueberlastet = true;
-			letzterFehler = abbruch
-				? t().quelle.verstummt(name)
-				: t().quelle.unerreichbar(name);
-			aufgegeben.add(spiegel);   // Schweigen frisst die Frist
-			stumm.set(spiegel, Date.now());
+			letzterFehler = !abbruch ? t().quelle.unerreichbar(name)
+				: kopf ? t().quelle.verstummt(name) : t().quelle.stumm(name);
+			if (!kopf) stumm.set(spiegel, Date.now());
 			return { nochmal: false };
+		} finally {
+			laufend.delete(ab);
 		}
 	}
 
@@ -295,22 +310,37 @@ export async function holeBestand(roh: Ecken, melde: Melder = () => {}): Promise
 	const reihe = [...SPIEGEL]
 		.sort((x, y) => Number(schweigt(x)) - Number(schweigt(y)))
 		.sort((x, y) => Number(y === bewaehrt) - Number(x === bewaehrt));
-	// Solange ein Spiegel antwortet, die stummen gar nicht erst fragen
-	const wach = reihe.filter((x) => !schweigt(x));
-	if (wach.length) for (const x of reihe) if (schweigt(x)) aufgegeben.add(x);
-	const weiter = () => rest() > 4000 && versuche < VERSUCHE_GESAMT;
-	while (weiter() && aufgegeben.size < SPIEGEL.length) {
-		for (const spiegel of reihe) {
-			if (aufgegeben.has(spiegel) || !weiter()) continue;
-			for (let i = 0; i < VERSUCHE_JE_SPIEGEL; i++) {
-				const { daten, nochmal } = await anlauf(spiegel);
-				if (daten) return daten;
-				if (!nochmal || !weiter()) break;
-				await new Promise((f) => setTimeout(f, PAUSE_MS));
-			}
-		}
-		if (weiter()) await new Promise((f) => setTimeout(f, PAUSE_MS));
-	}
+
+	let fertig = false;
+	const daten = await new Promise<any>((gut) => {
+		let naechster = 0, offen = 0;
+		/** Den nächsten Spiegel dazunehmen, wenn es noch einen gibt. */
+		const dazu = () => {
+			if (fertig || naechster >= reihe.length) return;
+			const spiegel = reihe[naechster++];
+			offen++;
+			void (async () => {
+				let staffel: ReturnType<typeof setTimeout> | null = setTimeout(() => { staffel = null; dazu(); }, STAFFEL_MS);
+				const lebt = () => { if (staffel) { clearTimeout(staffel); staffel = null; } };
+				let ergebnis: any = null;
+				for (let i = 0; i < VERSUCHE_JE_SPIEGEL && !fertig; i++) {
+					if (rest() < 4000 || versuche >= VERSUCHE_GESAMT) break;
+					const { daten, nochmal } = await anlauf(spiegel, lebt);
+					if (daten) { ergebnis = daten; break; }
+					if (!nochmal) break;
+					await new Promise((f) => setTimeout(f, PAUSE_MS));
+				}
+				// Der Spiegel ist durch, ohne Daten: Wenn der Staffeltakt noch
+				// nicht abgelaufen ist, den nächsten jetzt gleich fragen.
+				if (staffel) { clearTimeout(staffel); staffel = null; if (!ergebnis) dazu(); }
+				offen--;
+				if (ergebnis && !fertig) { fertig = true; alleAbbrechen(); gut(ergebnis); }
+				else if (!fertig && offen === 0 && naechster >= reihe.length) { fertig = true; gut(null); }
+			})();
+		};
+		dazu();
+	});
+	if (daten) return daten;
 
 	const wie = t().quelle.versuche(versuche, SPIEGEL.length);
 	throw new QuellFehler(ueberlastet

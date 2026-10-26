@@ -118,39 +118,65 @@ export async function holeGelaende(r: Rahmen, melde: (s: string) => void = () =>
 }
 
 /**
- * Einzelne Fehlpixel nach unten durch den Median ihrer Nachbarn ersetzen.
+ * Datenlücken im Höhenmodell finden und aus ihrem Rand auffüllen.
  *
  * Am 26.10.2026 in Manhattan: Mitten im Hafen, wo das Höhenmodell um −3 m
- * liegt, standen einzelne Pixel auf bis zu −1.612 m. Im Netz wurden daraus
- * Wände von über einem Kilometer, und Piers auf diesen Pixeln standen tief
- * unter der Stadt. In der Kachel waren es 175 von 65.536 Pixeln.
+ * liegt, standen Pixel auf bis zu −1.612 m. Im Netz wurden daraus Wände von
+ * über einem Kilometer, und Piers auf diesen Pixeln standen tief unter der
+ * Stadt. Ein erster Filter mit dem Median über 5 × 5 Nachbarn half im
+ * Testrahmen (Zoom 14, einzelne Pixel), nicht aber in Volkers größerem
+ * Rahmen: Bei Zoom 15 sind die Lücken Streifen und Flecken, der größte mit
+ * 207 Pixeln. Der Median sah dort mehrheitlich Lücke und ließ sie stehen.
  *
- * Ersetzt wird nur, was mehr als 30 m unter dem Median der 5 × 5 Nachbarn
- * liegt. In der Manhattan-Kachel traf das genau die 175 Fehlpixel und kein
- * anderes. Eine echte Kante — Kai, Steilhang — bleibt stehen, weil auf ihrer
- * tiefen Seite die Mehrheit der Nachbarn ebenfalls tief liegt. Nur nach
- * unten: Ausreißer nach oben sind nicht beobachtet, und ein Turm oder Fels
- * soll nicht abgetragen werden.
+ * Jetzt zählt der Zusammenhang: Was tiefer als −10 m liegt, wird zu Flecken
+ * verbunden. Ein kleiner Fleck — höchstens `LUECKE_MAX` Pixel — ist eine
+ * Lücke; echtes tiefes Wasser oder eine Senke wie am Toten Meer ist
+ * großflächig und bleibt. Die Lücken werden von außen nach innen mit dem
+ * Mittel ihrer gültigen Nachbarn gefüllt.
  */
-function entstoeren(m: Float32Array, b: number, h: number, schwelle = 30) {
-	const R = 2;
-	const kopie = m.slice();
-	const nb: number[] = [];
-	for (let y = 0; y < h; y++)
-		for (let x = 0; x < b; x++) {
-			const v = kopie[y * b + x];
-			// Vorprüfung: Nur wer tiefer liegt als ein direkter Nachbar, kommt in Frage.
-			const l = kopie[y * b + Math.max(0, x - 1)], r = kopie[y * b + Math.min(b - 1, x + 1)];
-			const o = kopie[Math.max(0, y - 1) * b + x], u = kopie[Math.min(h - 1, y + 1) * b + x];
-			if (v >= Math.max(l, r, o, u) - schwelle) continue;
-			nb.length = 0;
-			for (let yy = Math.max(0, y - R); yy <= Math.min(h - 1, y + R); yy++)
-				for (let xx = Math.max(0, x - R); xx <= Math.min(b - 1, x + R); xx++)
-					if (xx !== x || yy !== y) nb.push(kopie[yy * b + xx]);
-			nb.sort((p, q) => p - q);
-			const med = nb[nb.length >> 1];
-			if (v < med - schwelle) m[y * b + x] = med;
+const LUECKE_TIEFE = -10;
+const LUECKE_MAX = 5000;
+export function entstoeren(m: Float32Array, b: number, h: number) {
+	const n = b * h;
+	const fleck = new Int32Array(n).fill(-1);
+	const luecke = new Uint8Array(n);
+	const schlange = new Int32Array(n);
+	let nr = 0;
+	for (let s = 0; s < n; s++) {
+		if (fleck[s] >= 0 || !(m[s] < LUECKE_TIEFE)) continue;
+		// Den Fleck mit Breitensuche einsammeln.
+		let kopf = 0, ende = 0;
+		schlange[ende++] = s; fleck[s] = nr;
+		while (kopf < ende) {
+			const p = schlange[kopf++], x = p % b, y = (p / b) | 0;
+			for (const q of [x > 0 ? p - 1 : -1, x < b - 1 ? p + 1 : -1, y > 0 ? p - b : -1, y < h - 1 ? p + b : -1])
+				if (q >= 0 && fleck[q] < 0 && m[q] < LUECKE_TIEFE) { fleck[q] = nr; schlange[ende++] = q; }
 		}
+		if (ende <= LUECKE_MAX) for (let k = 0; k < ende; k++) luecke[schlange[k]] = 1;
+		nr++;
+	}
+	// Von außen nach innen füllen, Ring um Ring.
+	let offen = 0;
+	for (let p = 0; p < n; p++) offen += luecke[p];
+	while (offen > 0) {
+		const neu: [number, number][] = [];
+		for (let p = 0; p < n; p++) {
+			if (!luecke[p]) continue;
+			const x = p % b, y = (p / b) | 0;
+			let summe = 0, zahl = 0;
+			for (let dy = -1; dy <= 1; dy++)
+				for (let dx = -1; dx <= 1; dx++) {
+					const xx = x + dx, yy = y + dy;
+					if ((dx || dy) && xx >= 0 && xx < b && yy >= 0 && yy < h && !luecke[yy * b + xx]) {
+						summe += m[yy * b + xx]; zahl++;
+					}
+				}
+			if (zahl) neu.push([p, summe / zahl]);
+		}
+		if (!neu.length) break;   // ein Fleck ohne gültigen Rand: lassen
+		for (const [p, v] of neu) { m[p] = v; luecke[p] = 0; }
+		offen -= neu.length;
+	}
 }
 
 async function kachel(z: number, x: number, y: number): Promise<{ werte: Float32Array; quelle: string | null }> {

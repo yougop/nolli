@@ -1,10 +1,10 @@
 {
- "wann": "2026-10-26 13:10",
- "gesamt": "4b73cd2fc378",
+ "wann": "2026-10-26 13:56",
+ "gesamt": "64a14610b974",
  "dateien": {
   "200.html": {
-   "bytes": 3174,
-   "hash": "31b5f41e4976"
+   "bytes": 3173,
+   "hash": "a9782490f187"
   },
   "_app/immutable/assets/0.ECumOKm-.css": {
    "bytes": 2774,
@@ -14,13 +14,13 @@
    "bytes": 102734,
    "hash": "08d0ee2e35db"
   },
+  "_app/immutable/chunks/10Abou37.js": {
+   "bytes": 26650,
+   "hash": "4e2240a69bdf"
+  },
   "_app/immutable/chunks/Bjy-W4x2.js": {
    "bytes": 1365,
    "hash": "f07424758318"
-  },
-  "_app/immutable/chunks/CuHIR-wb.js": {
-   "bytes": 26654,
-   "hash": "d19cf328bcc4"
   },
   "_app/immutable/chunks/Dg6I-oMy.js": {
    "bytes": 46197,
@@ -30,25 +30,25 @@
    "bytes": 65,
    "hash": "0214edcff772"
   },
-  "_app/immutable/entry/app.7Zu-gq1B.js": {
+  "_app/immutable/entry/app.Dd5ypnur.js": {
    "bytes": 4025,
-   "hash": "26e8793933b0"
+   "hash": "d038e1aa88da"
   },
-  "_app/immutable/entry/start.CZ4MoV0A.js": {
+  "_app/immutable/entry/start.B_Fnyx9I.js": {
    "bytes": 77,
-   "hash": "1fab41ad6434"
+   "hash": "b5d787c03d02"
   },
   "_app/immutable/nodes/0.B4hb7mAY.js": {
    "bytes": 237,
    "hash": "9096370ff3f6"
   },
-  "_app/immutable/nodes/1.BNDqHjoo.js": {
+  "_app/immutable/nodes/1.BG8VQu1k.js": {
    "bytes": 576,
-   "hash": "6f87b8da2620"
+   "hash": "b0ad6fbf3b6b"
   },
-  "_app/immutable/nodes/2.DSsRg7Zs.js": {
-   "bytes": 1783118,
-   "hash": "c181b532a478"
+  "_app/immutable/nodes/2.CA6g-Dz2.js": {
+   "bytes": 1783264,
+   "hash": "48dc6e058ed8"
   },
   "_app/immutable/workers/maplibre-gl-worker-B71oqUJw.js": {
    "bytes": 506998,
@@ -56,7 +56,7 @@
   },
   "_app/version.json": {
    "bytes": 27,
-   "hash": "7a440bb14e7a"
+   "hash": "ebdb2185b586"
   },
   "beispiele/hafencity.json": {
    "bytes": 3708497,
@@ -71,8 +71,8 @@
    "hash": "5032bcab02e3"
   },
   "index.html": {
-   "bytes": 3373,
-   "hash": "3bceabb0d7be"
+   "bytes": 3372,
+   "hash": "9010dae01f07"
   },
   "robots.txt": {
    "bytes": 63,

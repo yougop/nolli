@@ -38,15 +38,14 @@ export const WEBP = 'image/webp';
 export async function bild(objekte: Objekt[], r: Rahmen, darstellung: string, bereinigt: boolean,
 	beschriftung: boolean, plangebiet: [number, number][] | null, sichtbar: Set<any>,
 	ohneBauten = false, typ = 'image/png',
-	baeume?: { x: number; y: number; krone: number }[],
-	places?: { x: number; y: number; gruppe: string }[]): Promise<Blob> {
+	baeume?: { x: number; y: number; krone: number }[]): Promise<Blob> {
 	const c = document.createElement('canvas');
 	c.width = r.pixelBreite; c.height = r.pixelHoehe;
 	const ctx = c.getContext('2d');
 	if (!ctx) throw new Error(t().bild.keineLeinwand);
 	zeichneBlatt(ctx, objekte, r, {
 		darstellung, bereinigt, beschriftung, plangebiet,
-		rahmenZeigen: false, sichtbar, hervorgehoben: null, ohneBauten, baeume, places
+		rahmenZeigen: false, sichtbar, hervorgehoben: null, ohneBauten, baeume
 	});
 	return new Promise((gut, schlecht) =>
 		c.toBlob((b) => (b ? gut(b) : schlecht(new Error(t().bild.nichtErzeugt))), typ, 1)

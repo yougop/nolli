@@ -147,13 +147,6 @@ class Zustand {
 	 * Städten mehrere Megabyte, deshalb nie nebenbei.
 	 */
 	places = $state.raw<Place[]>([]);
-	/** Places im Plan zeigen. Schaltet sie beim ersten Mal auch erst ein. */
-	placesZeigen = $state(false);
-	async placesUmschalten() {
-		this.placesZeigen = !this.placesZeigen;
-		if (this.placesZeigen && !this.placesInfo) await this.placesHolen();
-		if (!this.placesInfo) this.placesZeigen = false;
-	}
 	placesInfo = $state.raw<{ release: string } | null>(null);
 	placesLaedt = $state<string | null>(null);
 	private placesStopper: AbortController | null = null;
@@ -184,7 +177,7 @@ class Zustand {
 
 	placesAbbrechen() { this.placesStopper?.abort(); }
 
-	placesEntfernen() { this.places = []; this.placesInfo = null; this.placesZeigen = false; }
+	placesEntfernen() { this.places = []; this.placesInfo = null; }
 
 	gelaende = $state(false);
 	gelaendeDaten = $state.raw<Gelaende | null>(null);
@@ -339,7 +332,7 @@ class Zustand {
 			// Das Meer wird etwas über den Rahmen hinaus gefüllt; der Rand der
 			// Abfrage ist 150 m, also liegen alle Küsten bis dorthin vor.
 			this.ergaenzung = null;
-			this.places = []; this.placesInfo = null; this.placesZeigen = false;
+			this.places = []; this.placesInfo = null;
 			this.objekte = imRahmen(lesen(roh, r.gitter, { x0: r.x0 - 50, y0: r.y0 - 50, x1: r.x1 + 50, y1: r.y1 + 50 }),
 				r.x0, r.y0, r.x1, r.y1);
 			this.fortschritt = t().laden.netz;
@@ -578,7 +571,6 @@ class Zustand {
 			baeume: this.baeume,
 			ergaenzung: this.ergaenzung,
 			places: this.places,
-			placesZeigen: this.placesZeigen,
 			placesInfo: this.placesInfo,
 			gelaende: this.gelaende,
 			gelaendeDaten: this.gelaendeDaten,
@@ -631,7 +623,6 @@ class Zustand {
 		this.baumpunkte = baeumeAus(this.rest);
 		this.ergaenzung = p.ergaenzung ?? null;
 		this.places = p.places ?? [];
-		this.placesZeigen = p.placesZeigen ?? false;
 		this.placesInfo = p.placesInfo ?? null;
 		this.gelaende = p.gelaende ?? false;
 		this.gelaendeDaten = p.gelaendeDaten ?? null;

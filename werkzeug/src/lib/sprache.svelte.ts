@@ -59,9 +59,6 @@ const de = {
 	},
 	meldungSchliessen: 'Meldung schließen',
 	sicht: {
-		places: 'Places',
-		placesTitel: (n: number) => `${n.toLocaleString('de-DE')} Places aus Overture, nach Gruppe gefärbt: Gastronomie orange, Versorgung rot, Dienstleistung blaugrau, Gesundheit grün, Bildung blau, Verwaltung violett, Freizeit ocker, Verkehr dunkelgrau`,
-		placesHolen: 'Places aus Overture holen und als Punkte zeigen',
 		darstellung: 'Darstellung',
 		ansicht: 'Ansicht',
 		beschriftung: 'Beschriftung',
@@ -263,7 +260,7 @@ const de = {
 		abbrechen: 'Abbrechen',
 		placesHolen: 'Places aus Overture holen',
 		placesGeholt: (n: number) => `${n.toLocaleString('de-DE')} Places aus Overture`,
-		placesHinweis: 'Geschäfte, Lokale, Praxen und Dienste aus Firmenverzeichnissen und Plattformen (Meta, Foursquare u. a.), oft vollständiger als OSM, aber ungeprüft. Nur geöffnete mit ausreichender Zuversicht; ohne Telefon und E-Mail. Liegen im Paket als eigene Datei; im Plan mit dem Schalter „Places“ oben.',
+		placesHinweis: 'Geschäfte, Lokale, Praxen und Dienste aus Firmenverzeichnissen und Plattformen (Meta, Foursquare u. a.), oft vollständiger als OSM, aber ungeprüft. Nur geöffnete mit ausreichender Zuversicht; ohne Telefon und E-Mail. Liegen im Paket als eigene Datei, nicht im Plan.',
 		hinweis: 'Overture führt OpenStreetMap mit Umrissen zusammen, die Microsoft, Google und Esri aus Luftbildern gewonnen haben. Ergänzt wird nur, wo OSM kein Gebäude hat. Die Höhen dieser Häuser sind geschätzt und tragen das im Modell im Namen.'
 	},
 	gelaende: {
@@ -319,9 +316,6 @@ const en: typeof de = {
 	},
 	meldungSchliessen: 'Close message',
 	sicht: {
-		places: 'Places',
-		placesTitel: (n) => `${n.toLocaleString('en-GB')} places from Overture, coloured by group: food and drink orange, shops red, services blue-grey, health green, education blue, administration purple, leisure ochre, transport dark grey`,
-		placesHolen: 'Fetch places from Overture and show them as points',
 		darstellung: 'Style',
 		ansicht: 'View',
 		beschriftung: 'Labels',
@@ -523,7 +517,7 @@ const en: typeof de = {
 		abbrechen: 'Cancel',
 		placesHolen: 'Fetch places from Overture',
 		placesGeholt: (n) => `${n.toLocaleString('en-GB')} places from Overture`,
-		placesHinweis: 'Shops, food and drink, practices and services from business directories and platforms (Meta, Foursquare and others), often more complete than OSM but unverified. Only open ones with enough confidence; no phone or e-mail. They go into the package as a file of their own; in the plan with the “Places” switch above.',
+		placesHinweis: 'Shops, food and drink, practices and services from business directories and platforms (Meta, Foursquare and others), often more complete than OSM but unverified. Only open ones with enough confidence; no phone or e-mail. They go into the package as a file of their own, not into the plan.',
 		hinweis: 'Overture merges OpenStreetMap with footprints that Microsoft, Google and Esri derived from aerial imagery. Buildings are only added where OSM has none. Their heights are estimated, and the model says so in their names.'
 	},
 	gelaende: {

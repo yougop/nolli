@@ -284,7 +284,7 @@
 			arbeitet = `paket:${t().ausgeben.paketBild(++n, flach.length)}`;
 			await anstrich();
 			const b = await bild(z.objekte, rr, d.id, z.bereinigt, z.beschriftung, z.plangebiet, z.sichtbar,
-				false, WEBP, z.baeume ? z.baumpunkte : undefined, z.placesZeigen ? z.places : undefined);
+				false, WEBP, z.baeume ? z.baumpunkte : undefined);
 			teile.push({ name: pfadV2(`bilder/${d.id}.webp`), inhalt: b });
 			bilder.push({ datei: `bilder/${d.id}.webp`, darstellung: d.id, was: englisch.darstellungen[d.id].zweck,
 				baeume: !!z.baeume && !!z.baumpunkte.length });
@@ -798,7 +798,7 @@
 				const b = raeumlich && raum
 					? await raum.alsBild(r.pixelBreite, r.pixelHoehe)
 					: await bild(z.objekte, r, z.darstellung, z.bereinigt, z.beschriftung, z.plangebiet, z.sichtbar,
-						false, 'image/png', z.baeume ? z.baumpunkte : undefined, z.placesZeigen ? z.places : undefined);
+						false, 'image/png', z.baeume ? z.baumpunkte : undefined);
 				laden(b, `${basis}_${darstellungV2(z.darstellung)}_${r.pixelBreite}px.png`, 'image/png');
 			} else if (art === 'dxf') {
 				laden(dxf(z.objekte, r, z.gelaendeJetzt), `${basis}.dxf`, 'application/dxf');
@@ -921,15 +921,6 @@
 								: t().sicht.baeumeFlach(imRahmenBaeume))
 							: t().sicht.keineBaeume}
 					>{t().sicht.baeume}</button>
-					<!--
-						Places aus Overture. Beim ersten Einschalten werden sie geholt, wie das
-						Gelände. Nur in den Aufsichten: Ein Punkt hat keine Höhe.
-					-->
-					<button type="button" class="einzeln" class:an={z.placesZeigen && !raeumlich}
-						disabled={raeumlich || !z.geladenFuer || !!z.placesLaedt}
-						onclick={() => z.placesUmschalten()}
-						title={z.placesLaedt ?? (z.placesInfo ? t().sicht.placesTitel(z.places.length) : t().sicht.placesHolen)}
-					>{t().sicht.places}</button>
 					<!--
 						Das Gelände ist nur im 3D-Modell zu sehen; die flachen Darstellungen
 						sind Aufsichten und kennen keine Höhe. Dort ist der Schalter aus und

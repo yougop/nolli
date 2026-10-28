@@ -226,6 +226,7 @@ export function zeichneBlatt(
 	 */
 	const nachTiefe = (o: Objekt) => {
 		const leiter = d.nachTiefe!;
+		if (o.herkunft && d.fremd) return d.fremd;
 		const t = o.tiefe ?? 0;
 		const stufe = t <= 1 ? 0 : t <= 2 ? 1 : t <= 3 ? 2 : t <= 5 ? 3 : t <= 7 ? 4 : 5;
 		return leiter[Math.min(stufe, leiter.length - 1)];

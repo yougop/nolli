@@ -22,6 +22,7 @@ export function paketLiesmich(v: V, sprache: Sprache): string {
 	// Die Verschiebung, die Fremddaten auf den Ursprung bringt.
 	const dx = -x0, dy = -y0;
 	const ter = v.terrain;
+	const ov = v.overture;
 	const ort = v.place ? [v.place.name, v.place.region].filter(Boolean).join(', ') : '—';
 
 	if (sprache === 'de') return `# Nolli-Paket — ${ort}
@@ -70,7 +71,9 @@ ${ter.license}` : 'Kein Gelände: Alle Körper stehen auf z = 0, ebene Platte (\
 ## Vorbehalte
 
 ${caveats.length ? caveats.map((c) => `- \`${c}\``).join('\n') : '- keine bekannt'}
-
+${ov ? `
+\`buildings_from_imagery\`: ${ov.added} Gebäude stammen nicht aus OpenStreetMap, sondern aus Overture (Release ${ov.release}). Ergänzt nur, wo OSM kein Gebäude hatte. Umrisse und Höhen sind meist mit maschinellem Lernen aus Luftbildern gewonnen; Höhen tragen \`source: imagery\`, die Körper \`origin: overture\` und \`geometry_source\` in \`data/bodies.json\` und \`_height_estimated\` im OBJ. ${ov.attribution}.
+` : ''}
 \`roofs_flat\`: Jeder Baukörper hat eine Höhe und ein waagerechtes Dach. Höhen ohne Messung kommen aus der Geschosszahl oder sind mit 8 m angenommen; solche Körper tragen \`_height_estimated\` im Namen.
 
 ## Bilder
@@ -132,7 +135,9 @@ ${ter.license}` : 'No terrain: all bodies stand on z = 0, a flat plate (\`terrai
 ## Caveats
 
 ${caveats.length ? caveats.map((c) => `- \`${c}\``).join('\n') : '- none known'}
-
+${ov ? `
+\`buildings_from_imagery\`: ${ov.added} buildings do not come from OpenStreetMap but from Overture (release ${ov.release}). Added only where OSM had no building. Footprints and heights are mostly derived by machine learning from aerial imagery; heights carry \`source: imagery\`, the bodies \`origin: overture\` and \`geometry_source\` in \`data/bodies.json\`, and \`_height_estimated\` in the OBJ. ${ov.attribution}.
+` : ''}
 \`roofs_flat\`: every body has one height and a flat roof. Heights that are not measured come from the number of storeys or are assumed at 8 m; such bodies carry \`_height_estimated\` in their name.
 
 ## Images

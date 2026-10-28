@@ -248,6 +248,18 @@ const de = {
 		keine: (wie: string, letzter: string) => `Keine Datenquelle erreichbar, ${wie}. ${letzter}. In einer Minute noch einmal versuchen.`,
 		ortssuche: 'Die Ortssuche antwortet nicht. Versuch es in einem Moment noch einmal.'
 	},
+	overture: {
+		frage: 'Frage Overture',
+		kacheln: (n: number, von: number, mb: string) => `Overture · ${n} von ${von} Kacheln · ${mb} MB`,
+		fehler: (m: string) => `Overture nicht erreichbar: ${m}`,
+		ergaenzen: 'Gebäude aus Overture ergänzen',
+		schalter: 'Overture-Gebäude',
+		ergaenzt: (n: number) => `${n.toLocaleString('de-DE')} Gebäude aus Overture ergänzt`,
+		zeile: 'davon Overture',
+		entfernen: 'Wieder entfernen',
+		abbrechen: 'Abbrechen',
+		hinweis: 'Overture führt OpenStreetMap mit Umrissen zusammen, die Microsoft, Google und Esri aus Luftbildern gewonnen haben. Ergänzt wird nur, wo OSM kein Gebäude hat. Die Höhen dieser Häuser sind geschätzt und tragen das im Modell im Namen.'
+	},
 	gelaende: {
 		schalter: 'Gelände',
 		titelAus: 'Höhen aus einem offenen Höhenmodell holen: Häuser stehen auf dem Gelände, die Zeichnung bekommt Höhenlinien. Rund 25–30 m Raster, für den Maßstab eines Masterplans.',
@@ -489,6 +501,18 @@ const en: typeof de = {
 		gestoert: (wie, letzter) => `The OpenStreetMap service is having trouble right now, ${wie} returned no data. Last: ${letzter}. It is not the frame. Use an example area or try again in a few minutes.`,
 		keine: (wie, letzter) => `No data source reachable, ${wie}. ${letzter}. Try again in a minute.`,
 		ortssuche: 'The place search is not responding. Try again in a moment.'
+	},
+	overture: {
+		frage: 'Asking Overture',
+		kacheln: (n, von, mb) => `Overture · ${n} of ${von} tiles · ${mb} MB`,
+		fehler: (m) => `Overture not reachable: ${m}`,
+		ergaenzen: 'Add buildings from Overture',
+		schalter: 'Overture buildings',
+		ergaenzt: (n) => `${n.toLocaleString('en-GB')} buildings added from Overture`,
+		zeile: 'of which Overture',
+		entfernen: 'Remove again',
+		abbrechen: 'Cancel',
+		hinweis: 'Overture merges OpenStreetMap with footprints that Microsoft, Google and Esri derived from aerial imagery. Buildings are only added where OSM has none. Their heights are estimated, and the model says so in their names.'
 	},
 	gelaende: {
 		schalter: 'Terrain',

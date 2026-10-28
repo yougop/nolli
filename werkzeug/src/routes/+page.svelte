@@ -54,7 +54,7 @@
 	$effect(() => {
 		z.schritt; z.ort; z.kasten; z.verhaeltnis; z.ausgabeBreite;
 		z.objekte; z.sichtbar; z.plangebiet; z.darstellung;
-		z.beschriftung; z.bereinigt; z.geladenFuer; z.gelaende; z.gelaendeFuer;
+		z.beschriftung; z.bereinigt; z.geladenFuer; z.gelaende; z.gelaendeFuer; z.ergaenzung;
 		z.sichern();
 	});
 
@@ -116,6 +116,18 @@
 	 * enthält, was zu sehen ist — Bäume nur, wenn der Schalter an ist.
 	 */
 	const modellKronen = $derived(z.baeume ? imRahmenBaeume : 0);
+	/**
+	 * Die Namensnennung für Overture-Gebäude, je nach den Quellen, die
+	 * tatsächlich vorkommen. Wortlaut nach docs.overturemaps.org/attribution.
+	 */
+	function overtureNennung(quellen: Record<string, number>) {
+		const teile = ['© Overture Maps Foundation', '© OpenStreetMap contributors (ODbL)'];
+		const q = Object.keys(quellen).join(' ');
+		if (/Microsoft/i.test(q)) teile.push('Global ML Building Footprints, Microsoft (ODbL)');
+		if (/Google/i.test(q)) teile.push('Google Open Buildings (CC BY 4.0)');
+		if (/Esri/i.test(q)) teile.push('Esri Community Maps contributors (CC BY 4.0)');
+		return teile.join(' · ');
+	}
 	const erfassung = $derived(r && z.objekte.length ? gebaeudeLuecke(z.objekte, r) : null);
 	const mitAdresse = $derived(z.objekte.filter((o) => o.adresse).length);
 	const denkmale = $derived(z.objekte.filter((o) => o.denkmal).length);
@@ -400,7 +412,9 @@
 		return z.objekte
 			.filter((o) => (o.ebene === 'gebaeude' || o.ebene === 'erhalt') && o.zustand !== 'gestrichen')
 			.map((o) => ({
-				osm_id: o.id,
+				// Ein ergänzter Körper hat keine OSM-Kennung, sondern die von Overture.
+				osm_id: o.herkunft ? null : o.id,
+				...(o.herkunft === 'overture' ? { overture_id: o.id.slice(2) } : {}),
 				/**
 				 * Gebäude oder Gebäudeteil. Ein Teil liegt in seinem Gebäude —
 				 * wer Körper stellt, braucht beide; wer Häuser zählt, nur die
@@ -426,11 +440,16 @@
 				 * und null ist der Boden.
 				 */
 				...(z.gelaendeJetzt ? { fuss_m: Math.round(tiefsteUnter(z.gelaendeJetzt, o.ringe) * 100) / 100 } : {}),
-				quelle: !o.hoeheGeschaetzt ? 'gemessen' : o.geschosse ? 'geschosse' : 'annahme',
+				quelle: !o.hoeheGeschaetzt ? 'gemessen' : o.geschosse ? 'geschosse'
+					: o.herkunft && o.hoeheM !== undefined ? 'luftbild' : 'annahme',
+				// Woher der Umriss kommt: OpenStreetMap oder, ergänzt, Overture.
+				herkunft: o.herkunft ?? 'osm',
+				...(o.quelleGeometrie ? { herkunft_umriss: o.quelleGeometrie } : {}),
 				geschosse: o.geschosse ?? null,
 				denkmal: o.denkmal ?? null,
 				adresse: o.adresse ?? null,
-				nutzung: o.nutzung ?? null,
+				nutzung: o.herkunft ? null : (o.nutzung ?? null),
+				...(o.herkunft === 'overture' && o.nutzung !== 'yes' ? { overture_class: o.nutzung } : {}),
 				klasse: o.klasse ?? null,
 				zustand: o.zustand
 			}));
@@ -506,6 +525,7 @@
 			hoehen_herkunft: {
 				gemessen: deckung.echt,
 				aus_geschossen: deckung.geschosse,
+				aus_luftbild: deckung.luftbild,
 				annahme_8m: deckung.annahme,
 				/**
 				 * Dieselben drei Gruppen nach Grundfläche.
@@ -520,6 +540,7 @@
 				grundflaeche_m2: {
 					gemessen: deckung.flaeche.echt,
 					aus_geschossen: deckung.flaeche.geschosse,
+					aus_luftbild: deckung.flaeche.luftbild,
 					annahme_8m: deckung.flaeche.annahme
 				}
 			},
@@ -537,10 +558,12 @@
 			hoehen_herkunft_gebaeude: {
 				gemessen: deckungHaeuser.echt,
 				aus_geschossen: deckungHaeuser.geschosse,
+				aus_luftbild: deckungHaeuser.luftbild,
 				annahme_8m: deckungHaeuser.annahme,
 				grundflaeche_m2: {
 					gemessen: deckungHaeuser.flaeche.echt,
 					aus_geschossen: deckungHaeuser.flaeche.geschosse,
+					aus_luftbild: deckungHaeuser.flaeche.luftbild,
 					annahme_8m: deckungHaeuser.flaeche.annahme
 				}
 			},
@@ -582,7 +605,26 @@
 			 * führt. Für eine Ertragsrechnung auf geneigten Dächern ist das die
 			 * Grenze dieses Modells.
 			 */
-			vorbehalte: ['daecher_flach', z.gelaendeJetzt ? 'gelaende_grob' : 'gelaende_eben'],
+			vorbehalte: ['daecher_flach', z.gelaendeJetzt ? 'gelaende_grob' : 'gelaende_eben',
+				...(z.ergaenzung?.anzahl ? ['gebaeude_luftbild'] : [])],
+			/**
+			 * Gebäude aus Overture, wo OpenStreetMap keine hat.
+			 *
+			 * Eine zweite Quelle für Umrisse, mit eigener Lizenz und eigener
+			 * Güte: Die Umrisse stammen meist aus maschinellem Lernen auf
+			 * Luftbildern, die Höhen ebenso. Welcher Körper daher kommt, steht an
+			 * ihm (`herkunft`, `herkunft_umriss`). Ohne Ergänzung `null`.
+			 */
+			overture: z.ergaenzung?.anzahl
+				? {
+					quelle: 'Overture Maps Foundation, buildings theme',
+					release: z.ergaenzung.release,
+					lizenz: 'ODbL',
+					namensnennung: overtureNennung(z.ergaenzung.quellen),
+					ergaenzt: z.ergaenzung.anzahl,
+					quellen: z.ergaenzung.quellen
+				}
+				: null,
 			/**
 			 * Woher das Gelände kommt und was es kann.
 			 *
@@ -745,6 +787,24 @@
 {/snippet}
 
 <svelte:head><title>Nolli</title></svelte:head>
+
+{#snippet overtureKnopf()}
+	{#if z.ergaenzungLaedt}
+		<div class="tatzeile">
+			<span class="mono laedt">{z.ergaenzungLaedt} …</span>
+			<button type="button" onclick={() => z.ergaenzenAbbrechen()}>{t().overture.abbrechen}</button>
+		</div>
+	{:else if z.ergaenzung}
+		<div class="tatzeile">
+			<span class="laedt">{t().overture.ergaenzt(z.ergaenzung.anzahl)}</span>
+			<button type="button" onclick={() => z.ergaenzungEntfernen()}>{t().overture.entfernen}</button>
+		</div>
+	{:else}
+		<div class="tatzeile">
+			<button type="button" onclick={() => z.ergaenzen()}>{t().overture.ergaenzen}</button>
+		</div>
+	{/if}
+{/snippet}
 
 <div class="werk">
 	<header class="kopf">
@@ -964,11 +1024,12 @@
 				</div>
 
 			{:else if z.schritt === 2}
-				{#if erfassung?.luecke}
-					<p class="urteil mahnt luecke" role="status">
-						<strong>{t().bereinigen.lueckeTitel}.</strong>
-						{t().bereinigen.luecke(erfassung.haeuser, erfassung.km)}
-					</p>
+				{#if erfassung?.luecke && !z.ergaenzung}
+					<div class="urteil mahnt luecke" role="status">
+						<p><strong>{t().bereinigen.lueckeTitel}.</strong>
+						{t().bereinigen.luecke(erfassung.haeuser, erfassung.km)}</p>
+						{@render overtureKnopf()}
+					</div>
 				{/if}
 				<div class="teil">
 					<span class="feld">{t().bereinigen.ebenen}</span>
@@ -1120,6 +1181,9 @@
 							     Aussage und „0 %" die Nachkommastelle, hinter der sie verschwindet.
 							     Ohne die Teile gezählt: Die tragen fast immer eine Höhe und
 							     ließen die Erfassung besser aussehen, als sie ist. -->
+							{#if z.ergaenzung}
+								<div><dt>{t().overture.zeile}</dt><dd class="mono">{z.ergaenzung.anzahl}</dd></div>
+							{/if}
 							<div><dt>{t().bereinigen.mitHoehe}</dt><dd class="mono">{t().bereinigen.von(deckungHaeuser.echt, deckungHaeuser.gesamt)}</dd></div>
 							<div><dt>{t().bereinigen.mitAdresse}</dt><dd class="mono">{mitAdresse}</dd></div>
 							{#if denkmale}<div><dt>{t().bereinigen.denkmal}</dt><dd class="mono">{denkmale}</dd></div>{/if}
@@ -1128,6 +1192,10 @@
 							{t().bereinigen.hoehenHinweis}{#if deckung.gesamt > deckungHaeuser.gesamt}{' '}
 								{t().bereinigen.teileHinweis}{/if}
 						</p>
+						<div class="overture">
+							{@render overtureKnopf()}
+							<p class="hinweis leise">{t().overture.hinweis}</p>
+						</div>
 						<dl class="buch">
 							<div><dt>{t().bereinigen.netz}</dt><dd class="mono">{t().bereinigen.kanten(z.netz?.kanten.length ?? 0)}</dd></div>
 							<div><dt>{t().bereinigen.punkteZeile}</dt><dd class="mono">{z.pois.length}</dd></div>
@@ -1250,7 +1318,7 @@
 			<span>{t().fuss.keinRahmen}</span>
 		{/if}
 		<span class="recht">
-			{t().fuss.osm}{#if z.schritt === 1}{' · '}{t().fuss.kacheln(z.kartenquelle === 'ohne' ? t().fuss.keine : 'OpenFreeMap')}{/if}
+			{t().fuss.osm}{#if z.ergaenzung?.anzahl}{' · © Overture Maps'}{/if}{#if z.schritt === 1}{' · '}{t().fuss.kacheln(z.kartenquelle === 'ohne' ? t().fuss.keine : 'OpenFreeMap')}{/if}
 		</span>
 	</footer>
 </div>
@@ -1460,6 +1528,10 @@
 	}
 	.urteil.mahnt { color: var(--warn); background: var(--warn-flor); border-color: transparent; }
 	.urteil.luecke { margin: 12px 18px 0; }
+	.urteil.luecke p { margin: 0 0 8px; }
+	.overture { margin: 12px 0; }
+	.overture .hinweis { margin-top: 6px; }
+	.laedt { flex: 1; align-self: center; font-size: 12px; color: var(--tinte-2); }
 	.leer { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--tinte-2); }
 
 	.verweise { list-style: none; display: flex; flex-wrap: wrap; gap: 5px; margin: 0; padding: 0; }

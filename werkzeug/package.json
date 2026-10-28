@@ -22,11 +22,14 @@
 		"vite": "^8.0.16"
 	},
 	"dependencies": {
+		"@mapbox/vector-tile": "^2.0.5",
 		"@types/earcut": "^3.0.0",
 		"@types/three": "^0.186.0",
 		"earcut": "^3.2.3",
 		"fflate": "^0.8.3",
 		"maplibre-gl": "^6.9.0",
+		"pbf": "^4.0.2",
+		"pmtiles": "^3.2.1",
 		"three": "^0.186.0"
 	}
 }

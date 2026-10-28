@@ -65,6 +65,7 @@ export const FELDER: Record<string, string> = {
 	gemessen: 'measured',
 	aus_geschossen: 'from_storeys',
 	annahme_8m: 'assumed_8m',
+	aus_luftbild: 'from_imagery',
 	grundflaeche_m2: 'footprint_m2',
 	dateien: 'files',
 	paket: 'package',
@@ -130,13 +131,19 @@ export const FELDER: Record<string, string> = {
 	hoehenbezug: 'height_datum',
 	aequidistanz_m: 'contour_interval_m',
 	geholt: 'fetched',
-	hoehen: 'heights'
+	hoehen: 'heights',
+	// Overture
+	herkunft: 'origin',
+	herkunft_umriss: 'geometry_source',
+	ergaenzt: 'added',
+	quellen: 'sources',
+	namensnennung: 'attribution'
 };
 
 /** Aufgezählte Werte, je Feldname (dem deutschen). */
 export const WERTE: Record<string, Record<string, string>> = {
 	art: { gebaeude: 'building', teil: 'part' },
-	quelle: { gemessen: 'measured', geschosse: 'storeys', annahme: 'assumed', knoten: 'node', flaeche: 'area' },
+	quelle: { gemessen: 'measured', geschosse: 'storeys', luftbild: 'imagery', annahme: 'assumed', knoten: 'node', flaeche: 'area' },
 	klasse: { wohnen: 'residential', gewerbe: 'commercial', oeffentlich: 'public', neben: 'ancillary', unbestimmt: 'undetermined' },
 	zustand: { normal: 'normal', gestrichen: 'removed', erhalt: 'kept' },
 	gruppe: {
@@ -148,7 +155,8 @@ export const WERTE: Record<string, Record<string, string>> = {
 	vorbehalte: {
 		daecher_flach: 'roofs_flat',
 		gelaende_eben: 'terrain_flat',
-		gelaende_grob: 'terrain_coarse'
+		gelaende_grob: 'terrain_coarse',
+		gebaeude_luftbild: 'buildings_from_imagery'
 	},
 	lizenz: { 'ODbL, © OpenStreetMap-Mitwirkende': 'ODbL, © OpenStreetMap contributors' }
 };

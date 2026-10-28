@@ -27,6 +27,12 @@ export type Darstellung = {
 	 * Merkmale statt nach seiner Ebene.
 	 */
 	nachTiefe?: string[];
+	/**
+	 * Farbe für Objekte, die nicht aus OpenStreetMap kommen (Overture). Sie
+	 * haben keine OSM-Merkmale und stünden sonst auf der blassesten Stufe —
+	 * als wären sie dünn erfasst, dabei sind sie gar nicht erfasst.
+	 */
+	fremd?: string;
 	schrift: string;       // Farbe der Beschriftung
 	schriftFlor: string;   // Hinterlegung, damit Schrift auf jedem Grund liest
 };
@@ -138,6 +144,8 @@ export const DARSTELLUNGEN: Darstellung[] = [
 		// Blaugrün. Blass heißt: kaum etwas bekannt. Nicht rot, weil dünn
 		// erfasst kein Fehler ist.
 		nachTiefe: ['#E7E7E4', '#CFD8D2', '#AEC3BB', '#87A79E', '#5C8A80', '#2F6C63'],
+		// Warm, damit es sich von der kühlen Leiter abhebt: andere Quelle.
+		fremd: '#D4B483',
 		farbe: {
 			gruen: '#EFEFEC', wasser: '#EAECEC', bahn: '#D8D8D5', strasse: '#E2E2DF',
 			bau: '#E7E7E4', gebaeude: '#CFD8D2', erhalt: '#CFD8D2', gestrichen: '#EDEDEA',

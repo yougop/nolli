@@ -8,6 +8,7 @@ import { base } from '$app/paths';
 import { ablegen, abholen, wegwerfen } from './ablage';
 import { holeBestand, QuellFehler, Abgebrochen } from './quelle';
 import { holeGelaende, type Gelaende } from './geo/gelaende';
+import { holeOverture, gebaeudeErgaenzen } from './overture';
 import { netzAus, nutzflaechenAus, poisAus, halteAus, restAus, baeumeAus,
 	type Netz, type Nutzflaeche, type Poi, type Haltestelle, type Linie, type Rest } from './analysedaten';
 
@@ -92,6 +93,55 @@ class Zustand {
 	 * Rahmen — eine zweite Quelle neben OpenStreetMap, mit eigener Genauigkeit,
 	 * soll niemand nebenbei bekommen.
 	 */
+	/**
+	 * Gebäude aus Overture, wo OpenStreetMap keine hat (`overture.ts`).
+	 *
+	 * Die ergänzten Gebäude liegen mit den übrigen in `objekte` und tragen
+	 * `herkunft: 'overture'`; hier steht nur, woher sie kommen. Neues Holen
+	 * wirft sie weg — der Abgleich gilt nur gegen den OSM-Stand, mit dem er
+	 * gerechnet wurde.
+	 */
+	ergaenzung = $state.raw<{ release: string; quellen: Record<string, number>; anzahl: number } | null>(null);
+	ergaenzungLaedt = $state<string | null>(null);
+	private ergaenzungStopper: AbortController | null = null;
+
+	async ergaenzen() {
+		const r = this.rahmen;
+		if (!r || this.ergaenzungLaedt || this.ergaenzung) return;
+		const k = this.schluessel();
+		const stopper = (this.ergaenzungStopper = new AbortController());
+		this.ergaenzungLaedt = t().overture.frage;
+		this.fehler = null;
+		try {
+			const g = r.eckenGrad;
+			const o = await holeOverture('buildings', { sued: g.sued, west: g.west, nord: g.nord, ost: g.ost },
+				(n, von, b) => { if (!stopper.signal.aborted) this.ergaenzungLaedt = t().overture.kacheln(n, von, (b / 1e6).toFixed(1)); },
+				stopper.signal);
+			if (stopper.signal.aborted || this.schluessel() !== k) return;
+			const osm = this.objekte.filter((x) => x.herkunft !== 'overture');
+			const e = gebaeudeErgaenzen(o.merkmale, r.gitter, osm);
+			const neu = imRahmen(e.objekte, r.x0, r.y0, r.x1, r.y1);
+			const quellen: Record<string, number> = {};
+			for (const x of neu) quellen[x.quelleGeometrie ?? 'Overture'] = (quellen[x.quelleGeometrie ?? 'Overture'] ?? 0) + 1;
+			this.objekte = [...osm, ...neu];
+			this.ergaenzung = { release: o.release, quellen, anzahl: neu.length };
+		} catch (e) {
+			if (!stopper.signal.aborted)
+				this.fehler = t().overture.fehler(e instanceof Error ? e.message : String(e));
+		} finally {
+			this.ergaenzungLaedt = null;
+			this.ergaenzungStopper = null;
+		}
+	}
+
+	ergaenzenAbbrechen() { this.ergaenzungStopper?.abort(); }
+
+	ergaenzungEntfernen() {
+		this.objekte = this.objekte.filter((x) => x.herkunft !== 'overture');
+		this.ausgewaehlt = new Set([...this.ausgewaehlt].filter((id) => !id.startsWith('ov')));
+		this.ergaenzung = null;
+	}
+
 	gelaende = $state(false);
 	gelaendeDaten = $state.raw<Gelaende | null>(null);
 	gelaendeFuer = $state<string | null>(null);
@@ -244,6 +294,7 @@ class Zustand {
 			await atmen();
 			// Das Meer wird etwas über den Rahmen hinaus gefüllt; der Rand der
 			// Abfrage ist 150 m, also liegen alle Küsten bis dorthin vor.
+			this.ergaenzung = null;
 			this.objekte = imRahmen(lesen(roh, r.gitter, { x0: r.x0 - 50, y0: r.y0 - 50, x1: r.x1 + 50, y1: r.y1 + 50 }),
 				r.x0, r.y0, r.x1, r.y1);
 			this.fortschritt = t().laden.netz;
@@ -480,6 +531,7 @@ class Zustand {
 			linien: this.linien,
 			rest: this.rest,
 			baeume: this.baeume,
+			ergaenzung: this.ergaenzung,
 			gelaende: this.gelaende,
 			gelaendeDaten: this.gelaendeDaten,
 			gelaendeFuer: this.gelaendeFuer,
@@ -529,6 +581,7 @@ class Zustand {
 		this.rest = p.rest ?? [];
 		this.baeume = p.baeume ?? false;
 		this.baumpunkte = baeumeAus(this.rest);
+		this.ergaenzung = p.ergaenzung ?? null;
 		this.gelaende = p.gelaende ?? false;
 		this.gelaendeDaten = p.gelaendeDaten ?? null;
 		this.gelaendeFuer = p.gelaendeFuer ?? null;
@@ -557,6 +610,7 @@ class Zustand {
 		this.baumpunkte = [];
 		this.gelaendeDaten = null;
 		this.gelaendeFuer = null;
+		this.ergaenzung = null;
 		this.ausgewaehlt = new Set();
 		this.plangebiet = null;
 		this.geladenFuer = null;

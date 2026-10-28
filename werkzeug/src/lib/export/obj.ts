@@ -53,6 +53,8 @@ export function alsObj(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | null =
 	const zeilen: string[] = [
 		'# Nolli — context model from OpenStreetMap',
 		'# ODbL, © OpenStreetMap contributors',
+		...(objekte.some((o) => o.herkunft === 'overture')
+			? ['# Some buildings added from Overture Maps (ODbL; footprints largely Microsoft ML Building Footprints)'] : []),
 		`# Local grid: +proj=tmerc +lon_0=${r.gitter.lon0.toFixed(7)} +k=1 +ellps=WGS84`,
 		`# Origin in grid: ${r.x0.toFixed(1)} ${r.y0.toFixed(1)}`,
 		`# Units metres, Z up, Y north`,

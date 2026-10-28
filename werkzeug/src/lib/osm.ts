@@ -42,6 +42,13 @@ export type Objekt = {
 	 */
 	teil?: boolean;
 	/**
+	 * Nicht aus OpenStreetMap, sondern aus Overture ergänzt (`overture.ts`).
+	 * `quelleGeometrie` nennt, woher der Umriss stammt, etwa „Microsoft ML
+	 * Buildings“ — für die Namensnennung und für den Vertrag.
+	 */
+	herkunft?: 'overture';
+	quelleGeometrie?: string;
+	/**
 	 * Denkmalstatus, wie OpenStreetMap ihn fuehrt.
 	 *
 	 * Steht am Objekt statt nur im Vertrag, damit man geschuetzte Bauten im
@@ -96,7 +103,7 @@ export type Objekt = {
  * Darstellung reicht und dem spaeteren Programmschritt vorarbeitet. OSM
  * kennt hunderte Werte, verwendet aber eine Handvoll fast immer.
  */
-const KLASSEN: Record<string, Nutzungsklasse> = {
+export const KLASSEN: Record<string, Nutzungsklasse> = {
 	residential: 'wohnen', apartments: 'wohnen', house: 'wohnen', detached: 'wohnen',
 	terrace: 'wohnen', semidetached_house: 'wohnen', dormitory: 'wohnen', bungalow: 'wohnen',
 	commercial: 'gewerbe', retail: 'gewerbe', office: 'gewerbe', industrial: 'gewerbe',
@@ -354,13 +361,17 @@ export function hoehenDeckung(objekte: Objekt[], ohneTeile = false) {
 	);
 	const echt = g.filter((o) => !o.hoeheGeschaetzt).length;
 	const geschosse = g.filter((o) => o.hoeheGeschaetzt && o.geschosse).length;
+	// Aus Luftbildern geschätzt (Overture, meist Microsoft). Weder gemessen
+	// noch der Notwert — eine eigene Gruppe, sonst stünden sie als Annahme da.
+	const ausBild = (o: Objekt) => o.hoeheGeschaetzt && !o.geschosse && !!o.herkunft && o.hoeheM !== undefined;
+	const luftbild = g.filter(ausBild).length;
 
 	// Dieselbe Aufteilung noch einmal nach Grundflaeche. Ein Koerperanteil sagt
 	// nicht, wie viel Schatten an ihm haengt: In der HafenCity stehen 17 % der
 	// Koerper auf dem Notwert, aber 29 % der Grundflaeche, weil es die grossen
 	// Hallen sind, die keine Merkmale tragen. Im Holstenareal fallen beide
 	// Anteile zusammen. Welcher Fall vorliegt, sieht man nur an beiden Zahlen.
-	const flaeche = { echt: 0, geschosse: 0, annahme: 0 };
+	const flaeche = { echt: 0, geschosse: 0, luftbild: 0, annahme: 0 };
 	for (const o of g) {
 		let a = 0;
 		for (const ring of o.ringe) a += Math.abs(ringflaeche(ring));
@@ -368,15 +379,17 @@ export function hoehenDeckung(objekte: Objekt[], ohneTeile = false) {
 		a = Math.max(0, a);
 		if (!o.hoeheGeschaetzt) flaeche.echt += a;
 		else if (o.geschosse) flaeche.geschosse += a;
+		else if (ausBild(o)) flaeche.luftbild += a;
 		else flaeche.annahme += a;
 	}
 
 	return {
-		gesamt: g.length, echt, geschosse, annahme: g.length - echt - geschosse,
+		gesamt: g.length, echt, geschosse, luftbild, annahme: g.length - echt - geschosse - luftbild,
 		anteil: g.length ? echt / g.length : 0,
 		flaeche: {
 			echt: Math.round(flaeche.echt),
 			geschosse: Math.round(flaeche.geschosse),
+			luftbild: Math.round(flaeche.luftbild),
 			annahme: Math.round(flaeche.annahme)
 		}
 	};

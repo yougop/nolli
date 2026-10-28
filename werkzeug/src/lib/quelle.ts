@@ -194,6 +194,9 @@ export class QuellFehler extends Error {}
  */
 export type Melder = (was: string) => void;
 
+/** Vom Nutzer abgebrochen. Kein Fehler, deshalb keine Meldung. */
+export class Abgebrochen extends Error {}
+
 const mb = (n: number) => `${(n / 1048576).toFixed(1)} MB`;
 
 /** Den Rumpf lesen, dabei melden, und die Stilleuhr bei jedem Stueck stellen. */
@@ -218,7 +221,12 @@ async function lies(a: Response, melde: (bytes: number) => void,
 	return new TextDecoder().decode(alles);
 }
 
-export async function holeBestand(roh: Ecken, melde: Melder = () => {}): Promise<any> {
+/**
+ * `stop` bricht alles ab: laufende Abrufe und die noch nicht gestarteten.
+ * Volker am 28.10.2026: Wer merkt, dass der Rahmen falsch sitzt, soll nicht
+ * dreieinhalb Minuten warten müssen.
+ */
+export async function holeBestand(roh: Ecken, melde: Melder = () => {}, stop?: AbortSignal): Promise<any> {
 	const dLat = RAND_M / 111320;
 	const dLon = RAND_M / (111320 * Math.cos(((roh.nord + roh.sued) / 2) * Math.PI / 180));
 	const sued = roh.sued - dLat, nord = roh.nord + dLat;
@@ -338,9 +346,15 @@ export async function holeBestand(roh: Ecken, melde: Melder = () => {}): Promise
 				else if (!fertig && offen === 0 && naechster >= reihe.length) { fertig = true; gut(null); }
 			})();
 		};
+		stop?.addEventListener('abort', () => {
+			if (fertig) return;
+			fertig = true; alleAbbrechen(); gut(null);
+		}, { once: true });
+		if (stop?.aborted) { fertig = true; gut(null); return; }
 		dazu();
 	});
 	if (daten) return daten;
+	if (stop?.aborted) throw new Abgebrochen();
 
 	const wie = t().quelle.versuche(versuche, SPIEGEL.length);
 	throw new QuellFehler(ueberlastet

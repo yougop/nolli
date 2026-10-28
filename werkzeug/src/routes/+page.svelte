@@ -958,6 +958,9 @@
 							? (z.fortschritt || t().rahmen.holt) + ' …'
 							: z.datenAktuell ? t().rahmen.erneut : t().rahmen.holen}
 					</button>
+					{#if z.laden}
+						<button class="abbrechen" type="button" onclick={() => z.abbrechen()}>{t().rahmen.abbrechen}</button>
+					{/if}
 				</div>
 
 			{:else if z.schritt === 2}
@@ -1223,6 +1226,11 @@
 	</main>
 
 	<footer class="zeile mono">
+		{#if z.ort}
+			<!-- Der Ort, um den der Rahmen gelegt wurde. Volker am 28.10.2026:
+			     Man soll immer sehen, wo man ist. -->
+			<span class="ortname" title={z.ort.wo}>{z.ort.name}{z.ort.wo ? ` · ${z.ort.wo.split(' · ')[0]}` : ''}</span>
+		{/if}
 		{#if r}
 			<span title={t().fuss.gitterTitel}>
 				{t().fuss.gitter(r.gitter.lon0.toFixed(4))}
@@ -1522,6 +1530,12 @@
 	}
 
 	/* ---------- Hauptaktion ---------- */
+	.abbrechen {
+		display: block; width: 100%; margin-top: 6px; padding: 7px 14px; cursor: pointer;
+		font-size: 12.5px; color: var(--tinte-2);
+		background: transparent; border: 1px solid var(--linie); border-radius: var(--rund);
+	}
+	.abbrechen:hover { color: var(--tinte); border-color: var(--tinte-2); }
 	.haupt {
 		display: flex; align-items: center; justify-content: center; gap: 9px;
 		width: 100%; padding: 11px 14px; cursor: pointer;
@@ -1561,6 +1575,7 @@
 		border-top: 1px solid var(--linie); background: var(--blatt);
 	}
 	.zeile .recht { margin-left: auto; color: var(--tinte-3); }
+	.zeile .ortname { color: var(--tinte); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40ch; }
 
 	/* Notebook-Schirme: dichter setzen. Es geht nichts verloren, die Zeilen
 	   ruecken nur zusammen. */

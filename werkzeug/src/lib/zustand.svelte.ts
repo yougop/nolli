@@ -6,7 +6,7 @@ import { drin, beruehrt, ausserhalb, schwerpunkt } from './schneiden';
 import { STIFTE, type StiftId } from './stifte';
 import { base } from '$app/paths';
 import { ablegen, abholen, wegwerfen } from './ablage';
-import { holeBestand, QuellFehler } from './quelle';
+import { holeBestand, QuellFehler, Abgebrochen } from './quelle';
 import { holeGelaende, type Gelaende } from './geo/gelaende';
 import { netzAus, nutzflaechenAus, poisAus, halteAus, restAus, baeumeAus,
 	type Netz, type Nutzflaeche, type Poi, type Haltestelle, type Linie, type Rest } from './analysedaten';
@@ -219,16 +219,24 @@ class Zustand {
 		this.kasten = { x0: p.x - breiteM / 2, y0: p.y - h / 2, x1: p.x + breiteM / 2, y1: p.y + h / 2, lon0: g.lon0 };
 	}
 
+	private stopper: AbortController | null = null;
+
+	/** Das Holen abbrechen. Die bisher geladenen Daten bleiben. */
+	abbrechen() { this.stopper?.abort(); }
+
 	async holen() {
 		const r = this.rahmen;
 		if (!r || this.laden) return;
 		this.laden = true; this.fehler = null; this.fortschritt = t().laden.frage;
+		const stopper = (this.stopper = new AbortController());
 		try {
 			const g = r.eckenGrad;
 			const roh = await holeBestand(
 				{ sued: g.sued, west: g.west, nord: g.nord, ost: g.ost },
-				(was) => (this.fortschritt = was)
+				(was) => { if (!stopper.signal.aborted) this.fortschritt = was; },
+				stopper.signal
 			);
+			if (stopper.signal.aborted) throw new Abgebrochen();
 			const anzahl = roh.elements?.length ?? 0;
 			// Der Abfragerand bringt Nachbarschaft mit. Was den Rahmen gar nicht
 			// beruehrt, fliegt wieder raus, damit die Zaehler das Blatt zeigen.
@@ -269,8 +277,8 @@ class Zustand {
 			if (!this.objekte.length)
 				this.fehler = t().laden.leer;
 		} catch (e) {
-			this.fehler = e instanceof QuellFehler || e instanceof Error
-				? e.message : t().laden.unbekannt;
+			this.fehler = e instanceof Abgebrochen ? null
+				: e instanceof QuellFehler || e instanceof Error ? e.message : t().laden.unbekannt;
 		} finally {
 			this.laden = false;
 			this.fortschritt = '';

@@ -94,6 +94,7 @@ const de = {
 		gelaende: 'Gelände',
 		googleHinweis: (zoom: number) => `Öffnet den Rahmen bei Google in Zoomstufe ${zoom}. Die Koordinate der Mitte steht auch im Datenvertrag, zusammen mit allen vier Verweisen.`,
 		holt: 'Holt Bestandsdaten',
+		abbrechen: 'Abbrechen',
 		erneut: 'Daten erneut holen',
 		holen: 'Bestandsdaten holen'
 	},
@@ -335,6 +336,7 @@ const en: typeof de = {
 		gelaende: 'Terrain',
 		googleHinweis: (zoom) => `Opens the frame in Google at zoom level ${zoom}. The centre coordinate is also in the data contract, together with all four links.`,
 		holt: 'Fetching existing data',
+		abbrechen: 'Cancel',
 		erneut: 'Fetch data again',
 		holen: 'Fetch existing data'
 	},

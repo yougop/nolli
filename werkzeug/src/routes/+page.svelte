@@ -5,7 +5,7 @@
 	import { z, VERHAELTNISSE, AUSGABEBREITEN } from '$lib/zustand.svelte';
 	import { STIFTE, FAHRBAHN } from '$lib/stifte';
 	import { ebenenZaehlen } from '$lib/zeichnen';
-	import { hoehenDeckung, ringflaeche, istTeil } from '$lib/osm';
+	import { hoehenDeckung, ringflaeche, istTeil, gebaeudeLuecke } from '$lib/osm';
 	import { amRahmen } from '$lib/schneiden';
 	import { BAUM } from '$lib/analysedaten';
 	import { feldImRahmen, aequidistanz, tiefsteUnter } from '$lib/geo/gelaende';
@@ -116,6 +116,7 @@
 	 * enthält, was zu sehen ist — Bäume nur, wenn der Schalter an ist.
 	 */
 	const modellKronen = $derived(z.baeume ? imRahmenBaeume : 0);
+	const erfassung = $derived(r && z.objekte.length ? gebaeudeLuecke(z.objekte, r) : null);
 	const mitAdresse = $derived(z.objekte.filter((o) => o.adresse).length);
 	const denkmale = $derived(z.objekte.filter((o) => o.denkmal).length);
 	const darstellungJetzt = $derived(darstellungVon(z.darstellung));
@@ -960,6 +961,12 @@
 				</div>
 
 			{:else if z.schritt === 2}
+				{#if erfassung?.luecke}
+					<p class="urteil mahnt luecke" role="status">
+						<strong>{t().bereinigen.lueckeTitel}.</strong>
+						{t().bereinigen.luecke(erfassung.haeuser, erfassung.km)}
+					</p>
+				{/if}
 				<div class="teil">
 					<span class="feld">{t().bereinigen.ebenen}</span>
 					<ul class="ebenen">
@@ -1444,6 +1451,7 @@
 		background: var(--grund); border: 1px solid var(--linie); border-radius: var(--rund);
 	}
 	.urteil.mahnt { color: var(--warn); background: var(--warn-flor); border-color: transparent; }
+	.urteil.luecke { margin: 12px 18px 0; }
 	.leer { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--tinte-2); }
 
 	.verweise { list-style: none; display: flex; flex-wrap: wrap; gap: 5px; margin: 0; padding: 0; }

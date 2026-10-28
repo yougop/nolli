@@ -440,3 +440,34 @@ function abstandZuStrecke(px: number, py: number, a: [number, number], b: [numbe
 	const t = l2 ? Math.max(0, Math.min(1, ((px - a[0]) * dx + (py - a[1]) * dy) / l2)) : 0;
 	return Math.hypot(px - (a[0] + t * dx), py - (a[1] + t * dy));
 }
+
+/**
+ * Fehlen hier die Gebäude in OpenStreetMap?
+ *
+ * Am 28.10.2026 in Upper Saddle River (New Jersey) aufgefallen: Straßen
+ * vollständig, Häuser sechs. In vielen US-Vororten hat niemand die Gebäude
+ * eingetragen, und wer das zum ersten Mal sieht, hält Nolli für kaputt.
+ *
+ * Gemessen an Wohnstraßen, weil an ihnen Häuser stehen müssen: Ein erfasster
+ * Vorort hat 50 und mehr Gebäude je Kilometer, Upper Saddle River hatte
+ * unter einem. Fernstraßen und Feldwege zählen nicht, an ihnen darf es leer
+ * sein. Die Schwelle von fünf ist großzügig — sie soll nur das Offensichtliche
+ * melden.
+ */
+export function gebaeudeLuecke(objekte: Objekt[], k: { x0: number; y0: number; x1: number; y1: number }) {
+	const drin = (x: number, y: number) => x >= k.x0 && x <= k.x1 && y >= k.y0 && y <= k.y1;
+	let m = 0, haeuser = 0;
+	for (const o of objekte) {
+		if (o.ebene === 'strasse' && (o.nutzung === 'residential' || o.nutzung === 'living_street')) {
+			for (const ring of o.ringe) for (let i = 1; i < ring.length; i++) {
+				const [ax, ay] = ring[i - 1], [bx, by] = ring[i];
+				if (drin((ax + bx) / 2, (ay + by) / 2)) m += Math.hypot(bx - ax, by - ay);
+			}
+		} else if ((o.ebene === 'gebaeude' || o.ebene === 'erhalt') && !istTeil(o)) {
+			const p = o.ringe[0]?.[0];
+			if (p && drin(p[0], p[1])) haeuser++;
+		}
+	}
+	const km = m / 1000;
+	return { km, haeuser, luecke: km >= 1 && haeuser < 5 * km };
+}

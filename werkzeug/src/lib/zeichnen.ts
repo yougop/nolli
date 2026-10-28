@@ -1,5 +1,5 @@
 import type { Rahmen } from './geo/rahmen';
-import type { Objekt } from './osm';
+import { sichtEbene, type Objekt } from './osm';
 import { STIFTE, stift, type StiftId } from './stifte';
 import { darstellung, type Darstellung } from './darstellung';
 
@@ -321,7 +321,7 @@ export function zeichneBlatt(
 		ctx.lineWidth = r.strich(stift('gestrichen').mm);
 		for (const o of objekte) {
 			if (o.zustand !== 'gestrichen') continue;
-			if (!w.sichtbar.has(o.ebene)) continue;
+			if (!w.sichtbar.has(sichtEbene(o))) continue;
 			pfad(o, true); ctx.stroke(); streichen(ctx, o, r);
 		}
 	}
@@ -329,7 +329,7 @@ export function zeichneBlatt(
 	// 5 Gebaeude
 	const bauten = w.ohneBauten ? [] : objekte.filter(
 		(o) => (o.ebene === 'gebaeude' || o.ebene === 'erhalt')
-			&& w.sichtbar.has(o.ebene) && o.zustand !== 'gestrichen'
+			&& w.sichtbar.has(sichtEbene(o)) && o.zustand !== 'gestrichen'
 	);
 	if (d.bauweise === 'weissmodell') {
 		/**
@@ -548,7 +548,7 @@ function beschriften(ctx: CanvasRenderingContext2D, objekte: Objekt[], r: Rahmen
 	};
 
 	const kandidaten = objekte
-		.filter((o) => o.name && w.sichtbar.has(o.ebene) && o.zustand !== 'gestrichen')
+		.filter((o) => o.name && w.sichtbar.has(sichtEbene(o)) && o.zustand !== 'gestrichen')
 		.filter((o) => (o.ebene === 'strasse' && (o.rang ?? 9) <= 6) || o.ebene === 'wasser' || o.ebene === 'gruen')
 		.sort((a, b) => (a.rang ?? 7) - (b.rang ?? 7));
 
@@ -628,6 +628,6 @@ function streichen(ctx: CanvasRenderingContext2D, o: Objekt, r: Rahmen) {
 export const ebenenZaehlen = (objekte: Objekt[]) => {
 	const z = new Map<StiftId, number>();
 	for (const s of STIFTE) z.set(s.id, 0);
-	for (const o of objekte) z.set(o.ebene, (z.get(o.ebene) ?? 0) + 1);
+	for (const o of objekte) z.set(sichtEbene(o), (z.get(sichtEbene(o)) ?? 0) + 1);
 	return z;
 };

@@ -1,6 +1,6 @@
 import { dxfEbene } from '../vertrag';
 import { type Gelaende, feldImRahmen, hoehenlinien, aequidistanz } from '../geo/gelaende';
-import type { Objekt } from '../osm';
+import { sichtEbene, type Objekt } from '../osm';
 import { alleRinge } from '../zeichnen';
 import type { Rahmen } from '../geo/rahmen';
 import { STIFTE, stift } from '../stifte';
@@ -59,7 +59,7 @@ export function alsDxf(objekte: Objekt[], r: Rahmen, mitGestrichenen = false, ge
 
 	for (const o of objekte) {
 		if (o.zustand === 'gestrichen' && !mitGestrichenen) continue;
-		const ebene = o.zustand === 'gestrichen' ? dxfEbene(stift('gestrichen').dxf) : dxfEbene(stift(o.ebene).dxf);
+		const ebene = o.zustand === 'gestrichen' ? dxfEbene(stift('gestrichen').dxf) : dxfEbene(stift(sichtEbene(o)).dxf);
 		for (const ring of alleRinge(o)) {
 			if (ring.length < 2) continue;
 			s += p(0, 'POLYLINE') + p(8, ebene) + p(66, 1) + p(70, o.art === 'flaeche' ? 1 : 0);

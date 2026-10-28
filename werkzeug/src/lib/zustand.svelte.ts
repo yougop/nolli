@@ -1,7 +1,7 @@
 import { t, zahl } from './sprache.svelte';
 import { Rahmen, VERHAELTNISSE, AUSGABEBREITEN, type Verhaeltnis } from './geo/rahmen';
 import { ortsgitter, nachGitter } from './geo/utm';
-import { lesen, imRahmen, type Objekt } from './osm';
+import { lesen, imRahmen, sichtEbene, type Objekt } from './osm';
 import { drin, beruehrt, ausserhalb, schwerpunkt } from './schneiden';
 import { STIFTE, type StiftId } from './stifte';
 import { base } from '$app/paths';
@@ -125,6 +125,8 @@ class Zustand {
 			for (const x of neu) quellen[x.quelleGeometrie ?? 'Overture'] = (quellen[x.quelleGeometrie ?? 'Overture'] ?? 0) + 1;
 			this.objekte = [...osm, ...neu];
 			this.ergaenzung = { release: o.release, quellen, anzahl: neu.length };
+			// Wer ergänzt, will sie sehen — auch wenn die Ebene zuletzt aus war.
+			if (!this.sichtbar.has('overture')) this.sichtbar = new Set([...this.sichtbar, 'overture']);
 		} catch (e) {
 			if (!stopper.signal.aborted)
 				this.fehler = t().overture.fehler(e instanceof Error ? e.message : String(e));
@@ -436,7 +438,7 @@ class Zustand {
 		if (p.length < 3) return 0;
 		const baulich = new Set<StiftId>(['gebaeude', 'erhalt', 'bau']);
 		const treffer = this.objekte
-			.filter((o) => baulich.has(o.ebene) && this.sichtbar.has(o.ebene) && this.trifftPolygon(o, p))
+			.filter((o) => baulich.has(o.ebene) && this.sichtbar.has(sichtEbene(o)) && this.trifftPolygon(o, p))
 			.map((o) => o.id);
 		this.ausgewaehlt = dazu ? new Set([...this.ausgewaehlt, ...treffer]) : new Set(treffer);
 		this.fanglinie = [];
@@ -495,7 +497,7 @@ class Zustand {
 	get beschnitten() { return this.objekte.filter((o) => o.urform).length; }
 
 	auswahlUmkehren() {
-		const sichtbar = this.objekte.filter((o) => this.sichtbar.has(o.ebene));
+		const sichtbar = this.objekte.filter((o) => this.sichtbar.has(sichtEbene(o)));
 		this.ausgewaehlt = new Set(sichtbar.filter((o) => !this.ausgewaehlt.has(o.id)).map((o) => o.id));
 	}
 	alleZuruecksetzen() {
@@ -628,6 +630,9 @@ class Zustand {
 		this.gelaendeDaten = p.gelaendeDaten ?? null;
 		this.gelaendeFuer = p.gelaendeFuer ?? null;
 		this.sichtbar = new Set(p.sichtbar ?? STIFTE.map((s) => s.id));
+		// Sitzungen von vor der Overture-Ebene kennen sie nicht; ohne das
+		// stünde sie beim ersten Ergänzen aus.
+		if (!p.ergaenzung) this.sichtbar.add('overture');
 		this.plangebiet = p.plangebiet;
 		this.darstellung = p.darstellung;
 		this.beschriftung = p.beschriftung;

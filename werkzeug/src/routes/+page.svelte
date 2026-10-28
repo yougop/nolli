@@ -5,7 +5,7 @@
 	import { z, VERHAELTNISSE, AUSGABEBREITEN } from '$lib/zustand.svelte';
 	import { STIFTE, FAHRBAHN } from '$lib/stifte';
 	import { ebenenZaehlen } from '$lib/zeichnen';
-	import { hoehenDeckung, ringflaeche, istTeil, gebaeudeLuecke } from '$lib/osm';
+	import { hoehenDeckung, ringflaeche, istTeil, gebaeudeLuecke, sichtEbene } from '$lib/osm';
 	import { PLACES_ZUVERSICHT } from '$lib/overture';
 	import { amRahmen } from '$lib/schneiden';
 	import { BAUM } from '$lib/analysedaten';
@@ -104,10 +104,18 @@
 	}
 
 	const r = $derived(z.rahmen);
+	/**
+	 * Der Bestand, wie er ins Paket geht. Ausgeblendete Overture-Gebäude
+	 * fehlen darin ganz — im Modell, in der Zeichnung, in den Zahlen. Wer die
+	 * Ebene abschaltet, will die Häuser nicht; die anderen Ebenen sind
+	 * dagegen Darstellung, ihre Objekte bleiben im Paket.
+	 */
+	const bestand = $derived(z.sichtbar.has('overture') ? z.objekte : z.objekte.filter((o) => sichtEbene(o) !== 'overture'));
+	const overtureAn = $derived(!!z.ergaenzung?.anzahl && z.sichtbar.has('overture'));
 	const zaehler = $derived(ebenenZaehlen(z.objekte));
-	const deckung = $derived(hoehenDeckung(z.objekte));
+	const deckung = $derived(hoehenDeckung(bestand));
 	/** Dieselbe Auskunft ohne die `building:part`. Siehe `hoehenDeckung`. */
-	const deckungHaeuser = $derived(hoehenDeckung(z.objekte, true));
+	const deckungHaeuser = $derived(hoehenDeckung(bestand, true));
 	/** Nur die Kronen im Rahmen — `rest.json` reicht darüber hinaus. */
 	const imRahmenBaeume = $derived(
 		r ? z.baumpunkte.filter((b) => b.x >= r.x0 && b.x <= r.x1 && b.y >= r.y0 && b.y <= r.y1).length : 0
@@ -203,7 +211,7 @@
 	 */
 	function flaechenbilanz() {
 		const aus: Record<string, number> = {};
-		for (const o of z.objekte) {
+		for (const o of bestand) {
 			if (o.art !== 'flaeche' || o.zustand === 'gestrichen') continue;
 			const schluessel = o.ebene === 'erhalt' ? 'gebaeude' : o.ebene;
 			let a = 0;
@@ -260,14 +268,14 @@
 	async function modellTeile(rr: Rahmen, mitRand: boolean) {
 		const textur = 'model_texture.png';
 		const teile: { name: string; inhalt: Blob | string }[] = [
-			{ name: pfadV2('modell.obj'), inhalt: obj(z.objekte, rr, z.gelaendeJetzt, 'model.mtl', 'innen',
+			{ name: pfadV2('modell.obj'), inhalt: obj(bestand, rr, z.gelaendeJetzt, 'model.mtl', 'innen',
 				modellKronen ? z.baumpunkte : []) },
 			{ name: 'model.mtl', inhalt: alsMtl(textur) },
-			{ name: textur, inhalt: await bild(z.objekte, rr, 'modellaufsicht', z.bereinigt, z.beschriftung,
+			{ name: textur, inhalt: await bild(bestand, rr, 'modellaufsicht', z.bereinigt, z.beschriftung,
 				z.plangebiet, z.sichtbar, true, 'image/png', undefined) }
 		];
 		if (mitRand)
-			teile.push({ name: 'model_outside.obj', inhalt: obj(z.objekte, rr, z.gelaendeJetzt, 'model.mtl', 'aussen') });
+			teile.push({ name: 'model_outside.obj', inhalt: obj(bestand, rr, z.gelaendeJetzt, 'model.mtl', 'aussen') });
 		return teile;
 	}
 
@@ -283,7 +291,7 @@
 		for (const d of flach) {
 			arbeitet = `paket:${t().ausgeben.paketBild(++n, flach.length)}`;
 			await anstrich();
-			const b = await bild(z.objekte, rr, d.id, z.bereinigt, z.beschriftung, z.plangebiet, z.sichtbar,
+			const b = await bild(bestand, rr, d.id, z.bereinigt, z.beschriftung, z.plangebiet, z.sichtbar,
 				false, WEBP, z.baeume ? z.baumpunkte : undefined);
 			teile.push({ name: pfadV2(`bilder/${d.id}.webp`), inhalt: b });
 			bilder.push({ datei: `bilder/${d.id}.webp`, darstellung: d.id, was: englisch.darstellungen[d.id].zweck,
@@ -313,7 +321,7 @@
 				 * Preis dafür, dass zu jeder Darstellung eine Fassung gehört,
 				 * die als Grund taugt.
 				 */
-				const g = await bild(z.objekte, rr, d.id, z.bereinigt, z.beschriftung, z.plangebiet, z.sichtbar,
+				const g = await bild(bestand, rr, d.id, z.bereinigt, z.beschriftung, z.plangebiet, z.sichtbar,
 					true, WEBP, undefined);
 				teile.push({ name: pfadV2(`bilder/${d.id}_grund.webp`), inhalt: g });
 				bilder.push({ datei: `bilder/${d.id}_grund.webp`, darstellung: d.id,
@@ -408,7 +416,7 @@
 				+ `geschrieben:   ${geschrieben}\nangekündigt: ${angekuendigt}`);
 
 		teile.push(...await modellTeile(rr, true));
-		teile.push({ name: pfadV2('zeichnung.dxf'), inhalt: dxf(z.objekte, rr, z.gelaendeJetzt) });
+		teile.push({ name: pfadV2('zeichnung.dxf'), inhalt: dxf(bestand, rr, z.gelaendeJetzt) });
 		const vertrag = vertragJetzt(basis, { bilder, daten });
 		teile.push({ name: 'frame.json', inhalt: JSON.stringify(vertrag, null, 2) });
 		teile.push({ name: 'README.md', inhalt: paketLiesmich(vertrag, sprache.jetzt) });
@@ -434,7 +442,7 @@
 	/** Die Baukörper mit allem, was an ihnen hängt. */
 	function koerperliste() {
 		const rr = r!;
-		return z.objekte
+		return bestand
 			.filter((o) => (o.ebene === 'gebaeude' || o.ebene === 'erhalt') && o.zustand !== 'gestrichen')
 			.map((o) => ({
 				// Ein ergänzter Körper hat keine OSM-Kennung, sondern die von Overture.
@@ -495,9 +503,9 @@
 		const rr = r!;
 		return vertragV2(rr.vertrag({
 			ort: z.ort ? { name: z.ort.name, wo: z.ort.wo } : null,
-			objekte: z.objekte.length,
-			gestrichen: z.objekte.filter((o) => o.zustand === 'gestrichen').map((o) => o.id),
-			erhalt: z.objekte.filter((o) => o.zustand === 'erhalt').map((o) => o.id),
+			objekte: bestand.length,
+			gestrichen: bestand.filter((o) => o.zustand === 'gestrichen').map((o) => o.id),
+			erhalt: bestand.filter((o) => o.zustand === 'erhalt').map((o) => o.id),
 			/**
 			 * Die beiden angenommenen Zahlen am Baum.
 			 *
@@ -631,7 +639,7 @@
 			 * Grenze dieses Modells.
 			 */
 			vorbehalte: ['daecher_flach', z.gelaendeJetzt ? 'gelaende_grob' : 'gelaende_eben',
-				...(z.ergaenzung?.anzahl ? ['gebaeude_luftbild'] : [])],
+				...(overtureAn ? ['gebaeude_luftbild'] : [])],
 			/**
 			 * Gebäude aus Overture, wo OpenStreetMap keine hat.
 			 *
@@ -654,7 +662,7 @@
 					eintraege: z.places.length
 				}
 				: null,
-			overture: z.ergaenzung?.anzahl
+			overture: overtureAn && z.ergaenzung
 				? {
 					quelle: 'Overture Maps Foundation, buildings theme',
 					release: z.ergaenzung.release,
@@ -797,11 +805,11 @@
 			if (art === 'bild') {
 				const b = raeumlich && raum
 					? await raum.alsBild(r.pixelBreite, r.pixelHoehe)
-					: await bild(z.objekte, r, z.darstellung, z.bereinigt, z.beschriftung, z.plangebiet, z.sichtbar,
+					: await bild(bestand, r, z.darstellung, z.bereinigt, z.beschriftung, z.plangebiet, z.sichtbar,
 						false, 'image/png', z.baeume ? z.baumpunkte : undefined);
 				laden(b, `${basis}_${darstellungV2(z.darstellung)}_${r.pixelBreite}px.png`, 'image/png');
 			} else if (art === 'dxf') {
-				laden(dxf(z.objekte, r, z.gelaendeJetzt), `${basis}.dxf`, 'application/dxf');
+				laden(dxf(bestand, r, z.gelaendeJetzt), `${basis}.dxf`, 'application/dxf');
 			} else if (art === 'obj') {
 				laden(await paket(await modellTeile(r, false)), `${basis}_model.zip`, 'application/zip');
 			} else if (art === 'paket') {
@@ -1073,7 +1081,7 @@
 				<div class="teil">
 					<span class="feld">{t().bereinigen.ebenen}</span>
 					<ul class="ebenen">
-						{#each STIFTE.filter((s) => !['rahmen', 'gestrichen'].includes(s.id)) as s}
+						{#each STIFTE.filter((s) => !['rahmen', 'gestrichen'].includes(s.id) && (s.id !== 'overture' || !!z.ergaenzung)) as s}
 							{@const n = zaehler.get(s.id) ?? 0}
 							<li>
 								<button
@@ -1220,7 +1228,7 @@
 							     Aussage und „0 %" die Nachkommastelle, hinter der sie verschwindet.
 							     Ohne die Teile gezählt: Die tragen fast immer eine Höhe und
 							     ließen die Erfassung besser aussehen, als sie ist. -->
-							{#if z.ergaenzung}
+							{#if overtureAn && z.ergaenzung}
 								<div><dt>{t().overture.zeile}</dt><dd class="mono">{z.ergaenzung.anzahl}</dd></div>
 							{/if}
 							<div><dt>{t().bereinigen.mitHoehe}</dt><dd class="mono">{t().bereinigen.von(deckungHaeuser.echt, deckungHaeuser.gesamt)}</dd></div>
@@ -1330,7 +1338,7 @@
 				{#if r}
 					<div class="teil">
 						<span class="feld">frame.json</span>
-						<pre class="vertrag mono">{JSON.stringify(vertragV2(r.vertrag({ objekte: z.objekte.length, gestrichen: z.gestrichene, erhalt: z.erhaltene })), null, 1)}</pre>
+						<pre class="vertrag mono">{JSON.stringify(vertragV2(r.vertrag({ objekte: bestand.length, gestrichen: z.gestrichene, erhalt: z.erhaltene })), null, 1)}</pre>
 					</div>
 				{/if}
 
@@ -1375,7 +1383,7 @@
 			<span>{t().fuss.keinRahmen}</span>
 		{/if}
 		<span class="recht">
-			{t().fuss.osm}{#if z.ergaenzung?.anzahl}{' · © Overture Maps'}{/if}{#if z.schritt === 1}{' · '}{t().fuss.kacheln(z.kartenquelle === 'ohne' ? t().fuss.keine : 'OpenFreeMap')}{/if}
+			{t().fuss.osm}{#if overtureAn}{' · © Overture Maps'}{/if}{#if z.schritt === 1}{' · '}{t().fuss.kacheln(z.kartenquelle === 'ohne' ? t().fuss.keine : 'OpenFreeMap')}{/if}
 		</span>
 	</footer>
 </div>

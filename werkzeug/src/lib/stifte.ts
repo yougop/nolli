@@ -17,7 +17,7 @@
  * Loch und weiss nicht, warum.
  */
 export type StiftId =
-	| 'gruen' | 'wasser' | 'bahn' | 'strasse' | 'bau' | 'gebaeude' | 'baum'
+	| 'gruen' | 'wasser' | 'bahn' | 'strasse' | 'bau' | 'gebaeude' | 'overture' | 'baum'
 	| 'erhalt' | 'gestrichen' | 'plangebiet' | 'rahmen';
 
 export type Stift = {
@@ -38,6 +38,13 @@ export const STIFTE: Stift[] = [
 	{ id: 'strasse',    name: 'Straßen',        dxf: 'N_STRASSE',    mm: 0.18, hell: '#CFCFCF', dunkel: '#4A4E52', fuellung: false, dxfFarbe: 9 },
 	{ id: 'bau',        name: 'Im Bau',          dxf: 'N_BAU',        mm: 0.18, hell: '#BDBDBD', dunkel: '#4E5255', fuellung: true,  dxfFarbe: 2 },
 	{ id: 'gebaeude',   name: 'Gebäude',        dxf: 'N_GEBAEUDE',   mm: 0.25, hell: '#111111', dunkel: '#E8EAE7', fuellung: true,  dxfFarbe: 7 },
+	/**
+	 * Gebäude aus Overture (`overture.ts`). Am Objekt bleiben sie Gebäude —
+	 * Höhe, Modell und Vertrag behandeln sie wie jedes andere. Nur sichtbar
+	 * und in der Zeichnung sind sie eine eigene Ebene, damit man sie an- und
+	 * ausschalten kann (Volker, 28.10.2026). Siehe `sichtEbene`.
+	 */
+	{ id: 'overture',   name: 'Overture',       dxf: 'N_OVERTURE',   mm: 0.25, hell: '#111111', dunkel: '#E8EAE7', fuellung: true,  dxfFarbe: 30 },
 	{ id: 'erhalt',     name: 'Erhalt',         dxf: 'N_ERHALT',     mm: 0.50, hell: '#111111', dunkel: '#E8EAE7', fuellung: true,  dxfFarbe: 7 },
 	{ id: 'gestrichen', name: 'Gestrichen',     dxf: 'N_GESTRICHEN', mm: 0.18, hell: '#C3C3C3', dunkel: '#44484C', fuellung: false, dxfFarbe: 9 },
 	{ id: 'plangebiet', name: 'Plangebiet',     dxf: 'N_PLANGEBIET', mm: 0.70, hell: '#8CA82F', dunkel: '#A6C23F', fuellung: false, akzent: true, dxfFarbe: 1 },

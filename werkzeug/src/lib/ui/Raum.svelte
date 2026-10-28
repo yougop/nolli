@@ -6,6 +6,7 @@
 	import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 	import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 	import { z } from '$lib/zustand.svelte';
+	import { sichtEbene } from '$lib/osm';
 	import { Rahmen } from '$lib/geo/rahmen';
 	import { zeichneBlatt } from '$lib/zeichnen';
 	import { baukoerper, hoechstes } from '$lib/raum';
@@ -144,7 +145,7 @@
 			pixelBreite: c.width, verhaeltnis: r.verhaeltnis
 		});
 		const ohneBauten = new Set<StiftId>(
-			[...z.sichtbar].filter((s) => s !== 'gebaeude' && s !== 'erhalt')
+			[...z.sichtbar].filter((s) => s !== 'gebaeude' && s !== 'erhalt' && s !== 'overture')
 		);
 		zeichneBlatt(c.getContext('2d')!, z.objekte, tex, {
 			darstellung: 'modell3d', bereinigt: z.bereinigt, beschriftung: false,
@@ -180,7 +181,7 @@
 		}
 
 		const sichtbar = (o: (typeof z.objekte)[number]) =>
-			z.sichtbar.has(o.ebene) && o.zustand !== 'gestrichen';
+			z.sichtbar.has(sichtEbene(o)) && o.zustand !== 'gestrichen';
 		const bauten = z.objekte.filter((o) => o.ebene === 'gebaeude' && sichtbar(o));
 		const bleibt = z.objekte.filter((o) => o.ebene === 'erhalt' && sichtbar(o));
 

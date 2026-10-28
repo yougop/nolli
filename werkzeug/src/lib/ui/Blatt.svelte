@@ -3,7 +3,7 @@
 	import { z } from '$lib/zustand.svelte';
 	import { Rahmen } from '$lib/geo/rahmen';
 	import { zeichneBlatt } from '$lib/zeichnen';
-	import { trifft } from '$lib/osm';
+	import { trifft, sichtEbene } from '$lib/osm';
 
 	let { waehlbar = false }: { waehlbar?: boolean } = $props();
 
@@ -188,7 +188,7 @@
 		if (!p || !r) return;
 		if (z.werkzeug === 'polygon') { z.punktSetzen(p[0], p[1]); return; }
 		const tol = r.mpp * 4;
-		const treffer = z.objekte.filter((o) => z.sichtbar.has(o.ebene) && trifft(o, p[0], p[1], tol));
+		const treffer = z.objekte.filter((o) => z.sichtbar.has(sichtEbene(o)) && trifft(o, p[0], p[1], tol));
 		if (!treffer.length) { if (!e.shiftKey) z.ausgewaehlt = new Set(); return; }
 		// kleinstes Objekt gewinnt, damit ein Haus im Block anklickbar bleibt
 		treffer.sort((a, b) => flaeche(a) - flaeche(b));

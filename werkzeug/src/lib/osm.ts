@@ -484,3 +484,12 @@ export function gebaeudeLuecke(objekte: Objekt[], k: { x0: number; y0: number; x
 	const km = m / 1000;
 	return { km, haeuser, luecke: km >= 1 && haeuser < 5 * km };
 }
+
+/**
+ * Die Ebene, unter der ein Objekt sichtbar ist und gezeichnet wird.
+ * Ergänzte Overture-Gebäude haben `ebene: 'gebaeude'`, stehen aber unter
+ * `overture`, damit sie sich getrennt schalten lassen. Als Erhalt gesetzt,
+ * gehören sie zum Erhalt wie jedes andere Haus.
+ */
+export const sichtEbene = (o: Objekt): StiftId =>
+	o.herkunft === 'overture' && o.ebene === 'gebaeude' ? 'overture' : o.ebene;

@@ -291,7 +291,7 @@ const de = {
 	} as Record<string, { name: string; zweck: string }>,
 	stifte: {
 		gruen: 'Grün', wasser: 'Wasser', bahn: 'Bahn', strasse: 'Straßen', bau: 'Im Bau',
-		gebaeude: 'Gebäude', baum: 'Bäume', erhalt: 'Erhalt', gestrichen: 'Gestrichen',
+		gebaeude: 'Gebäude', overture: 'Overture', baum: 'Bäume', erhalt: 'Erhalt', gestrichen: 'Gestrichen',
 		plangebiet: 'Plangebiet', rahmen: 'Rahmen'
 	} as Record<StiftId, string>,
 	nutzung: {
@@ -548,7 +548,7 @@ const en: typeof de = {
 	},
 	stifte: {
 		gruen: 'Green', wasser: 'Water', bahn: 'Rail', strasse: 'Streets', bau: 'Under construction',
-		gebaeude: 'Buildings', baum: 'Trees', erhalt: 'Kept', gestrichen: 'Removed',
+		gebaeude: 'Buildings', overture: 'Overture', baum: 'Trees', erhalt: 'Kept', gestrichen: 'Removed',
 		plangebiet: 'Site area', rahmen: 'Frame'
 	},
 	nutzung: {

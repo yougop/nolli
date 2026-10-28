@@ -48,6 +48,19 @@ export type Zeichenwunsch = {
 	ohneBauten?: boolean;
 	/** Baeume, wenn sie zugeschaltet sind. Ort und Kronendurchmesser in Metern. */
 	baeume?: { x: number; y: number; krone: number }[];
+	/** Places aus Overture, wenn zugeschaltet. Punkt und Gruppe. */
+	places?: { x: number; y: number; gruppe: string }[];
+};
+
+/**
+ * Farbe je Gruppe für die Places. Gedämpft, damit sie auf jedem Grund lesen,
+ * und paarweise unterscheidbar bei den häufigen Gruppen: Gastronomie warm,
+ * Versorgung rot, Dienstleistung blaugrau.
+ */
+export const PLACES_FARBEN: Record<string, string> = {
+	gastronomie: '#D9822B', versorgung: '#C23B5E', dienstleistung: '#5B6C8F',
+	gesundheit: '#2E9A63', bildung: '#2F7FBF', verwaltung: '#7A5AA6',
+	freizeit: '#B8962A', verkehr: '#4A4A48', sonstiges: '#9A9A96'
 };
 
 const AKZENT = '#8CA82F';
@@ -470,6 +483,27 @@ export function zeichneBlatt(
 			const [px, py] = r.utmZuPixel(b.x, b.y);
 			const rad = Math.max(r.strich(0.4), b.krone / 2 / r.mpp);
 			ctx.beginPath(); ctx.arc(px, py, rad, 0, Math.PI * 2); ctx.stroke();
+		}
+		ctx.restore();
+	}
+
+	/**
+	 * 5c Places, wenn zugeschaltet. Ein Punkt je Ort, nicht maßstäblich:
+	 * Ein Laden hat keinen Durchmesser. Mit hellem Rand, damit er auf einem
+	 * schwarzen Haus genauso steht wie auf der Straße.
+	 */
+	if (w.places?.length) {
+		// 1,6 mm auf A1: in der Gesamtansicht am Schirm gut drei Pixel breit,
+		// im Druck ein deutlicher Punkt, der kein Haus verdeckt.
+		const rad = Math.max(2, r.strich(1.6));
+		ctx.save();
+		ctx.lineWidth = Math.max(0.75, r.strich(0.3));
+		ctx.strokeStyle = d.grund === '#111111' ? '#111111' : '#FFFFFF';
+		for (const p of w.places) {
+			const [px, py] = r.utmZuPixel(p.x, p.y);
+			ctx.beginPath(); ctx.arc(px, py, rad, 0, Math.PI * 2);
+			ctx.fillStyle = PLACES_FARBEN[p.gruppe] ?? PLACES_FARBEN.sonstiges;
+			ctx.fill(); ctx.stroke();
 		}
 		ctx.restore();
 	}

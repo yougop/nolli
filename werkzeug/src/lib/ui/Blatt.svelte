@@ -57,7 +57,7 @@
 		if (!r || !c) return;
 		// Abhängigkeiten anmelden, damit jede Änderung neu zeichnet
 		z.objekte; z.sichtbar; z.hervorgehoben; z.ausgewaehlt; z.darstellung;
-		z.bereinigt; z.plangebiet; z.beschriftung; z.fanglinie; z.zoom; z.mitte; flott; z.baeume;
+		z.bereinigt; z.plangebiet; z.beschriftung; z.fanglinie; z.zoom; z.mitte; flott; z.baeume; z.placesZeigen; z.places;
 		const dpr = Math.min(devicePixelRatio || 1, 2);
 		c.width = Math.round(r.pixelBreite * dpr);
 		c.height = Math.round(r.pixelHoehe * dpr);
@@ -71,6 +71,7 @@
 			sichtbar: z.sichtbar, hervorgehoben: z.hervorgehoben,
 			ausgewaehlt: z.ausgewaehlt, fanglinie: z.fanglinie, ohneSchatten: flott,
 			baeume: z.baeume ? z.baumpunkte : undefined,
+			places: z.placesZeigen ? z.places : undefined,
 			blattrand: z.kasten ? [z.kasten.x0, z.kasten.y0, z.kasten.x1, z.kasten.y1] : null
 		});
 	});

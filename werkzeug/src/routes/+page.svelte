@@ -13,7 +13,7 @@
 	import type { Rahmen } from '$lib/geo/rahmen';
 	import { DARSTELLUNGEN, darstellung as darstellungVon } from '$lib/darstellung';
 	import { laden, stempel, bild, dxf, obj, alsMtl, paket, WEBP } from '$lib/ui/ausgeben';
-	import { sucheOrt } from '$lib/quelle';
+	import { sucheOrt, ortBei } from '$lib/quelle';
 	import { t, sprache, spracheSetzen, spracheAnfangen, gebiet, zahl, englisch } from '$lib/sprache.svelte';
 	import { aufV2, vertragV2, pfadV2, darstellungV2 } from '$lib/vertrag';
 	import { paketLiesmich } from '$lib/liesmich';
@@ -129,6 +129,24 @@
 		if (/Esri/i.test(q)) teile.push('Esri Community Maps contributors (CC BY 4.0)');
 		return teile.join(' · ');
 	}
+	/**
+	 * Der Ort unter der Rahmenmitte, nachgeschlagen, sobald der Rahmen eine
+	 * Weile ruht. Die Suche allein reicht nicht: Wer den Rahmen danach
+	 * verschiebt, stünde sonst unter dem alten Namen.
+	 */
+	let ortRahmen = $state<{ name: string; wo: string } | null>(null);
+	$effect(() => {
+		if (!r) { ortRahmen = null; return; }
+		const g = r.eckenGrad;
+		const lon = (g.west + g.ost) / 2, lat = (g.sued + g.nord) / 2;
+		const ab = new AbortController();
+		const uhr = setTimeout(async () => {
+			try { ortRahmen = await ortBei(lon, lat, ab.signal); } catch { /* bleibt beim alten */ }
+		}, 800);
+		return () => { clearTimeout(uhr); ab.abort(); };
+	});
+	const ortZeile = $derived(ortRahmen ?? (z.ort ? { name: z.ort.name, wo: z.ort.wo } : null));
+
 	const erfassung = $derived(r && z.objekte.length ? gebaeudeLuecke(z.objekte, r) : null);
 	const mitAdresse = $derived(z.objekte.filter((o) => o.adresse).length);
 	const denkmale = $derived(z.objekte.filter((o) => o.denkmal).length);
@@ -266,7 +284,7 @@
 			arbeitet = `paket:${t().ausgeben.paketBild(++n, flach.length)}`;
 			await anstrich();
 			const b = await bild(z.objekte, rr, d.id, z.bereinigt, z.beschriftung, z.plangebiet, z.sichtbar,
-				false, WEBP, z.baeume ? z.baumpunkte : undefined);
+				false, WEBP, z.baeume ? z.baumpunkte : undefined, z.placesZeigen ? z.places : undefined);
 			teile.push({ name: pfadV2(`bilder/${d.id}.webp`), inhalt: b });
 			bilder.push({ datei: `bilder/${d.id}.webp`, darstellung: d.id, was: englisch.darstellungen[d.id].zweck,
 				baeume: !!z.baeume && !!z.baumpunkte.length });
@@ -780,7 +798,7 @@
 				const b = raeumlich && raum
 					? await raum.alsBild(r.pixelBreite, r.pixelHoehe)
 					: await bild(z.objekte, r, z.darstellung, z.bereinigt, z.beschriftung, z.plangebiet, z.sichtbar,
-						false, 'image/png', z.baeume ? z.baumpunkte : undefined);
+						false, 'image/png', z.baeume ? z.baumpunkte : undefined, z.placesZeigen ? z.places : undefined);
 				laden(b, `${basis}_${darstellungV2(z.darstellung)}_${r.pixelBreite}px.png`, 'image/png');
 			} else if (art === 'dxf') {
 				laden(dxf(z.objekte, r, z.gelaendeJetzt), `${basis}.dxf`, 'application/dxf');
@@ -903,6 +921,15 @@
 								: t().sicht.baeumeFlach(imRahmenBaeume))
 							: t().sicht.keineBaeume}
 					>{t().sicht.baeume}</button>
+					<!--
+						Places aus Overture. Beim ersten Einschalten werden sie geholt, wie das
+						Gelände. Nur in den Aufsichten: Ein Punkt hat keine Höhe.
+					-->
+					<button type="button" class="einzeln" class:an={z.placesZeigen && !raeumlich}
+						disabled={raeumlich || !z.geladenFuer || !!z.placesLaedt}
+						onclick={() => z.placesUmschalten()}
+						title={z.placesLaedt ?? (z.placesInfo ? t().sicht.placesTitel(z.places.length) : t().sicht.placesHolen)}
+					>{t().sicht.places}</button>
 					<!--
 						Das Gelände ist nur im 3D-Modell zu sehen; die flachen Darstellungen
 						sind Aufsichten und kennen keine Höhe. Dort ist der Schalter aus und
@@ -1333,10 +1360,10 @@
 	</main>
 
 	<footer class="zeile mono">
-		{#if z.ort}
-			<!-- Der Ort, um den der Rahmen gelegt wurde. Volker am 28.10.2026:
-			     Man soll immer sehen, wo man ist. -->
-			<span class="ortname" title={z.ort.wo}>{z.ort.name}{z.ort.wo ? ` · ${z.ort.wo.split(' · ')[0]}` : ''}</span>
+		{#if ortZeile}
+			<!-- Der Ort unter dem Rahmen. Volker am 28.10.2026: Man soll immer
+			     sehen, wo man ist, auch nach dem Verschieben. -->
+			<span class="ortname" title={ortZeile.wo}>{ortZeile.name}{ortZeile.wo ? ` · ${ortZeile.wo.split(' · ')[0]}` : ''}</span>
 		{/if}
 		{#if r}
 			<span title={t().fuss.gitterTitel}>

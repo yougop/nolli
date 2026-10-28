@@ -389,3 +389,27 @@ export async function sucheOrt(q: string): Promise<Treffer[]> {
 		};
 	}).filter((t: Treffer) => Number.isFinite(t.lon) && Number.isFinite(t.lat));
 }
+
+/**
+ * Wo liegt dieser Punkt? Für die Statuszeile: Sie nennt den Ort des Rahmens,
+ * auch wenn er nach der Suche verschoben wurde (Volker, 28.10.2026).
+ *
+ * Photon gibt das nächste Objekt zurück, oft ein Haus oder ein Lokal. Für
+ * die Statuszeile zählt der Ortsteil, nicht das Lokal: Ist der Treffer selbst
+ * ein Ort, gilt sein Name, sonst Ortsteil oder Stadt.
+ */
+export async function ortBei(lon: number, lat: number, stop?: AbortSignal): Promise<{ name: string; wo: string } | null> {
+	const ziel = new URL('https://photon.komoot.io/reverse');
+	ziel.searchParams.set('lon', lon.toFixed(5));
+	ziel.searchParams.set('lat', lat.toFixed(5));
+	ziel.searchParams.set('lang', sprache.jetzt);
+	const a = await fetch(ziel, { signal: stop ? AbortSignal.any([stop, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000) });
+	if (!a.ok) return null;
+	const p = (await a.json()).features?.[0]?.properties;
+	if (!p) return null;
+	const istOrt = ['city', 'district', 'locality', 'county', 'state'].includes(p.type);
+	const name = (istOrt ? p.name : null) ?? p.district ?? p.locality ?? p.city ?? p.county ?? p.name;
+	if (!name) return null;
+	const wo = [...new Set([p.city, p.county, p.state, p.country].filter((x) => x && x !== name))].join(' · ');
+	return { name, wo };
+}

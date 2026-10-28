@@ -258,6 +258,9 @@ const de = {
 		zeile: 'davon Overture',
 		entfernen: 'Wieder entfernen',
 		abbrechen: 'Abbrechen',
+		placesHolen: 'Places aus Overture holen',
+		placesGeholt: (n: number) => `${n.toLocaleString('de-DE')} Places aus Overture`,
+		placesHinweis: 'Geschäfte, Lokale, Praxen und Dienste aus Firmenverzeichnissen und Plattformen (Meta, Foursquare u. a.), oft vollständiger als OSM, aber ungeprüft. Nur geöffnete mit ausreichender Zuversicht; ohne Telefon und E-Mail. Liegen im Paket als eigene Datei, nicht im Plan.',
 		hinweis: 'Overture führt OpenStreetMap mit Umrissen zusammen, die Microsoft, Google und Esri aus Luftbildern gewonnen haben. Ergänzt wird nur, wo OSM kein Gebäude hat. Die Höhen dieser Häuser sind geschätzt und tragen das im Modell im Namen.'
 	},
 	gelaende: {
@@ -512,6 +515,9 @@ const en: typeof de = {
 		zeile: 'of which Overture',
 		entfernen: 'Remove again',
 		abbrechen: 'Cancel',
+		placesHolen: 'Fetch places from Overture',
+		placesGeholt: (n) => `${n.toLocaleString('en-GB')} places from Overture`,
+		placesHinweis: 'Shops, food and drink, practices and services from business directories and platforms (Meta, Foursquare and others), often more complete than OSM but unverified. Only open ones with enough confidence; no phone or e-mail. They go into the package as a file of their own, not into the plan.',
 		hinweis: 'Overture merges OpenStreetMap with footprints that Microsoft, Google and Esri derived from aerial imagery. Buildings are only added where OSM has none. Their heights are estimated, and the model says so in their names.'
 	},
 	gelaende: {

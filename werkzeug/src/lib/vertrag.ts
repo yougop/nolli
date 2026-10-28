@@ -137,7 +137,13 @@ export const FELDER: Record<string, string> = {
 	herkunft_umriss: 'geometry_source',
 	ergaenzt: 'added',
 	quellen: 'sources',
-	namensnennung: 'attribution'
+	namensnennung: 'attribution',
+	// Places
+	kategorie: 'category',
+	hierarchie: 'hierarchy',
+	zuversicht: 'confidence',
+	zuversicht_min: 'min_confidence',
+	marke: 'brand'
 };
 
 /** Aufgezählte Werte, je Feldname (dem deutschen). */
@@ -149,7 +155,7 @@ export const WERTE: Record<string, Record<string, string>> = {
 	gruppe: {
 		verkehr: 'transport', moeblierung: 'furniture', freizeit: 'leisure', versorgung: 'amenities',
 		gastronomie: 'food_drink', verwaltung: 'administration', sonstiges: 'other', bildung: 'education',
-		gesundheit: 'health'
+		gesundheit: 'health', dienstleistung: 'services'
 	},
 	typ: { punkt: 'point', flaeche: 'area', linie: 'line' },
 	vorbehalte: {
@@ -187,6 +193,7 @@ export const DATEIEN: Record<string, string> = {
 	'daten/rest.json': 'data/other.json',
 	'daten/baeume.json': 'data/trees.json',
 	'daten/gelaende.json': 'data/terrain.json',
+	'daten/places.json': 'data/places.json',
 	'bilder/3d-modell.webp': 'images/model_3d.webp'
 };
 

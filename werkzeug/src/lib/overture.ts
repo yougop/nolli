@@ -173,3 +173,89 @@ export function gebaeudeErgaenzen(merkmale: Merkmal[], gitter: Gitter, osm: Obje
 	}
 	return { objekte: aus, quellen: Object.fromEntries(quellen) };
 }
+
+/**
+ * Ein Ort aus Overture Places: Geschäft, Lokal, Praxis, Büro.
+ *
+ * Getrennt von den OSM-Punkten (`Poi`), weil die Lizenz eine andere ist
+ * (CDLA Permissive 2.0, Foursquare Apache 2.0) und die Güte auch: Die
+ * Einträge stammen aus Firmenverzeichnissen und Plattformen wie Meta und
+ * Foursquare, mit einer Zuversicht je Eintrag.
+ *
+ * Bewusst nicht übernommen: Telefon, E-Mail, Social-Media-Profile. Das sind
+ * Kontaktdaten, teils von Einzelpersonen; der Städtebau braucht sie nicht,
+ * und das Paket wird weitergegeben.
+ */
+export type Place = {
+	id: string; x: number; y: number;
+	name?: string;
+	/** Overtures `basic_category`, etwa `restaurant` */
+	kategorie?: string;
+	/** Overtures Taxonomie von oben nach unten */
+	hierarchie: string[];
+	/** Dieselben Gruppen wie bei den OSM-Punkten, dazu `dienstleistung` */
+	gruppe: string;
+	zuversicht: number;
+	adresse?: string;
+	marke?: string;
+	website?: string;
+};
+
+/** Mindestzuversicht. Steht auch im Vertrag. */
+export const PLACES_ZUVERSICHT = 0.5;
+
+/**
+ * Overtures oberste Ebene auf Nollis Gruppen. Am 28.10.2026 kamen in der
+ * Hamburger Altstadt und in Upper Saddle River genau diese vor.
+ */
+const PLACES_GRUPPEN: Record<string, string> = {
+	food_and_drink: 'gastronomie', shopping: 'versorgung', lifestyle_services: 'versorgung',
+	health_care: 'gesundheit', education: 'bildung', community_and_government: 'verwaltung',
+	arts_and_entertainment: 'freizeit', sports_and_recreation: 'freizeit',
+	cultural_and_historic: 'freizeit', lodging: 'freizeit',
+	travel_and_transportation: 'verkehr', services_and_business: 'dienstleistung'
+};
+
+const json = <T>(v: unknown): T | undefined => {
+	if (typeof v !== 'string') return undefined;
+	try { return JSON.parse(v) as T; } catch { return undefined; }
+};
+
+export function placesAus(merkmale: Merkmal[], gitter: Gitter,
+	k: { x0: number; y0: number; x1: number; y1: number }): Place[] {
+	const gesehen = new Set<string>();
+	const aus: Place[] = [];
+	for (const f of merkmale) {
+		const q = f.props;
+		if (f.geo.type !== 'Point') continue;
+		const id = String(q.id ?? '');
+		if (!id || gesehen.has(id)) continue;
+		// Ohne Angabe gilt ein Ort als geöffnet; in Hamburg fehlt sie bei 38 %.
+		if (q.operating_status && q.operating_status !== 'open') continue;
+		const zuversicht = Number(q.confidence);
+		if (!(zuversicht >= PLACES_ZUVERSICHT)) continue;
+		const tax = json<{ primary?: string; hierarchy?: string[] }>(q.taxonomy);
+		const hierarchie = tax?.hierarchy ?? [];
+		// Berge, Gewässer, Stadtteile: keine Nutzung, sondern Geografie.
+		if (hierarchie[0] === 'geographic_entities') continue;
+		const [lon, lat] = f.geo.coordinates;
+		const p = nachGitter(lon, lat, gitter);
+		if (p.x < k.x0 || p.x > k.x1 || p.y < k.y0 || p.y > k.y1) continue;
+		gesehen.add(id);
+		const adresse = json<{ freeform?: string; locality?: string }[]>(q.addresses)?.[0];
+		const marke = json<{ names?: { primary?: string } }>(q.brand)?.names?.primary;
+		const website = json<string[]>(q.websites)?.[0];
+		aus.push({
+			id, x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10,
+			name: typeof q['@name'] === 'string' ? q['@name'] : undefined,
+			kategorie: typeof q.basic_category === 'string' ? q.basic_category : tax?.primary,
+			hierarchie,
+			gruppe: PLACES_GRUPPEN[hierarchie[0]] ?? 'sonstiges',
+			zuversicht: Math.round(zuversicht * 100) / 100,
+			adresse: adresse?.freeform ? [adresse.freeform, adresse.locality].filter(Boolean).join(', ') : undefined,
+			marke: marke || undefined,
+			website
+		});
+	}
+	return aus;
+}

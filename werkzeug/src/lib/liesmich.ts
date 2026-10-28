@@ -23,6 +23,7 @@ export function paketLiesmich(v: V, sprache: Sprache): string {
 	const dx = -x0, dy = -y0;
 	const ter = v.terrain;
 	const ov = v.overture;
+	const pl = v.places;
 	const ort = v.place ? [v.place.name, v.place.region].filter(Boolean).join(', ') : '—';
 
 	if (sprache === 'de') return `# Nolli-Paket — ${ort}
@@ -76,7 +77,11 @@ ${ov ? `
 ` : ''}
 \`roofs_flat\`: Jeder Baukörper hat eine Höhe und ein waagerechtes Dach. Höhen ohne Messung kommen aus der Geschosszahl oder sind mit 8 m angenommen; solche Körper tragen \`_height_estimated\` im Namen.
 
-## Bilder
+${pl ? `## Places
+
+\`data/places.json\`: ${pl.entries} Orte aus Overture Places (Release ${pl.release}) — Geschäfte, Lokale, Praxen, Dienste. Aus Firmenverzeichnissen und Plattformen zusammengeführt, oft vollständiger als OpenStreetMap, aber ungeprüft. Nur geöffnete Orte mit einer Zuversicht ab ${pl.min_confidence}. Telefon, E-Mail und Social-Media-Profile sind bewusst nicht enthalten. Lizenz: ${pl.license}. ${pl.attribution}
+
+` : ''}## Bilder
 
 | Datei | Inhalt |
 |---|---|
@@ -140,7 +145,11 @@ ${ov ? `
 ` : ''}
 \`roofs_flat\`: every body has one height and a flat roof. Heights that are not measured come from the number of storeys or are assumed at 8 m; such bodies carry \`_height_estimated\` in their name.
 
-## Images
+${pl ? `## Places
+
+\`data/places.json\`: ${pl.entries} places from Overture Places (release ${pl.release}) — shops, food and drink, practices, services. Merged from business directories and platforms, often more complete than OpenStreetMap but unverified. Only open places with confidence of ${pl.min_confidence} or more. Phone numbers, e-mail and social media profiles are left out by design. Licence: ${pl.license}. ${pl.attribution}
+
+` : ''}## Images
 
 | File | Contents |
 |---|---|

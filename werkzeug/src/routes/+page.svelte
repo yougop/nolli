@@ -6,6 +6,7 @@
 	import { STIFTE, FAHRBAHN } from '$lib/stifte';
 	import { ebenenZaehlen } from '$lib/zeichnen';
 	import { hoehenDeckung, ringflaeche, istTeil, gebaeudeLuecke } from '$lib/osm';
+	import { PLACES_ZUVERSICHT } from '$lib/overture';
 	import { amRahmen } from '$lib/schneiden';
 	import { BAUM } from '$lib/analysedaten';
 	import { feldImRahmen, aequidistanz, tiefsteUnter } from '$lib/geo/gelaende';
@@ -54,7 +55,7 @@
 	$effect(() => {
 		z.schritt; z.ort; z.kasten; z.verhaeltnis; z.ausgabeBreite;
 		z.objekte; z.sichtbar; z.plangebiet; z.darstellung;
-		z.beschriftung; z.bereinigt; z.geladenFuer; z.gelaende; z.gelaendeFuer; z.ergaenzung;
+		z.beschriftung; z.bereinigt; z.geladenFuer; z.gelaende; z.gelaendeFuer; z.ergaenzung; z.placesInfo;
 		z.sichern();
 	});
 
@@ -147,7 +148,8 @@
 	const DATENDATEIEN = $derived([
 		'koerper.json', 'netz.json', 'punkte.json', 'haltestellen.json',
 		'linien.json', 'flaechen.json', 'rest.json', 'baeume.json',
-		...(z.gelaende ? ['gelaende.json'] : [])
+		...(z.gelaende ? ['gelaende.json'] : []),
+		...(z.placesInfo ? ['places.json'] : [])
 	]);
 	/** Das Gelände im Rahmen, für Anzeige und Vertrag: Spanne und Äquidistanz. */
 	const gelaendeFeld = $derived(z.gelaendeJetzt && r ? feldImRahmen(z.gelaendeJetzt, r) : null);
@@ -367,6 +369,11 @@
 					'Terrain raster in the local grid, metres above sea level. Row by row from south to north, each row from west to east; x0/y0 is the south-west corner, 150 m outside the frame.',
 					[{ x0: g.x0, y0: g.y0, dx: g.dx, dy: g.dy, nx: g.nx, ny: g.ny,
 						hoehen: Array.from(g.z, (v) => Math.round(v * 100) / 100) }]);
+
+		if (z.placesInfo)
+			legen('places.json',
+				`Places from Overture Maps (shops, food and drink, services), separate from the OpenStreetMap points because the licence differs. Only open places with confidence ≥ ${PLACES_ZUVERSICHT}. No phone numbers, e-mail or social media by design.`,
+				z.places);
 
 		/**
 		 * Die geschriebene Liste gegen die angekündigte halten.
@@ -615,6 +622,20 @@
 			 * Luftbildern, die Höhen ebenso. Welcher Körper daher kommt, steht an
 			 * ihm (`herkunft`, `herkunft_umriss`). Ohne Ergänzung `null`.
 			 */
+			/**
+			 * Orte aus Overture Places, wenn geholt. Andere Lizenz als OSM und
+			 * als die Overture-Gebäude, deshalb ein eigener Block.
+			 */
+			places: z.placesInfo
+				? {
+					quelle: 'Overture Maps Foundation, places theme',
+					release: z.placesInfo.release,
+					lizenz: 'CDLA Permissive 2.0; Foursquare data Apache 2.0',
+					namensnennung: '© Overture Maps Foundation. Data from Meta, Microsoft, Foursquare (Copyright 2024 Foursquare Labs, Inc., Apache 2.0, transformed to the Overture schema), AllThePlaces (CC0) and others — https://docs.overturemaps.org/attribution/',
+					zuversicht_min: PLACES_ZUVERSICHT,
+					eintraege: z.places.length
+				}
+				: null,
 			overture: z.ergaenzung?.anzahl
 				? {
 					quelle: 'Overture Maps Foundation, buildings theme',
@@ -1195,6 +1216,24 @@
 						<div class="overture">
 							{@render overtureKnopf()}
 							<p class="hinweis leise">{t().overture.hinweis}</p>
+						</div>
+						<div class="overture">
+							{#if z.placesLaedt}
+								<div class="tatzeile">
+									<span class="mono laedt">{z.placesLaedt} …</span>
+									<button type="button" onclick={() => z.placesAbbrechen()}>{t().overture.abbrechen}</button>
+								</div>
+							{:else if z.placesInfo}
+								<div class="tatzeile">
+									<span class="laedt">{t().overture.placesGeholt(z.places.length)}</span>
+									<button type="button" onclick={() => z.placesEntfernen()}>{t().overture.entfernen}</button>
+								</div>
+							{:else}
+								<div class="tatzeile">
+									<button type="button" onclick={() => z.placesHolen()}>{t().overture.placesHolen}</button>
+								</div>
+							{/if}
+							<p class="hinweis leise">{t().overture.placesHinweis}</p>
 						</div>
 						<dl class="buch">
 							<div><dt>{t().bereinigen.netz}</dt><dd class="mono">{t().bereinigen.kanten(z.netz?.kanten.length ?? 0)}</dd></div>

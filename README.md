@@ -13,7 +13,8 @@ later tool can rely on.
 
 Nolli runs entirely in the browser. There is no server, no account and no API
 key: the page talks directly to OpenStreetMap (Overpass), the place search
-(Photon) and an open elevation model (AWS Terrain Tiles).
+(Photon), an open elevation model (AWS Terrain Tiles) and, on request,
+Overture Maps.
 
 ![3D context model with terrain, Prato (Tuscany)](docs/terrain-3d-light.png)
 
@@ -26,15 +27,15 @@ key: the page talks directly to OpenStreetMap (Overpass), the place search
 | **Model (ZIP)** | `model.obj`, `model.mtl` and `model_texture.png`, ready for Rhino: extruded buildings with hard edges, cut cleanly at the frame edge; the ground textured with the top view, on the terrain or flat; tree crowns as one object `trees`. It contains what the 3D view shows — switch terrain and trees there |
 | **Package (ZIP)** | Everything above plus `model_outside.obj`, the parts of buildings beyond the frame edge, which still cast shadows into it |
 | **`frame.json`** | The data contract: frame, projection, scale, provenance, caveats, and a table of contents of the package |
-| **`data/*.json`** | Everything OpenStreetMap knows inside the frame: buildings with height and origin of the height, street network as a graph, points of interest, stops and lines, land use, trees, terrain raster |
+| **`data/*.json`** | Everything OpenStreetMap knows inside the frame: buildings with height and origin of the height, street network as a graph, points of interest, stops and lines, land use, trees, terrain raster. If added: buildings from Overture (marked as such) and `data/places.json` |
 | **`README.md`** | Written into every package, in the interface language |
 
 ## The three steps
 
 | | |
 |---|---|
-| **1 · Frame** | Search a place or drag a rectangle. The aspect ratio snaps; width, height, area and metres per pixel update live. Nolli checks whether a 12 m deep row of buildings is still at least 12 px wide at the chosen output size — below that, building edges merge. |
-| **2 · Clean up** | Click objects or draw a polygon to remove them or keep them. Removed objects stay visible as ghosts and are listed by ID in the contract. A site area clears everything inside and cuts streets at its boundary. |
+| **1 · Frame** | Search a place or drag a rectangle. The aspect ratio snaps; width, height, area and metres per pixel update live. Nolli checks whether a 12 m deep row of buildings is still at least 12 px wide at the chosen output size — below that, building edges merge. The status line names the place under the frame, and follows it when you move it. Fetching the data can be cancelled. |
+| **2 · Clean up** | Click objects or draw a polygon to remove them or keep them. Removed objects stay visible as ghosts and are listed by ID in the contract. A site area clears everything inside and cuts streets at its boundary. If OpenStreetMap has streets but hardly any buildings, Nolli says so and offers to fill the gap from Overture. |
 | **3 · Export** | One image, the drawing, the model, the data contract, or the complete package. |
 
 ![Frame](docs/1-frame.png)
@@ -66,6 +67,38 @@ Terrain is off by default. Then everything stands on z = 0 and the contract
 says so (`terrain_flat`).
 
 ![Export with the model ZIP, HafenCity (Hamburg)](docs/export-model-zip.png)
+
+## Gaps in OpenStreetMap: Overture
+
+OpenStreetMap is excellent in most European cities and thin in many others.
+In Upper Saddle River, New Jersey, it has 13 buildings along 16 km of
+residential streets. Nolli notices this — many street kilometres, few
+buildings — and offers to add buildings from
+[Overture Maps](https://overturemaps.org/), which merges OpenStreetMap with
+building footprints traced from aerial imagery by Microsoft, Google and
+others. In Upper Saddle River that turns 13 buildings into about 630.
+
+- **Only what is missing.** Overture buildings that come from OpenStreetMap
+  are skipped, and so is every one whose centre lies inside an OSM building or
+  construction site. Fresh Overpass data always wins.
+- **Its own layer.** Added buildings sit on the layer `Overture` (DXF
+  `N_OVERTURE`) and can be switched off; then they are left out of every
+  output, images, drawing, model and contract alike. In the data depth view
+  they have their own colour.
+- **Marked in the contract.** Each body says `origin: "overture"` with its
+  `overture_id` and `geometry_source`; their heights count as
+  `from_imagery`, and the caveat `buildings_from_imagery` is set. The
+  `overture` block names the release and the attribution the sources require.
+- **Places (optional).** One more button fetches Overture places — shops,
+  restaurants, schools, services — into `data/places.json`, filtered to open
+  places with confidence ≥ 0.5. Phone numbers, e-mail addresses and social
+  media profiles are left out. They are not drawn in the plan; they are there
+  for site analysis further down the chain.
+
+Overture is fetched only on request, tile by tile straight from its public
+PMTiles archive, with no server in between.
+
+![3D model with trees, Lower Manhattan. Here OpenStreetMap is nearly complete: Overture adds 3 buildings to 908](docs/manhattan-3d.png)
 
 ## Using the package in Rhino or QGIS
 
@@ -100,9 +133,10 @@ Principles the contract follows:
 
 - **Every number carries its origin** — measured, computed or estimated.
   Building heights say whether they come from a `height` tag, from the number
-  of storeys, or from the 8 m default.
+  of storeys, from aerial imagery (Overture), or from the 8 m default.
 - **An empty caveat list is a statement.** `caveats` lists what the model
-  simplifies (`roofs_flat`, `terrain_flat` / `terrain_coarse`); a missing list
+  simplifies (`roofs_flat`, `terrain_flat` / `terrain_coarse`,
+  `buildings_from_imagery`); a missing list
   means "assume the worst".
 - **The contract never contradicts itself.** All dimensions derive from the
   rounded frame corners; `width_m / pixel_width` equals `meters_per_pixel`
@@ -173,4 +207,8 @@ are bilingual.
   [tilezen/joerd attribution](https://github.com/tilezen/joerd/blob/master/docs/attribution.md).
   EU-DEM: produced using Copernicus data and information funded by the
   European Union. SRTM: NASA.
+- **Overture Maps** (only if added) — buildings under ODbL; footprints from
+  Microsoft ML Building Footprints (ODbL), Google Open Buildings and Esri
+  (CC BY 4.0). Places under CDLA Permissive 2.0, Foursquare data under
+  Apache 2.0. The package names the sources actually used.
 - **Base map** — OpenFreeMap. **Place search** — Photon by Komoot.

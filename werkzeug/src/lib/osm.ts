@@ -485,6 +485,59 @@ export function gebaeudeLuecke(objekte: Objekt[], k: { x0: number; y0: number; x
 	return { km, haeuser, luecke: km >= 1 && haeuser < 5 * km };
 }
 
+/** Ab so vielen Häusern darin ist ein „Gebäude“ keines. */
+export const ZWEIFEL_ENTHAELT = 10;
+/** Ab dieser Grundfläche in Hektar ist ein Gebäude ungewöhnlich groß. */
+export const ZWEIFEL_HA = 20;
+
+export type Zweifel = { id: string; ha: number; enthaelt: number };
+
+/**
+ * Gebäude, die keine sein können.
+ *
+ * Am 28.10.2026 in Mariental (Namibia) aufgefallen: Way 24207623 war seit
+ * 2008 ein Wohngebiet und wurde am 19.10.2026 zu `building=yes` umgetaggt.
+ * Ein Haus von 119 ha, das 3.749 echte Häuser zudeckt. Overture hatte das
+ * Objekt nicht, weil sein OSM-Stand älter war.
+ *
+ * Das sichere Merkmal ist das Enthalten: Ein Gebäude, in dem viele andere
+ * Gebäude stehen, ist ein umgetaggtes Gebiet. Höfe zählen nicht, deshalb wird
+ * gegen die Löcher geprüft; Gebäudeteile auch nicht, die gehören hinein. Die
+ * Größe allein ist nur ein Verdacht — die größten echten Hallen haben um die
+ * 40 Hektar —, deshalb wird nach ihr nicht gestrichen, nur gefragt.
+ */
+export function zweifelhafteGebaeude(objekte: Objekt[]): Zweifel[] {
+	const haeuser = objekte.filter((o) => (o.ebene === 'gebaeude' || o.ebene === 'erhalt') && !istTeil(o));
+	const punkte = haeuser.map((o) => ({ id: o.id, p: schwerpunkt(o) }));
+	const innen = (p: [number, number], r: [number, number][]) => {
+		let drin = false;
+		for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+			const [xi, yi] = r[i], [xj, yj] = r[j];
+			if ((yi > p[1]) !== (yj > p[1]) && p[0] < ((xj - xi) * (p[1] - yi)) / (yj - yi) + xi) drin = !drin;
+		}
+		return drin;
+	};
+	const aus: Zweifel[] = [];
+	for (const o of haeuser) {
+		if (o.herkunft) continue;
+		let a = 0;
+		for (const ring of o.ringe) a += Math.abs(ringflaeche(ring));
+		for (const loch of o.loecher ?? []) a -= Math.abs(ringflaeche(loch));
+		// Unter einem Hektar ist beides nicht zu erwarten; spart den Punkttest.
+		if (a < 1e4) continue;
+		const [x0, y0, x1, y1] = huelle(o);
+		let n = 0;
+		for (const q of punkte) {
+			const [x, y] = q.p;
+			if (q.id === o.id || x < x0 || x > x1 || y < y0 || y > y1) continue;
+			if (o.ringe.some((r) => innen(q.p, r)) && !(o.loecher ?? []).some((l) => innen(q.p, l))) n++;
+		}
+		const ha = a / 1e4;
+		if (n >= ZWEIFEL_ENTHAELT || ha >= ZWEIFEL_HA) aus.push({ id: o.id, ha, enthaelt: n });
+	}
+	return aus.sort((a, b) => b.enthaelt - a.enthaelt || b.ha - a.ha);
+}
+
 /**
  * Die Ebene, unter der ein Objekt sichtbar ist und gezeichnet wird.
  * Ergänzte Overture-Gebäude haben `ebene: 'gebaeude'`, stehen aber unter

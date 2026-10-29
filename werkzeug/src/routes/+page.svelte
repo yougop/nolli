@@ -5,7 +5,7 @@
 	import { z, VERHAELTNISSE, AUSGABEBREITEN } from '$lib/zustand.svelte';
 	import { STIFTE, FAHRBAHN } from '$lib/stifte';
 	import { ebenenZaehlen } from '$lib/zeichnen';
-	import { hoehenDeckung, ringflaeche, istTeil, gebaeudeLuecke, sichtEbene } from '$lib/osm';
+	import { hoehenDeckung, ringflaeche, istTeil, gebaeudeLuecke, sichtEbene, ZWEIFEL_ENTHAELT } from '$lib/osm';
 	import { PLACES_ZUVERSICHT } from '$lib/overture';
 	import { amRahmen } from '$lib/schneiden';
 	import { BAUM } from '$lib/analysedaten';
@@ -1071,6 +1071,29 @@
 				</div>
 
 			{:else if z.schritt === 2}
+				{#if z.zweifel.length}
+					<div class="urteil mahnt luecke zweifel" role="status">
+						{#if z.zweifel.some((x) => x.enthaelt >= ZWEIFEL_ENTHAELT)}
+							<p><strong>{t().bereinigen.zweifelTitel}.</strong> {t().bereinigen.zweifelHinweis}</p>
+						{:else}
+							<p><strong>{t().bereinigen.zweifelTitelGross}.</strong> {t().bereinigen.zweifelHinweisGross}</p>
+						{/if}
+						<ul>
+							{#each z.zweifel.slice(0, 5) as x (x.id)}
+								{@const weg = z.objekte.find((o) => o.id === x.id)?.zustand === 'gestrichen'}
+								<li>
+									<a class="mono" href={`https://www.openstreetmap.org/${x.id[0] === 'r' ? 'relation' : 'way'}/${x.id.slice(1)}`}
+										target="_blank" rel="noopener">{x.id}</a>
+									<span>{t().bereinigen.zweifelZeile(x.ha, x.enthaelt)}{weg ? ` · ${t().bereinigen.zweifelGestrichen}` : ''}</span>
+									<button type="button" onclick={() => z.zweifelSetzen(x.id, !weg)}>
+										{weg ? t().bereinigen.zweifelBehalten : t().bereinigen.zweifelStreichen}
+									</button>
+								</li>
+							{/each}
+						</ul>
+						{#if z.zweifel.length > 5}<p>{t().bereinigen.zweifelMehr(z.zweifel.length - 5)}</p>{/if}
+					</div>
+				{/if}
 				{#if erfassung?.luecke && !z.ergaenzung}
 					<div class="urteil mahnt luecke" role="status">
 						<p><strong>{t().bereinigen.lueckeTitel}.</strong>
@@ -1594,6 +1617,16 @@
 	.urteil.mahnt { color: var(--warn); background: var(--warn-flor); border-color: transparent; }
 	.urteil.luecke { margin: 12px 18px 0; }
 	.urteil.luecke p { margin: 0 0 8px; }
+	.urteil.zweifel ul { list-style: none; margin: 0; padding: 0; }
+	.urteil.zweifel li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; padding: 3px 0; }
+	.urteil.zweifel li a { color: inherit; }
+	.urteil.zweifel li span { flex: 1; }
+	.urteil.zweifel li button {
+		padding: 3px 9px; cursor: pointer; font-size: 12px; font-weight: 500;
+		background: var(--grund); color: var(--tinte);
+		border: 1px solid var(--linie); border-radius: var(--rund);
+	}
+	.urteil.zweifel li button:hover { border-color: var(--linie-stark); }
 	.overture { margin: 12px 0; }
 	.overture .hinweis { margin-top: 6px; }
 	.laedt { flex: 1; align-self: center; font-size: 12px; color: var(--tinte-2); }
@@ -1642,8 +1675,6 @@
 	.tatzeile button:hover:not(:disabled) { border-color: var(--linie-stark); }
 	.tatzeile button:disabled { color: var(--tinte-3); cursor: not-allowed; }
 	.buch { margin-top: 12px; }
-	.schalter { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 12.5px; cursor: pointer; }
-	.schalter input { accent-color: var(--akzent-tief); }
 
 	/* ---------- Ausgaben ---------- */
 	.ausgaben { list-style: none; margin: 0; padding: 0; }

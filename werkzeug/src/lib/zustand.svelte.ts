@@ -1,7 +1,7 @@
 import { t, zahl } from './sprache.svelte';
 import { Rahmen, VERHAELTNISSE, AUSGABEBREITEN, type Verhaeltnis } from './geo/rahmen';
 import { ortsgitter, nachGitter } from './geo/utm';
-import { lesen, imRahmen, sichtEbene, type Objekt } from './osm';
+import { lesen, imRahmen, sichtEbene, zweifelhafteGebaeude, ZWEIFEL_ENTHAELT, type Objekt, type Zweifel } from './osm';
 import { drin, beruehrt, ausserhalb, schwerpunkt } from './schneiden';
 import { STIFTE, type StiftId } from './stifte';
 import { base } from '$app/paths';
@@ -102,6 +102,20 @@ class Zustand {
 	 * gerechnet wurde.
 	 */
 	ergaenzung = $state.raw<{ release: string; quellen: Record<string, number>; anzahl: number } | null>(null);
+
+	/**
+	 * Gebäude, die die Prüfung nach dem Holen angezweifelt hat (`zweifelhafteGebaeude`).
+	 * Was viele Häuser enthält, ist dann schon gestrichen; was nur groß ist,
+	 * steht zur Entscheidung. Die Liste bleibt, auch wenn man umentscheidet,
+	 * damit der Hinweis zeigt, was Nolli getan hat und was man selbst.
+	 */
+	zweifel = $state.raw<Zweifel[]>([]);
+
+	/** Ein angezweifeltes Gebäude streichen oder zurückholen. */
+	zweifelSetzen(id: string, streichen: boolean) {
+		this.objekte = this.objekte.map((o) =>
+			o.id === id ? { ...o, zustand: streichen ? 'gestrichen' as const : 'normal' as const } : o);
+	}
 	ergaenzungLaedt = $state<string | null>(null);
 	private ergaenzungStopper: AbortController | null = null;
 
@@ -119,7 +133,11 @@ class Zustand {
 				stopper.signal);
 			if (stopper.signal.aborted || this.schluessel() !== k) return;
 			const osm = this.objekte.filter((x) => x.herkunft !== 'overture');
-			const e = gebaeudeErgaenzen(o.merkmale, r.gitter, osm);
+			// Ein gestrichenes umgetaggtes Gebiet (Mariental) darf nicht jedes
+			// Haus darin blockieren. Was man selbst gestrichen hat, schon.
+			const zweifelWeg = new Set(this.zweifel.map((x) => x.id));
+			const e = gebaeudeErgaenzen(o.merkmale, r.gitter,
+				osm.filter((x) => !(zweifelWeg.has(x.id) && x.zustand === 'gestrichen')));
 			const neu = imRahmen(e.objekte, r.x0, r.y0, r.x1, r.y1);
 			const quellen: Record<string, number> = {};
 			for (const x of neu) quellen[x.quelleGeometrie ?? 'Overture'] = (quellen[x.quelleGeometrie ?? 'Overture'] ?? 0) + 1;
@@ -337,6 +355,10 @@ class Zustand {
 			this.places = []; this.placesInfo = null;
 			this.objekte = imRahmen(lesen(roh, r.gitter, { x0: r.x0 - 50, y0: r.y0 - 50, x1: r.x1 + 50, y1: r.y1 + 50 }),
 				r.x0, r.y0, r.x1, r.y1);
+			// Umgetaggte Gebiete gleich streichen, sonst decken sie alles zu.
+			this.zweifel = zweifelhafteGebaeude(this.objekte);
+			const weg = new Set(this.zweifel.filter((x) => x.enthaelt >= ZWEIFEL_ENTHAELT).map((x) => x.id));
+			if (weg.size) this.objekte = this.objekte.map((o) => weg.has(o.id) ? { ...o, zustand: 'gestrichen' as const } : o);
 			this.fortschritt = t().laden.netz;
 			await atmen();
 			// Netz und Nutzungsflaechen reichen bewusst ueber den Rahmen hinaus,
@@ -572,6 +594,7 @@ class Zustand {
 			rest: this.rest,
 			baeume: this.baeume,
 			ergaenzung: this.ergaenzung,
+			zweifel: this.zweifel,
 			places: this.places,
 			placesInfo: this.placesInfo,
 			gelaende: this.gelaende,
@@ -624,6 +647,7 @@ class Zustand {
 		this.baeume = p.baeume ?? false;
 		this.baumpunkte = baeumeAus(this.rest);
 		this.ergaenzung = p.ergaenzung ?? null;
+		this.zweifel = p.zweifel ?? [];
 		this.places = p.places ?? [];
 		this.placesInfo = p.placesInfo ?? null;
 		this.gelaende = p.gelaende ?? false;
@@ -658,6 +682,7 @@ class Zustand {
 		this.gelaendeDaten = null;
 		this.gelaendeFuer = null;
 		this.ergaenzung = null;
+		this.zweifel = [];
 		this.places = [];
 		this.placesInfo = null;
 		this.ausgewaehlt = new Set();

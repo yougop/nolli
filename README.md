@@ -98,6 +98,14 @@ others. In Upper Saddle River that turns 13 buildings into about 630.
 Overture is fetched only on request, tile by tile straight from its public
 PMTiles archive, with no server in between.
 
+**Implausible buildings.** Errors in OpenStreetMap can be large. In
+Mariental, Namibia, a residential area of 119 ha was retagged as a single
+building in October 2026 and covered 3,700 real houses. After every fetch
+Nolli looks for buildings that contain ten or more other buildings, removes
+them for now and says so, with a link to the object and a button to keep it
+after all. Buildings over 20 ha that contain nothing are only flagged; the
+largest real halls come close to that.
+
 ![3D model with trees, Lower Manhattan. Here OpenStreetMap is nearly complete: Overture adds 3 buildings to 908](docs/manhattan-3d.png)
 
 ## Using the package in Rhino or QGIS
@@ -198,6 +206,14 @@ DESIGN.md              design rules of the interface (colours, type, layout)
 
 The code and comments are written in German; the interface and the package
 are bilingual.
+
+## License
+
+The code is licensed under the [GNU Affero General Public License v3.0](LICENSE)
+or later. You may use, change and pass it on; if you run a changed version as a
+website, you must offer its source code to its users. What Nolli produces —
+images, drawings, models, packages — is not covered by this license; it
+carries the licenses of its data sources below.
 
 ## Data sources and attribution
 

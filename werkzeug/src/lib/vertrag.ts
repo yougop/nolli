@@ -143,7 +143,11 @@ export const FELDER: Record<string, string> = {
 	hierarchie: 'hierarchy',
 	zuversicht: 'confidence',
 	zuversicht_min: 'min_confidence',
-	marke: 'brand'
+	marke: 'brand',
+	// Unplausible Gebäude
+	unplausibel: 'implausible_buildings',
+	enthaelt: 'contains_buildings',
+	osm: 'osm_url'
 };
 
 /** Aufgezählte Werte, je Feldname (dem deutschen). */
@@ -162,7 +166,8 @@ export const WERTE: Record<string, Record<string, string>> = {
 		daecher_flach: 'roofs_flat',
 		gelaende_eben: 'terrain_flat',
 		gelaende_grob: 'terrain_coarse',
-		gebaeude_luftbild: 'buildings_from_imagery'
+		gebaeude_luftbild: 'buildings_from_imagery',
+		gebaeude_unplausibel: 'buildings_implausible'
 	},
 	lizenz: { 'ODbL, © OpenStreetMap-Mitwirkende': 'ODbL, © OpenStreetMap contributors' }
 };

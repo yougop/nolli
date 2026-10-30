@@ -111,6 +111,7 @@
 	 * dagegen Darstellung, ihre Objekte bleiben im Paket.
 	 */
 	const bestand = $derived(z.sichtbar.has('overture') ? z.objekte : z.objekte.filter((o) => sichtEbene(o) !== 'overture'));
+	const osmLink = (id: string) => `https://www.openstreetmap.org/${id[0] === 'r' ? 'relation' : 'way'}/${id.slice(1)}`;
 	const overtureAn = $derived(!!z.ergaenzung?.anzahl && z.sichtbar.has('overture'));
 	const zaehler = $derived(ebenenZaehlen(z.objekte));
 	const deckung = $derived(hoehenDeckung(bestand));
@@ -639,7 +640,24 @@
 			 * Grenze dieses Modells.
 			 */
 			vorbehalte: ['daecher_flach', z.gelaendeJetzt ? 'gelaende_grob' : 'gelaende_eben',
-				...(overtureAn ? ['gebaeude_luftbild'] : [])],
+				...(overtureAn ? ['gebaeude_luftbild'] : []),
+				...(z.zweifel.length ? ['gebaeude_unplausibel'] : [])],
+			/**
+			 * Gebäude, die Nolli nach dem Holen für unplausibel hielt
+			 * (`zweifelhafteGebaeude` in `osm.ts`), mit dem Stand, in dem sie
+			 * ins Paket gehen. Ohne diesen Block stünde ein von Nolli
+			 * gestrichenes Gebäude unter `gestrichen` genau wie eines, das
+			 * jemand von Hand gestrichen hat — wer das Paket bekommt, sähe
+			 * nicht, wer entschieden hat und warum. Leere Liste: nichts
+			 * aufgefallen.
+			 */
+			unplausibel: z.zweifel.map((x) => ({
+				id: x.id,
+				flaeche_ha: Math.round(x.ha * 10) / 10,
+				enthaelt: x.enthaelt,
+				gestrichen: z.objekte.find((o) => o.id === x.id)?.zustand === 'gestrichen',
+				osm: osmLink(x.id)
+			})),
 			/**
 			 * Gebäude aus Overture, wo OpenStreetMap keine hat.
 			 *
@@ -1082,7 +1100,7 @@
 							{#each z.zweifel.slice(0, 5) as x (x.id)}
 								{@const weg = z.objekte.find((o) => o.id === x.id)?.zustand === 'gestrichen'}
 								<li>
-									<a class="mono" href={`https://www.openstreetmap.org/${x.id[0] === 'r' ? 'relation' : 'way'}/${x.id.slice(1)}`}
+									<a class="mono" href={osmLink(x.id)}
 										target="_blank" rel="noopener">{x.id}</a>
 									<span>{t().bereinigen.zweifelZeile(x.ha, x.enthaelt)}{weg ? ` · ${t().bereinigen.zweifelGestrichen}` : ''}</span>
 									<button type="button" onclick={() => z.zweifelSetzen(x.id, !weg)}>

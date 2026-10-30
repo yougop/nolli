@@ -35,7 +35,7 @@ Overture Maps.
 | | |
 |---|---|
 | **1 · Frame** | Search a place or drag a rectangle. The aspect ratio snaps; width, height, area and metres per pixel update live. Nolli checks whether a 12 m deep row of buildings is still at least 12 px wide at the chosen output size — below that, building edges merge. The status line names the place under the frame, and follows it when you move it. Fetching the data can be cancelled. |
-| **2 · Clean up** | Click objects or draw a polygon to remove them or keep them. Removed objects stay visible as ghosts and are listed by ID in the contract. A site area clears everything inside and cuts streets at its boundary. If OpenStreetMap has streets but hardly any buildings, Nolli says so and offers to fill the gap from Overture. |
+| **2 · Clean up** | Click objects or draw a polygon to remove them or keep them. Removed objects stay visible as ghosts and are listed by ID in the contract. Buildings that cannot be buildings — one containing ten or more others — are removed by Nolli itself, with a note and a button to keep them (see below). A site area clears everything inside and cuts streets at its boundary. If OpenStreetMap has streets but hardly any buildings, Nolli says so and offers to fill the gap from Overture. |
 | **3 · Export** | One image, the drawing, the model, the data contract, or the complete package. |
 
 ![Frame](docs/1-frame.png)
@@ -105,6 +105,10 @@ Nolli looks for buildings that contain ten or more other buildings, removes
 them for now and says so, with a link to the object and a button to keep it
 after all. Buildings over 20 ha that contain nothing are only flagged; the
 largest real halls come close to that.
+The package says so: every flagged building is listed in `frame.json` under
+`implausible_buildings` (ID, area, buildings inside, removed or kept, OSM link),
+with the caveat `buildings_implausible`, so a removal by Nolli can be told
+apart from one made by hand.
 
 ![3D model with trees, Lower Manhattan. Here OpenStreetMap is nearly complete: Overture adds 3 buildings to 908](docs/manhattan-3d.png)
 
@@ -144,7 +148,7 @@ Principles the contract follows:
   of storeys, from aerial imagery (Overture), or from the 8 m default.
 - **An empty caveat list is a statement.** `caveats` lists what the model
   simplifies (`roofs_flat`, `terrain_flat` / `terrain_coarse`,
-  `buildings_from_imagery`); a missing list
+  `buildings_from_imagery`, `buildings_implausible`); a missing list
   means "assume the worst".
 - **The contract never contradicts itself.** All dimensions derive from the
   rounded frame corners; `width_m / pixel_width` equals `meters_per_pixel`
@@ -190,6 +194,8 @@ Manual scripts in `werkzeug/pruefung/`, run against `vite preview` on port
 | `pruefung/vertrag.mjs <v1> <v2> [umbra.html]` | Contract tables are reversible; a v2 package mapped back equals a v1 package; a downstream tool's copy of the table matches |
 | `pruefung/sprache.mjs <dir>` | Walks the English interface and reports German leftovers |
 | `pruefung/gelaende.mjs <dir> [place]` | Builds a package with terrain at a real place (default: Galceti, Prato). Uses live data |
+| `pruefung/leiste.mjs` | Lists the styles and switches the interface offers, read from the source |
+| `pruefung/stand.mjs live\|merken\|seither` | Compares the published app with the local build, records a delivery, lists what changed since |
 
 ## Repository layout
 

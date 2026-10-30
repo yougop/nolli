@@ -24,6 +24,8 @@ export function paketLiesmich(v: V, sprache: Sprache): string {
 	const ter = v.terrain;
 	const ov = v.overture;
 	const pl = v.places;
+	const un: V[] = v.implausible_buildings ?? [];
+	const unZeilen = un.map((u) => `| [\`${u.id}\`](${u.osm_url}) | ${u.area_ha} | ${u.contains_buildings} | ${u.removed ? '✓' : ''} |`).join('\n');
 	const ort = v.place ? [v.place.name, v.place.region].filter(Boolean).join(', ') : '—';
 
 	if (sprache === 'de') return `# Nolli-Paket — ${ort}
@@ -74,6 +76,13 @@ ${ter.license}` : 'Kein Gelände: Alle Körper stehen auf z = 0, ebene Platte (\
 ${caveats.length ? caveats.map((c) => `- \`${c}\``).join('\n') : '- keine bekannt'}
 ${ov ? `
 \`buildings_from_imagery\`: ${ov.added} Gebäude stammen nicht aus OpenStreetMap, sondern aus Overture (Release ${ov.release}). Ergänzt nur, wo OSM kein Gebäude hatte. Umrisse und Höhen sind meist mit maschinellem Lernen aus Luftbildern gewonnen; Höhen tragen \`source: imagery\`, die Körper \`origin: overture\` und \`geometry_source\` in \`data/bodies.json\` und \`_height_estimated\` im OBJ. ${ov.attribution}.
+` : ''}
+${un.length ? `
+\`buildings_implausible\`: Nolli hielt nach dem Holen ${un.length === 1 ? 'ein Gebäude' : `${un.length} Gebäude`} aus OpenStreetMap für unplausibel. Ein Gebäude, das zehn oder mehr andere enthält, ist vermutlich ein falsch eingetragenes Gelände; Nolli streicht es vorläufig. Über 20 ha ohne Inhalt wird es nur gemeldet. Die Häkchen zeigen den Stand im Paket, auch wenn er von Hand geändert wurde; die Liste steht in \`frame.json\` unter \`implausible_buildings\`.
+
+| OSM | ha | enthält | gestrichen |
+|---|---|---|---|
+${unZeilen}
 ` : ''}
 \`roofs_flat\`: Jeder Baukörper hat eine Höhe und ein waagerechtes Dach. Höhen ohne Messung kommen aus der Geschosszahl oder sind mit 8 m angenommen; solche Körper tragen \`_height_estimated\` im Namen.
 
@@ -142,6 +151,13 @@ ${ter.license}` : 'No terrain: all bodies stand on z = 0, a flat plate (\`terrai
 ${caveats.length ? caveats.map((c) => `- \`${c}\``).join('\n') : '- none known'}
 ${ov ? `
 \`buildings_from_imagery\`: ${ov.added} buildings do not come from OpenStreetMap but from Overture (release ${ov.release}). Added only where OSM had no building. Footprints and heights are mostly derived by machine learning from aerial imagery; heights carry \`source: imagery\`, the bodies \`origin: overture\` and \`geometry_source\` in \`data/bodies.json\`, and \`_height_estimated\` in the OBJ. ${ov.attribution}.
+` : ''}
+${un.length ? `
+\`buildings_implausible\`: after fetching, Nolli found ${un.length === 1 ? 'one OpenStreetMap building' : `${un.length} OpenStreetMap buildings`} implausible. A building that contains ten or more others is most likely a mis-tagged site; Nolli removes it for now. Over 20 ha with nothing inside it is only flagged. The ticks show the state in the package, including manual changes; the list is in \`frame.json\` under \`implausible_buildings\`.
+
+| OSM | ha | contains | removed |
+|---|---|---|---|
+${unZeilen}
 ` : ''}
 \`roofs_flat\`: every body has one height and a flat roof. Heights that are not measured come from the number of storeys or are assumed at 8 m; such bodies carry \`_height_estimated\` in their name.
 

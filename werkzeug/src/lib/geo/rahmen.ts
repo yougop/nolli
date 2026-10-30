@@ -2,6 +2,7 @@ import {
 	nachGitter, nachGrad, zoneFuer, utmGitter, ortsgitter, konvergenz, proj4Von,
 	type Gitter
 } from './utm';
+import tzlookup from '@photostructure/tz-lookup';
 
 export type Verhaeltnis = { name: string; wert: number | null };
 export const VERHAELTNISSE: Verhaeltnis[] = [
@@ -112,6 +113,12 @@ export class Rahmen {
 	}
 
 	/** Mitte des Rahmens in Grad, für Verweise nach draußen. */
+	/** IANA-Zeitzone am Mittelpunkt, `null` wenn die Suche scheitert. */
+	zeitzone(): string | null {
+		const m = this.mitteGrad;
+		try { return tzlookup(m.lat, m.lon) || null; } catch { return null; }
+	}
+
 	get mitteGrad() {
 		const m = this.eckenGrad;
 		return { lat: (m.nord + m.sued) / 2, lon: (m.west + m.ost) / 2 };
@@ -197,6 +204,11 @@ export class Rahmen {
 			// aufgespannt ist. Die Bildkanten zeigen damit nach Norden.
 			restkonvergenz_grad: r(this.konvergenz, 4),
 			pruefpixel_12m: r(this.pruefpixel, 1),
+			// Die Zeitzone am Rahmenmittelpunkt als IANA-Name, offline aus
+			// Länge und Breite. Kein fester Versatz: Die Sommerzeit rechnet ein
+			// nachgelagertes Werkzeug je Datum selbst. Unbekannt heißt null,
+			// nicht geraten.
+			zeitzone: this.zeitzone(),
 			// Damit sich der Ort ohne Umweg nachsehen lässt: Luftbild,
 			// Straßenansicht, Gelände. Rein zum Nachschlagen, nicht zum Rechnen.
 			google: this.google(),

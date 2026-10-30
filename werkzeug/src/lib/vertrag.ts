@@ -36,6 +36,7 @@ export const FELDER: Record<string, string> = {
 	meter_pro_pixel: 'meters_per_pixel',
 	restkonvergenz_grad: 'residual_convergence_deg',
 	pruefpixel_12m: 'check_pixels_12m',
+	zeitzone: 'time_zone',
 	mitte: 'center',
 	karte: 'map',
 	luftbild: 'satellite',

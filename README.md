@@ -150,6 +150,9 @@ Principles the contract follows:
   simplifies (`roofs_flat`, `terrain_flat` / `terrain_coarse`,
   `buildings_from_imagery`, `buildings_implausible`); a missing list
   means "assume the worst".
+- **Time is local.** `time_zone` names the IANA time zone at the frame
+  centre (e.g. `America/New_York`), looked up offline; `null` if unknown. No
+  fixed offset: daylight saving is for the reading tool to apply per date.
 - **The contract never contradicts itself.** All dimensions derive from the
   rounded frame corners; `width_m / pixel_width` equals `meters_per_pixel`
   exactly.

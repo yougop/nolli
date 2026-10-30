@@ -1,10 +1,10 @@
 {
- "wann": "2026-10-30 08:06",
- "gesamt": "768de154404e",
+ "wann": "2026-10-30 08:52",
+ "gesamt": "4f8908c6ecc0",
  "dateien": {
   "200.html": {
    "bytes": 3173,
-   "hash": "f1841e44c31c"
+   "hash": "6c608d8951b0"
   },
   "_app/immutable/assets/0.ECumOKm-.css": {
    "bytes": 2774,
@@ -14,41 +14,41 @@
    "bytes": 104280,
    "hash": "48ac94ea3ea5"
   },
-  "_app/immutable/chunks/1XQvtCWP.js": {
-   "bytes": 26650,
-   "hash": "6bb40aea90c8"
-  },
   "_app/immutable/chunks/Bjy-W4x2.js": {
    "bytes": 1365,
    "hash": "f07424758318"
   },
-  "_app/immutable/chunks/Dg6I-oMy.js": {
-   "bytes": 46197,
-   "hash": "8c668a172d0d"
+  "_app/immutable/chunks/BoYw7_pA.js": {
+   "bytes": 46790,
+   "hash": "97cfadc6deaa"
+  },
+  "_app/immutable/chunks/C68XOigF.js": {
+   "bytes": 26650,
+   "hash": "a23f015ce7cb"
   },
   "_app/immutable/chunks/xihTtKlq.js": {
    "bytes": 65,
    "hash": "0214edcff772"
   },
-  "_app/immutable/entry/app.Rab9jDnN.js": {
+  "_app/immutable/entry/app.XjKMzqYG.js": {
    "bytes": 4025,
-   "hash": "8143f7a7b6c0"
+   "hash": "a28f6de89ecf"
   },
-  "_app/immutable/entry/start.D6XB6_d1.js": {
+  "_app/immutable/entry/start.B1QRoliB.js": {
    "bytes": 77,
-   "hash": "3fd0c0cbf052"
+   "hash": "269efd1a1b7e"
   },
-  "_app/immutable/nodes/0.B4hb7mAY.js": {
+  "_app/immutable/nodes/0.D7aMIihN.js": {
    "bytes": 237,
-   "hash": "9096370ff3f6"
+   "hash": "3d0326a71779"
   },
-  "_app/immutable/nodes/1.yi9faltx.js": {
+  "_app/immutable/nodes/1.BSW0kbHz.js": {
    "bytes": 576,
-   "hash": "9946353a5136"
+   "hash": "87e4cbef272c"
   },
-  "_app/immutable/nodes/2.C_tAXZpQ.js": {
-   "bytes": 1841577,
-   "hash": "4c3b5022cdfb"
+  "_app/immutable/nodes/2.DZ51RSD-.js": {
+   "bytes": 1914221,
+   "hash": "e1e95e136e8d"
   },
   "_app/immutable/workers/maplibre-gl-worker-B71oqUJw.js": {
    "bytes": 506998,
@@ -56,7 +56,7 @@
   },
   "_app/version.json": {
    "bytes": 27,
-   "hash": "9fc8f21465c0"
+   "hash": "e8be793108f3"
   },
   "beispiele/hafencity.json": {
    "bytes": 3708497,
@@ -72,7 +72,7 @@
   },
   "index.html": {
    "bytes": 3372,
-   "hash": "cb62a381822f"
+   "hash": "52a831d1f9ec"
   },
   "robots.txt": {
    "bytes": 63,

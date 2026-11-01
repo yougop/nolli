@@ -7,7 +7,7 @@ later tool can rely on.
 
 **▶ Open the app: [zinssmeister.info/app/nolli](https://zinssmeister.info/app/nolli/)**
 · Project page: [zinssmeister.info/nolli](https://zinssmeister.info/nolli)
-· Companion tool for sun, irradiation and wind on the model:
+· Companion tool for sun, shadow and irradiation on the model:
 [Umbra](https://zinssmeister.info/app/umbra/) ([repository](https://github.com/yougop/umbra))
 · By [Volker Zinssmeister](https://zinssmeister.info/)
 

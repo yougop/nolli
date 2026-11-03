@@ -114,7 +114,7 @@ The package says so: every flagged building is listed in `frame.json` under
 with the caveat `buildings_implausible`, so a removal by Nolli can be told
 apart from one made by hand.
 
-![3D model with trees, Lower Manhattan. Here OpenStreetMap is nearly complete: Overture adds 3 buildings to 908](docs/manhattan-3d.png)
+![3D model of Lower Manhattan with the ground set under Adjust map. Here OpenStreetMap is nearly complete: Overture adds 3 buildings to 908](docs/manhattan-3d.png)
 
 ## Using the package in Rhino or QGIS
 

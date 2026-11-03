@@ -1,10 +1,10 @@
 {
- "wann": "2026-10-30 08:52",
- "gesamt": "4f8908c6ecc0",
+ "wann": "2026-11-03 13:41",
+ "gesamt": "49bdf36fbdca",
  "dateien": {
   "200.html": {
-   "bytes": 3173,
-   "hash": "6c608d8951b0"
+   "bytes": 3174,
+   "hash": "b144b6fc56fa"
   },
   "_app/immutable/assets/0.ECumOKm-.css": {
    "bytes": 2774,
@@ -14,6 +14,10 @@
    "bytes": 104280,
    "hash": "48ac94ea3ea5"
   },
+  "_app/immutable/chunks/-Q8eNbXP.js": {
+   "bytes": 26654,
+   "hash": "bc3bd2df909d"
+  },
   "_app/immutable/chunks/Bjy-W4x2.js": {
    "bytes": 1365,
    "hash": "f07424758318"
@@ -22,33 +26,29 @@
    "bytes": 46790,
    "hash": "97cfadc6deaa"
   },
-  "_app/immutable/chunks/C68XOigF.js": {
-   "bytes": 26650,
-   "hash": "a23f015ce7cb"
-  },
   "_app/immutable/chunks/xihTtKlq.js": {
    "bytes": 65,
    "hash": "0214edcff772"
   },
-  "_app/immutable/entry/app.XjKMzqYG.js": {
+  "_app/immutable/entry/app.CX9wwnSx.js": {
    "bytes": 4025,
-   "hash": "a28f6de89ecf"
+   "hash": "1b033a5859b7"
   },
-  "_app/immutable/entry/start.B1QRoliB.js": {
+  "_app/immutable/entry/start.DFkCSVA9.js": {
    "bytes": 77,
-   "hash": "269efd1a1b7e"
+   "hash": "31ed42ef7f9a"
   },
   "_app/immutable/nodes/0.D7aMIihN.js": {
    "bytes": 237,
    "hash": "3d0326a71779"
   },
-  "_app/immutable/nodes/1.BSW0kbHz.js": {
+  "_app/immutable/nodes/1.B9v08nuV.js": {
    "bytes": 576,
-   "hash": "87e4cbef272c"
+   "hash": "f62e0c57226f"
   },
-  "_app/immutable/nodes/2.DZ51RSD-.js": {
-   "bytes": 1914221,
-   "hash": "e1e95e136e8d"
+  "_app/immutable/nodes/2.Dt8od-0k.js": {
+   "bytes": 1916225,
+   "hash": "a03c7246b1cb"
   },
   "_app/immutable/workers/maplibre-gl-worker-B71oqUJw.js": {
    "bytes": 506998,
@@ -56,7 +56,7 @@
   },
   "_app/version.json": {
    "bytes": 27,
-   "hash": "e8be793108f3"
+   "hash": "90339e9e0b4b"
   },
   "beispiele/hafencity.json": {
    "bytes": 3708497,
@@ -71,8 +71,8 @@
    "hash": "5032bcab02e3"
   },
   "index.html": {
-   "bytes": 3372,
-   "hash": "52a831d1f9ec"
+   "bytes": 3373,
+   "hash": "32e297c99c8b"
   },
   "robots.txt": {
    "bytes": 63,

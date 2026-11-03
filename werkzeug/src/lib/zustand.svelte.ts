@@ -649,7 +649,7 @@ class Zustand {
 		this.linien = p.linien ?? [];
 		this.rest = p.rest ?? [];
 		this.baeume = p.baeume ?? false;
-		this.karte = p.karte ?? { ...NEUTRAL };
+		this.karte = { ...NEUTRAL, ...(p.karte ?? {}) };
 		this.baumpunkte = baeumeAus(this.rest);
 		this.ergaenzung = p.ergaenzung ?? null;
 		this.zweifel = p.zweifel ?? [];

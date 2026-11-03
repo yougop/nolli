@@ -13,7 +13,7 @@
 	import { feldImRahmen, tiefsteUnter, hoeheBei } from '$lib/geo/gelaende';
 	import { BAUM } from '$lib/analysedaten';
 	import type { StiftId } from '$lib/stifte';
-	import { anpassen } from '$lib/anpassen';
+	import { KARTE_GLSL } from '$lib/anpassen';
 
 	let huelle = $state<HTMLDivElement | null>(null);
 	let breite = $state(900), hoehe = $state(600);
@@ -134,8 +134,23 @@
 		composer.addPass(new OutputPass());
 	}
 
-	let bodenRoh: HTMLCanvasElement | null = null;
-	let bodenTextur: THREE.CanvasTexture | null = null;
+	/**
+	 * Sättigung, Kontrast und Helligkeit des Bodens als Shaderwerte. Ein Zug am
+	 * Regler setzt nur diese drei Zahlen; das Bodenbild bleibt, wie es ist.
+	 * Die Rechnung steht in `anpassen.ts` und gilt dort auch für die Datei.
+	 */
+	const karteWerte = {
+		uSaettigung: { value: 1 }, uKontrast: { value: 1 }, uHelligkeit: { value: 1 }
+	};
+	function bodenStoff(map: THREE.Texture) {
+		const m = new THREE.MeshLambertMaterial({ map });
+		m.onBeforeCompile = (sh) => {
+			Object.assign(sh.uniforms, karteWerte);
+			sh.fragmentShader = 'uniform float uSaettigung;\nuniform float uKontrast;\nuniform float uHelligkeit;\n'
+				+ sh.fragmentShader.replace('#include <map_fragment>', '#include <map_fragment>\n' + KARTE_GLSL);
+		};
+		return m;
+	}
 
 	/** Der Plan als Bodenbild. Derselbe Zeichner wie in der Aufsicht. */
 	function bodenbild(r: Rahmen) {
@@ -156,13 +171,7 @@
 			plangebiet: z.plangebiet, rahmenZeigen: false,
 			sichtbar: ohneBauten, hervorgehoben: null
 		});
-		// Der Plan bleibt unangetastet liegen; die Textur zeigt seine angepasste
-		// Fassung. So kostet ein Zug am Regler nur das Umrechnen, nicht das Zeichnen.
-		bodenRoh = c;
-		const angepasst = document.createElement('canvas');
-		anpassen(c, angepasst, z.karte);
-		const t = new THREE.CanvasTexture(angepasst);
-		bodenTextur = t;
+		const t = new THREE.CanvasTexture(c);
 		t.colorSpace = THREE.SRGBColorSpace;
 		t.anisotropy = renderer?.capabilities.getMaxAnisotropy() ?? 1;
 		return t;
@@ -284,7 +293,7 @@
 		}
 		const boden = new THREE.Mesh(
 			platte,
-			new THREE.MeshLambertMaterial({ map: bodenbild(r) })
+			bodenStoff(bodenbild(r))
 		);
 		boden.rotation.x = -Math.PI / 2;
 		boden.position.set(r.breiteM / 2, 0, -r.hoeheM / 2);
@@ -578,19 +587,12 @@
 		if (!renderer) return;
 		bauen(); anfordern();
 	});
-	// Sättigung und Kontrast: nur die Textur neu rechnen, die Szene bleibt.
-	let anpassungOffen = false;
+	// Die Regler: drei Zahlen in den Shader, dann neu zeichnen. Sonst nichts.
 	$effect(() => {
-		z.karte.saettigung; z.karte.kontrast;
-		if (!bodenRoh || !bodenTextur || anpassungOffen) return;
-		anpassungOffen = true;
-		requestAnimationFrame(() => {
-			anpassungOffen = false;
-			if (!bodenRoh || !bodenTextur) return;
-			anpassen(bodenRoh, bodenTextur.image as HTMLCanvasElement, z.karte);
-			bodenTextur.needsUpdate = true;
-			anfordern();
-		});
+		karteWerte.uSaettigung.value = z.karte.saettigung;
+		karteWerte.uKontrast.value = z.karte.kontrast;
+		karteWerte.uHelligkeit.value = z.karte.helligkeit ?? 1;
+		anfordern();
 	});
 	// Der Effekt liest den Zustand, gezeichnet wird erst im nächsten Takt.
 	$effect(() => {

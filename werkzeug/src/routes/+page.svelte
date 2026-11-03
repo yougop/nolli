@@ -57,6 +57,7 @@
 		z.schritt; z.ort; z.kasten; z.verhaeltnis; z.ausgabeBreite;
 		z.objekte; z.sichtbar; z.plangebiet; z.darstellung;
 		z.beschriftung; z.bereinigt; z.geladenFuer; z.gelaende; z.gelaendeFuer; z.ergaenzung; z.placesInfo;
+		z.karte.saettigung; z.karte.kontrast; z.karte.helligkeit;
 		z.sichern();
 	});
 
@@ -791,7 +792,7 @@
 							},
 							...(z.gelaendeJetzt
 								? { terrain_texture: 'model_texture.png',
-									terrain_texture_style: `top_view_bare${istNeutral(z.karte) ? '' : `, saturation ${z.karte.saettigung.toFixed(2)}, contrast ${z.karte.kontrast.toFixed(2)}`}, PNG, covers exactly the frame` }
+									terrain_texture_style: `top_view_bare${istNeutral(z.karte) ? '' : `, saturation ${z.karte.saettigung.toFixed(2)}, contrast ${z.karte.kontrast.toFixed(2)}, brightness ${(z.karte.helligkeit ?? 1).toFixed(2)}`}, PNG, covers exactly the frame` }
 								: {})
 						},
 						zeichnung: 'zeichnung.dxf',
@@ -926,80 +927,94 @@
 			{#if z.schritt > 1}
 				<div class="sichtleiste">
 					<div class="gruppe" role="group" aria-label={t().sicht.darstellung}>
-						{#each DARSTELLUNGEN as d}
-							<!-- Das 3D-Modell steht abgesetzt: Darin kann man nicht auswählen,
-							     und es hat eigene Einstellungen. Die Datentiefe gehört zu den
-							     flachen Blättern (Volker, 03.11.2026). -->
+						{#each DARSTELLUNGEN.filter((d) => d.bauweise !== 'raum') as d}
 							<button type="button" class:an={z.darstellung === d.id}
-								class:abgesetzt={d.id === 'modell3d'}
 								onclick={() => (z.darstellung = d.id)} title={t().darstellungen[d.id].zweck}>{t().darstellungen[d.id].name}</button>
 						{/each}
 					</div>
 					<!--
-						Sättigung und Kontrast des Bodenbilds. Nur im 3D-Modell, wo das
-						Bodenbild liegt; dieselbe Anpassung bekommt `model_texture.png`.
+						Das 3D-Modell mit dem, was nur dort gilt: Gelände und Bodenbild
+						(Volker, 03.11.2026). Darin kann man nicht auswählen, deshalb steht
+						es nicht bei den Blättern.
 					-->
-					<div class="klapp">
-						<button type="button" class="einzeln" class:an={kartenRegler && raeumlich}
-							class:veraendert={!istNeutral(z.karte)}
-							disabled={!raeumlich} aria-expanded={kartenRegler && raeumlich}
-							onclick={() => (kartenRegler = !kartenRegler)}
-							title={t().sicht.karteTitel}
-						>{t().sicht.karte}</button>
-						{#if kartenRegler && raeumlich}
-							<div class="regler" role="group" aria-label={t().sicht.karte}>
-								<label>
-									<span>{t().sicht.saettigung}</span>
-									<input type="range" min="0" max="1.5" step="0.05" bind:value={z.karte.saettigung} />
-									<em class="mono">{Math.round(z.karte.saettigung * 100)} %</em>
-								</label>
-								<label>
-									<span>{t().sicht.kontrast}</span>
-									<input type="range" min="0.5" max="1.5" step="0.05" bind:value={z.karte.kontrast} />
-									<em class="mono">{Math.round(z.karte.kontrast * 100)} %</em>
-								</label>
-								<button type="button" class="zurueck" disabled={istNeutral(z.karte)}
-									onclick={() => (z.karte = { ...NEUTRAL })}>{t().sicht.karteZurueck}</button>
-							</div>
-						{/if}
+					<div class="gruppe" role="group" aria-label={t().sicht.raum}>
+						{#each DARSTELLUNGEN.filter((d) => d.bauweise === 'raum') as d}
+							<button type="button" class:an={z.darstellung === d.id}
+								onclick={() => (z.darstellung = d.id)} title={t().darstellungen[d.id].zweck}>{t().darstellungen[d.id].name}</button>
+						{/each}
+						<!--
+							Das Gelände ist nur im 3D-Modell zu sehen; die flachen Darstellungen
+							sind Aufsichten und kennen keine Höhe. Dort ist der Schalter aus und
+							gesperrt, wie die Beschriftung im 3D-Modell. Der gewählte Zustand
+							bleibt dabei stehen, denn er gilt auch für das Paket — Höhenlinien
+							und Geländenetz kommen mit, gleich in welcher Ansicht man ausgibt.
+						-->
+						<button type="button" class="einzeln" class:an={z.gelaende && raeumlich}
+							disabled={!raeumlich || !!z.gelaendeLaedt}
+							onclick={() => z.gelaendeUmschalten()}
+							title={!raeumlich
+								? t().gelaende.titelFlach(z.gelaende)
+								: z.gelaendeJetzt && gelaendeFeld
+								? t().gelaende.titelAn(f0(gelaendeFeld.min), f0(gelaendeFeld.max), z.gelaendeJetzt.quellen.join(', ') || 'AWS Terrain Tiles')
+								: t().gelaende.titelAus}
+						>{z.gelaendeLaedt ? t().gelaende.laedt(z.gelaendeLaedt) : t().gelaende.schalter}</button>
+						<!--
+							Sättigung und Kontrast des Bodenbilds. Nur im 3D-Modell, wo das
+							Bodenbild liegt; dieselbe Anpassung bekommt `model_texture.png`.
+						-->
+						<div class="klapp">
+							<button type="button" class="einzeln" class:an={kartenRegler && raeumlich}
+								class:veraendert={!istNeutral(z.karte)}
+								disabled={!raeumlich} aria-expanded={kartenRegler && raeumlich}
+								onclick={() => (kartenRegler = !kartenRegler)}
+								title={t().sicht.karteTitel}
+							>{t().sicht.karte}</button>
+							{#if kartenRegler && raeumlich}
+								<div class="regler" role="group" aria-label={t().sicht.karte}>
+									<label>
+										<span>{t().sicht.saettigung}</span>
+										<input type="range" min="0" max="1.5" step="0.01" bind:value={z.karte.saettigung} />
+										<em class="mono">{Math.round(z.karte.saettigung * 100)} %</em>
+									</label>
+									<label>
+										<span>{t().sicht.kontrast}</span>
+										<input type="range" min="0.5" max="1.5" step="0.01" bind:value={z.karte.kontrast} />
+										<em class="mono">{Math.round(z.karte.kontrast * 100)} %</em>
+									</label>
+									<label>
+										<span>{t().sicht.helligkeit}</span>
+										<input type="range" min="0.5" max="1.5" step="0.01" bind:value={z.karte.helligkeit} />
+										<em class="mono">{Math.round(z.karte.helligkeit * 100)} %</em>
+									</label>
+									<button type="button" class="zurueck" disabled={istNeutral(z.karte)}
+										onclick={() => (z.karte = { ...NEUTRAL })}>{t().sicht.karteZurueck}</button>
+								</div>
+							{/if}
+						</div>
 					</div>
-					<button type="button" class="einzeln" class:an={z.beschriftung} disabled={raeumlich}
-						onclick={() => (z.beschriftung = !z.beschriftung)}
-						title={t().sicht.beschriftungTitel}
-					>{t().sicht.beschriftung}</button>
-					<!--
-						Anders als die Beschriftung gilt dieser Schalter auch im Modell: Dort
-						stehen die Kronen als Körper. Ein Schalter, der beim Wechsel der
-						Darstellung stumm wird, lässt den Zustand stehen, den er zuletzt
-						hatte, und man kann ihn genau dort nicht mehr ändern, wo man ihn
-						sieht. Schrift dagegen gibt es im Modell nicht, deshalb bleibt
-						„Beschriftung" dort aus.
-					-->
-					<button type="button" class="einzeln" class:an={z.baeume}
-						disabled={!z.baumpunkte.length}
-						onclick={() => (z.baeume = !z.baeume)}
-						title={z.baumpunkte.length
-							? (raeumlich
-								? t().sicht.baeumeRaum(imRahmenBaeume)
-								: t().sicht.baeumeFlach(imRahmenBaeume))
-							: t().sicht.keineBaeume}
-					>{t().sicht.baeume}</button>
-					<!--
-						Das Gelände ist nur im 3D-Modell zu sehen; die flachen Darstellungen
-						sind Aufsichten und kennen keine Höhe. Dort ist der Schalter aus und
-						gesperrt, wie die Beschriftung im 3D-Modell. Der gewählte Zustand
-						bleibt dabei stehen, denn er gilt auch für das Paket — Höhenlinien
-						und Geländenetz kommen mit, gleich in welcher Ansicht man ausgibt.
-					-->
-					<button type="button" class="einzeln" class:an={z.gelaende && raeumlich}
-						disabled={!raeumlich || !!z.gelaendeLaedt}
-						onclick={() => z.gelaendeUmschalten()}
-						title={!raeumlich
-							? t().gelaende.titelFlach(z.gelaende)
-							: z.gelaendeJetzt && gelaendeFeld
-							? t().gelaende.titelAn(f0(gelaendeFeld.min), f0(gelaendeFeld.max), z.gelaendeJetzt.quellen.join(', ') || 'AWS Terrain Tiles')
-							: t().gelaende.titelAus}
-					>{z.gelaendeLaedt ? t().gelaende.laedt(z.gelaendeLaedt) : t().gelaende.schalter}</button>
+					<div class="gruppe" role="group" aria-label={t().sicht.ebenen}>
+						<button type="button" class="einzeln" class:an={z.beschriftung} disabled={raeumlich}
+							onclick={() => (z.beschriftung = !z.beschriftung)}
+							title={t().sicht.beschriftungTitel}
+						>{t().sicht.beschriftung}</button>
+						<!--
+							Anders als die Beschriftung gilt dieser Schalter auch im Modell: Dort
+							stehen die Kronen als Körper. Ein Schalter, der beim Wechsel der
+							Darstellung stumm wird, lässt den Zustand stehen, den er zuletzt
+							hatte, und man kann ihn genau dort nicht mehr ändern, wo man ihn
+							sieht. Schrift dagegen gibt es im Modell nicht, deshalb bleibt
+							„Beschriftung" dort aus.
+						-->
+						<button type="button" class="einzeln" class:an={z.baeume}
+							disabled={!z.baumpunkte.length}
+							onclick={() => (z.baeume = !z.baeume)}
+							title={z.baumpunkte.length
+								? (raeumlich
+									? t().sicht.baeumeRaum(imRahmenBaeume)
+									: t().sicht.baeumeFlach(imRahmenBaeume))
+								: t().sicht.keineBaeume}
+						>{t().sicht.baeume}</button>
+					</div>
 					{#if raeumlich}
 						<div class="gruppe rechts" role="group" aria-label={t().sicht.ansicht}>
 							<button type="button" onclick={() => raum?.zuruecksetzen()}>{t().sicht.zuruecksetzen}</button>
@@ -1553,9 +1568,9 @@
 		border: 1px solid var(--linie);
 		transition: color 120ms, background 120ms;
 	}
-	.sichtleiste .gruppe button:first-child { border-radius: var(--rund) 0 0 var(--rund); }
-	.sichtleiste .gruppe button:last-child { border-radius: 0 var(--rund) var(--rund) 0; }
-	.sichtleiste .gruppe button + button { border-left: 0; }
+	.sichtleiste .gruppe > button:first-child { border-radius: var(--rund) 0 0 var(--rund); }
+	.sichtleiste .gruppe > button:last-child { border-radius: 0 var(--rund) var(--rund) 0; }
+	.sichtleiste .gruppe > button + button { border-left: 0; }
 	.beispiele {
 		display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px;
 		margin: 10px 0 0; font-size: 12px; color: var(--tinte-3);
@@ -1569,12 +1584,9 @@
 	.beispiele button:disabled { opacity: 0.42; cursor: default; }
 
 	.sichtleiste .einzeln { border-radius: var(--rund); }
-	/* Das 3D-Modell steht für sich, mit einer Lücke vor sich und eigenen Ecken. */
-	.sichtleiste .gruppe button.abgesetzt {
-		margin-left: 6px; border-left: 1px solid var(--linie); border-radius: var(--rund);
-	}
-	.sichtleiste .gruppe button.abgesetzt.an { border-left-color: var(--tinte); }
-	.sichtleiste .gruppe button:has(+ .abgesetzt) { border-radius: 0 var(--rund) var(--rund) 0; }
+	.sichtleiste .gruppe > .einzeln { border-radius: 0; }
+	/* Der aufklappende Knopf steht in einer Hülle und ist dort letztes Glied der Gruppe. */
+	.sichtleiste .gruppe > .klapp > button { border-left: 0; border-radius: 0 var(--rund) var(--rund) 0; }
 	.sichtleiste button:hover:not(:disabled) { color: var(--tinte); }
 	.sichtleiste button:disabled { opacity: 0.42; cursor: default; }
 	.sichtleiste button.an { background: var(--tinte); border-color: var(--tinte); color: var(--blatt); }

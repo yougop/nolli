@@ -43,11 +43,13 @@ await s.click('.treffer button');
 await warte(1500);
 console.log('holen:', await knopf('Bestandsdaten holen', true));
 console.log('Bestand da:', await bisKnopf('Weiter zur Ausgabe', 180000));
+// Der Geländeschalter ist nur im 3D-Modell bedienbar, also erst dorthin.
+console.log('3D:', await knopf('3D-Modell'));
+await warte(1500);
 console.log('Gelände an:', await knopf('Gelände'));
 console.log('Gelände geladen:', await bisKnopf('Gelände', 60000));
 const titel = await s.evaluate(() => [...document.querySelectorAll('button')].find(x => x.textContent.trim() === 'Gelände')?.title);
 console.log('Titel:', titel);
-console.log('3D:', await knopf('3D-Modell'));
 await warte(8000);
 await s.screenshot({ path: ziel + '/3d.png' });
 await knopf('Weiter zur Ausgabe');

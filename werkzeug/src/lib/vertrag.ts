@@ -72,6 +72,7 @@ export const FELDER: Record<string, string> = {
 	paket: 'package',
 	modell: 'model',
 	zeichnung: 'drawing',
+	zeichnung_gelaende: 'drawing_terrain',
 	aufsicht: 'image',
 	aufsicht_grund_im_paket: 'top_view_bare_in_package',
 	vorbehalte: 'caveats',
@@ -190,6 +191,7 @@ export const DATEIEN: Record<string, string> = {
 	'frame.json': 'frame.json',
 	'modell.obj': 'model.obj',
 	'zeichnung.dxf': 'drawing.dxf',
+	'zeichnung_gelaende.dxf': 'drawing_terrain.dxf',
 	'daten/koerper.json': 'data/bodies.json',
 	'daten/netz.json': 'data/network.json',
 	'daten/punkte.json': 'data/points.json',
@@ -246,7 +248,7 @@ export function pfadV2(p: string): string {
 }
 
 /** Felder, deren Wert ein Pfad im Paket ist. */
-const PFADFELDER = new Set(['datei', 'modell', 'zeichnung', 'aufsicht_grund_im_paket']);
+const PFADFELDER = new Set(['datei', 'modell', 'zeichnung', 'zeichnung_gelaende', 'aufsicht_grund_im_paket']);
 
 /**
  * Einen Wert in v2 übersetzen, in jeder Tiefe.

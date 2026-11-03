@@ -300,6 +300,58 @@ export function feldImRahmen(g: Gelaende, r: Rahmen, weite = RASTER_M): Feld {
 }
 
 /**
+ * Die Höhe auf dem Geländenetz des Modells, an einem Punkt im Rahmen.
+ *
+ * Nicht bilinear aus dem Raster, sondern auf genau den Dreiecken, die
+ * `model.obj` schreibt: je Masche zwei, geteilt an der Diagonale von (i, j)
+ * nach (i+1, j+1). Nur so liegt eine Linie auf dem Netz und nicht ein paar
+ * Zentimeter darüber oder darunter. `u`, `v` in Metern ab der linken unteren
+ * Rahmenecke.
+ */
+export function netzHoehe(f: Feld, u: number, v: number): number {
+	const fx = Math.max(0, Math.min(f.nx - 1, u / f.dx));
+	const fy = Math.max(0, Math.min(f.ny - 1, v / f.dy));
+	const i = Math.min(f.nx - 2, Math.floor(fx)), j = Math.min(f.ny - 2, Math.floor(fy));
+	const a = fx - i, b = fy - j;
+	const z = (ii: number, jj: number) => f.z[jj * f.nx + ii];
+	return a >= b
+		? z(i, j) + a * (z(i + 1, j) - z(i, j)) + b * (z(i + 1, j + 1) - z(i + 1, j))
+		: z(i, j) + b * (z(i, j + 1) - z(i, j)) + a * (z(i + 1, j + 1) - z(i, j + 1));
+}
+
+/**
+ * Einen Zug aufs Netz legen. Jede Strecke wird dort geteilt, wo sie eine
+ * Maschenkante oder eine Diagonale kreuzt; dazwischen ist das Netz eben, die
+ * Linie liegt also auf ganzer Länge darauf — wie `_Pull` in Rhino.
+ */
+export function aufsNetz(f: Feld, zug: [number, number][]): [number, number, number][] {
+	const aus: [number, number, number][] = [];
+	for (let k = 0; k < zug.length; k++) {
+		const [ax, ay] = zug[k];
+		if (k === 0) { aus.push([ax, ay, netzHoehe(f, ax, ay)]); continue; }
+		const [px, py] = zug[k - 1];
+		const fx0 = px / f.dx, fy0 = py / f.dy, fx1 = ax / f.dx, fy1 = ay / f.dy;
+		const ts: number[] = [];
+		const kreuze = (w0: number, w1: number) => {
+			if (Math.abs(w1 - w0) < 1e-12) return;
+			const lo = Math.ceil(Math.min(w0, w1)), hi = Math.floor(Math.max(w0, w1));
+			for (let n = lo; n <= hi; n++) {
+				const t = (n - w0) / (w1 - w0);
+				if (t > 1e-9 && t < 1 - 1e-9) ts.push(t);
+			}
+		};
+		kreuze(fx0, fx1); kreuze(fy0, fy1); kreuze(fx0 - fy0, fx1 - fy1);
+		ts.sort((x, y) => x - y);
+		for (const t of ts) {
+			const x = px + (ax - px) * t, y = py + (ay - py) * t;
+			aus.push([x, y, netzHoehe(f, x, y)]);
+		}
+		aus.push([ax, ay, netzHoehe(f, ax, ay)]);
+	}
+	return aus;
+}
+
+/**
  * Äquidistanz nach Spanne: so fein wie möglich, aber nicht mehr als rund
  * vierzig Linien. Jede fünfte ist eine Hauptlinie.
  */

@@ -12,7 +12,7 @@
 	import { feldImRahmen, aequidistanz, tiefsteUnter } from '$lib/geo/gelaende';
 	import type { Rahmen } from '$lib/geo/rahmen';
 	import { DARSTELLUNGEN, darstellung as darstellungVon } from '$lib/darstellung';
-	import { laden, stempel, bild, dxf, obj, alsMtl, paket, WEBP } from '$lib/ui/ausgeben';
+	import { laden, stempel, bild, dxf, dxfAufGelaende, obj, alsMtl, paket, WEBP } from '$lib/ui/ausgeben';
 	import { sucheOrt, ortBei } from '$lib/quelle';
 	import { t, sprache, spracheSetzen, spracheAnfangen, gebiet, zahl, englisch } from '$lib/sprache.svelte';
 	import { aufV2, vertragV2, pfadV2, darstellungV2 } from '$lib/vertrag';
@@ -277,6 +277,10 @@
 		];
 		if (mitRand)
 			teile.push({ name: 'model_outside.obj', inhalt: obj(bestand, rr, z.gelaendeJetzt, 'model.mtl', 'aussen') });
+		// Mit Gelände der Plan auf dem Netz, damit er in Rhino ohne `_Pull` auf
+		// dem Modell liegt. Gehört deshalb zum Modell, nicht nur ins Paket.
+		if (z.gelaendeJetzt)
+			teile.push({ name: pfadV2('zeichnung_gelaende.dxf'), inhalt: dxfAufGelaende(bestand, rr, z.gelaendeJetzt) });
 		return teile;
 	}
 
@@ -789,6 +793,9 @@
 								: {})
 						},
 						zeichnung: 'zeichnung.dxf',
+						// Derselbe Plan als 3D-Polylinien auf dem Geländenetz von
+						// `model.obj`; Gebäudeumrisse auf ihrer Fußhöhe. Ohne Gelände `null`.
+						zeichnung_gelaende: z.gelaendeJetzt ? 'zeichnung_gelaende.dxf' : null,
 						// Verlustfreies WebP, an allen Darstellungen gegen PNG
 						// geprüft: null abweichende Farbkanäle, 56 Prozent
 						// kleiner. Ein Plan ist große einfarbige Flächen mit

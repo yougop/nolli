@@ -1,5 +1,5 @@
 import { dxfEbene } from '../vertrag';
-import { type Gelaende, feldImRahmen, hoehenlinien, aequidistanz } from '../geo/gelaende';
+import { type Gelaende, feldImRahmen, hoehenlinien, aequidistanz, aufsNetz, netzHoehe, tiefsteUnter } from '../geo/gelaende';
 import { sichtEbene, type Objekt } from '../osm';
 import { alleRinge } from '../zeichnen';
 import type { Rahmen } from '../geo/rahmen';
@@ -29,17 +29,25 @@ const text = (s: string) =>
 /**
  * Mit Gelände kommen Höhenlinien dazu, auf zwei eigenen Ebenen und auf ihrer
  * Höhe über dem Meer. Der Plan selbst bleibt auf null, wie bisher.
+ *
+ * `aufGelaende` schreibt die zweite Fassung, `drawing_terrain.dxf`
+ * (Volker, 03.11.2026): derselbe Plan, aber aufs Geländenetz von
+ * `model.obj` gelegt, als 3D-Polylinien. Was man in Rhino sonst mit `_Pull`
+ * selbst macht. Gebäudeumrisse liegen dabei eben auf der Fußhöhe ihres
+ * Körpers, wie im Modell; eine Hauskante, die dem Hang folgt, stünde neben
+ * der Wand. Die ebene Fassung bleibt daneben, weil sich nur ebene Kurven
+ * schraffieren und extrudieren lassen.
  */
-export function alsDxf(objekte: Objekt[], r: Rahmen, mitGestrichenen = false, gelaende: Gelaende | null = null): string {
-	const linien = gelaende ? (() => {
-		const f = feldImRahmen(gelaende, r);
-		return hoehenlinien(f, aequidistanz(f.max - f.min));
-	})() : [];
+export function alsDxf(objekte: Objekt[], r: Rahmen, mitGestrichenen = false, gelaende: Gelaende | null = null,
+	aufGelaende = false): string {
+	const feld = gelaende ? feldImRahmen(gelaende, r) : null;
+	const netz = aufGelaende ? feld : null;
+	const linien = feld ? hoehenlinien(feld, aequidistanz(feld.max - feld.min)) : [];
 	let s = '';
 	// Kopf mit Zeichnungsgrenzen
 	s += p(0, 'SECTION') + p(2, 'HEADER');
-	s += p(9, '$EXTMIN') + p(10, 0) + p(20, 0) + p(30, 0);
-	s += p(9, '$EXTMAX') + p(10, r.breiteM.toFixed(3)) + p(20, r.hoeheM.toFixed(3)) + p(30, 0);
+	s += p(9, '$EXTMIN') + p(10, 0) + p(20, 0) + p(30, netz ? netz.min.toFixed(2) : 0);
+	s += p(9, '$EXTMAX') + p(10, r.breiteM.toFixed(3)) + p(20, r.hoeheM.toFixed(3)) + p(30, netz ? netz.max.toFixed(2) : 0);
 	s += p(9, '$INSUNITS') + p(70, 6); // Meter
 	s += p(0, 'ENDSEC');
 
@@ -67,22 +75,39 @@ export function alsDxf(objekte: Objekt[], r: Rahmen, mitGestrichenen = false, ge
 	 * gibt es `model_outside.obj`.
 	 */
 	const kasten: Punkt[] = [[r.x0, r.y0], [r.x1, r.y0], [r.x1, r.y1], [r.x0, r.y1]];
-	const zug = (ebene: string, punkte: Punkt[], zu: boolean) => {
-		s += p(0, 'POLYLINE') + p(8, ebene) + p(66, 1) + p(70, zu ? 1 : 0);
-		for (const [x, y] of punkte) {
-			const [vx, vy] = versatz(x, y);
-			s += p(0, 'VERTEX') + p(8, ebene) + p(10, vx.toFixed(3)) + p(20, vy.toFixed(3)) + p(30, '0.0');
+	/** Ein Zug in Rahmenkoordinaten. Mit Netz als 3D-Polylinie, sonst eben auf null. */
+	const zugLokal = (ebene: string, punkte: Punkt[], zu: boolean, fuss: number | null = null) => {
+		if (!netz) {
+			s += p(0, 'POLYLINE') + p(8, ebene) + p(66, 1) + p(70, zu ? 1 : 0);
+			for (const [x, y] of punkte)
+				s += p(0, 'VERTEX') + p(8, ebene) + p(10, x.toFixed(3)) + p(20, y.toFixed(3)) + p(30, '0.0');
+			s += p(0, 'SEQEND') + p(8, ebene);
+			return;
 		}
+		let pz: [number, number, number][];
+		if (fuss !== null) pz = punkte.map(([x, y]) => [x, y, fuss]);
+		else {
+			// Die schließende Strecke mit auflegen, dann den doppelten Punkt weg.
+			pz = aufsNetz(netz, zu ? [...punkte, punkte[0]] : punkte);
+			if (zu) pz.pop();
+		}
+		s += p(0, 'POLYLINE') + p(8, ebene) + p(66, 1) + p(10, '0.0') + p(20, '0.0') + p(30, '0.0') + p(70, 8 | (zu ? 1 : 0));
+		for (const [x, y, z] of pz)
+			s += p(0, 'VERTEX') + p(8, ebene) + p(10, x.toFixed(3)) + p(20, y.toFixed(3)) + p(30, z.toFixed(3)) + p(70, 32);
 		s += p(0, 'SEQEND') + p(8, ebene);
 	};
+	const zug = (ebene: string, punkte: Punkt[], zu: boolean, fuss: number | null = null) =>
+		zugLokal(ebene, punkte.map(([x, y]) => versatz(x, y)), zu, fuss);
+	const bau = new Set(['gebaeude', 'erhalt', 'overture']);
 	for (const o of objekte) {
 		if (o.zustand === 'gestrichen' && !mitGestrichenen) continue;
 		const ebene = o.zustand === 'gestrichen' ? dxfEbene(stift('gestrichen').dxf) : dxfEbene(stift(sichtEbene(o)).dxf);
+		const fuss = netz && gelaende && bau.has(sichtEbene(o)) ? tiefsteUnter(gelaende, o.ringe) : null;
 		for (const ring of alleRinge(o)) {
 			if (ring.length < 2) continue;
 			if (o.art === 'flaeche') {
 				const innen = amRahmen(ring, r.x0, r.y0, r.x1, r.y1).innen;
-				if (innen.length >= 3) zug(ebene, innen, true);
+				if (innen.length >= 3) zug(ebene, innen, true, fuss);
 			} else {
 				for (const teil of innerhalb(ring, kasten)) zug(ebene, teil, false);
 			}
@@ -100,7 +125,7 @@ export function alsDxf(objekte: Objekt[], r: Rahmen, mitGestrichenen = false, ge
 		const [vx, vy] = versatz(sx / ring.length, sy / ring.length);
 		if (vx < 0 || vy < 0 || vx > r.breiteM || vy > r.hoeheM) continue;
 		s += p(0, 'TEXT') + p(8, tl)
-			+ p(10, vx.toFixed(2)) + p(20, vy.toFixed(2)) + p(30, '0.0')
+			+ p(10, vx.toFixed(2)) + p(20, vy.toFixed(2)) + p(30, netz ? netzHoehe(netz, vx, vy).toFixed(2) : '0.0')
 			+ p(40, Math.max(3, r.breiteM / 260).toFixed(2))
 			+ p(1, text(o.name));
 	}
@@ -116,11 +141,7 @@ export function alsDxf(objekte: Objekt[], r: Rahmen, mitGestrichenen = false, ge
 	}
 
 	// Der Rahmen selbst, damit die Zeichnung ihre Grenze kennt
-	const rl = dxfEbene(stift('rahmen').dxf);
-	s += p(0, 'POLYLINE') + p(8, rl) + p(66, 1) + p(70, 1);
-	for (const [x, y] of [[0, 0], [r.breiteM, 0], [r.breiteM, r.hoeheM], [0, r.hoeheM]])
-		s += p(0, 'VERTEX') + p(8, rl) + p(10, x.toFixed(3)) + p(20, y.toFixed(3)) + p(30, '0.0');
-	s += p(0, 'SEQEND') + p(8, rl);
+	zugLokal(dxfEbene(stift('rahmen').dxf), [[0, 0], [r.breiteM, 0], [r.breiteM, r.hoeheM], [0, r.hoeheM]], true);
 
 	s += p(0, 'ENDSEC') + p(0, 'EOF');
 	return s;

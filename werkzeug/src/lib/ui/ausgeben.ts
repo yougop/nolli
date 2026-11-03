@@ -76,6 +76,8 @@ export async function paket(teile: { name: string; inhalt: Blob | string }[]): P
 }
 
 export const dxf = (o: Objekt[], r: Rahmen, g: Gelaende | null = null) => alsDxf(o, r, false, g);
+/** Dieselbe Zeichnung aufs Geländenetz gelegt. Nur mit Gelände sinnvoll. */
+export const dxfAufGelaende = (o: Objekt[], r: Rahmen, g: Gelaende) => alsDxf(o, r, false, g, true);
 export const obj = (o: Objekt[], r: Rahmen, g: Gelaende | null = null, mtl: string | null = null,
 	teil: 'innen' | 'aussen' = 'innen', baeume: Parameters<typeof alsObj>[5] = []) =>
 	alsObj(o, r, g, mtl, teil, baeume);

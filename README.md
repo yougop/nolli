@@ -23,7 +23,7 @@ Overture Maps.
 | Output | Contents |
 |---|---|
 | **Images** | Figure-ground, inverted, line, use, top view, white model, data depth, 3D view — up to 4096 px, with a bare version (no buildings, no trees) of each to use as a ground texture |
-| **`drawing.dxf`** | Separate layers with pen widths (`N_BUILDINGS`, `N_STREETS`, `N_WATER`, …), labels, frame, and contour lines when terrain is on. Metres, origin at the lower-left frame corner |
+| **`drawing.dxf`** | Separate layers with pen widths (`N_BUILDINGS`, `N_STREETS`, `N_WATER`, …), labels, frame, and contour lines when terrain is on. Cut at the frame. Metres, origin at the lower-left frame corner. With terrain, also `drawing_terrain.dxf`: the same drawing on the terrain mesh |
 | **Model (ZIP)** | `model.obj`, `model.mtl` and `model_texture.png`, ready for Rhino: extruded buildings with hard edges, cut cleanly at the frame edge; the ground textured with the top view, on the terrain or flat; tree crowns as one object `trees`. It contains what the 3D view shows — switch terrain and trees there |
 | **Package (ZIP)** | Everything above plus `model_outside.obj`, the parts of buildings beyond the frame edge, which still cast shadows into it |
 | **`frame.json`** | The data contract: frame, projection, scale, provenance, caveats, and a table of contents of the package |
@@ -53,6 +53,10 @@ plus a 150 m margin from the [AWS Terrain Tiles](https://registry.opendata.aws/t
   above sea level, textured with the top view without buildings;
 - adds contour lines to `drawing.dxf` on `N_CONTOUR` and `N_CONTOUR_MAJOR`,
   each at its height, with an interval chosen from the height range;
+- writes a second drawing, `drawing_terrain.dxf`, into the model ZIP and the
+  package: the same plan laid onto the terrain mesh of `model.obj` as 3D
+  polylines, exactly on its triangles; building outlines sit at the base
+  height of their body;
 - writes the raster to `data/terrain.json` and records the source models in
   the contract.
 
@@ -121,8 +125,8 @@ grid north = true north at the centre). The exact definition is in
 - **Rhino:** unpack the model ZIP and import `model.obj` in metres; material
   and texture come with it, nothing to map. `drawing.dxf` lines up with it.
   The drawing stays flat on purpose, so its curves can still be hatched,
-  extruded and capped; to put single curves on the slope, use `_Project` or
-  `_Pull` onto the terrain mesh. Images fit exactly onto the frame from 0/0
+  extruded and capped. With terrain on, `drawing_terrain.dxf` is the same
+  drawing already lying on the terrain mesh — no `_Pull` needed. Images fit exactly onto the frame from 0/0
   to width/height.
 
 - **Other data (QGIS):** create a custom coordinate system from `grid.proj4`,

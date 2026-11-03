@@ -13,6 +13,7 @@
 	import { feldImRahmen, tiefsteUnter, hoeheBei } from '$lib/geo/gelaende';
 	import { BAUM } from '$lib/analysedaten';
 	import type { StiftId } from '$lib/stifte';
+	import { anpassen } from '$lib/anpassen';
 
 	let huelle = $state<HTMLDivElement | null>(null);
 	let breite = $state(900), hoehe = $state(600);
@@ -133,6 +134,9 @@
 		composer.addPass(new OutputPass());
 	}
 
+	let bodenRoh: HTMLCanvasElement | null = null;
+	let bodenTextur: THREE.CanvasTexture | null = null;
+
 	/** Der Plan als Bodenbild. Derselbe Zeichner wie in der Aufsicht. */
 	function bodenbild(r: Rahmen) {
 		const c = document.createElement('canvas');
@@ -152,7 +156,13 @@
 			plangebiet: z.plangebiet, rahmenZeigen: false,
 			sichtbar: ohneBauten, hervorgehoben: null
 		});
-		const t = new THREE.CanvasTexture(c);
+		// Der Plan bleibt unangetastet liegen; die Textur zeigt seine angepasste
+		// Fassung. So kostet ein Zug am Regler nur das Umrechnen, nicht das Zeichnen.
+		bodenRoh = c;
+		const angepasst = document.createElement('canvas');
+		anpassen(c, angepasst, z.karte);
+		const t = new THREE.CanvasTexture(angepasst);
+		bodenTextur = t;
 		t.colorSpace = THREE.SRGBColorSpace;
 		t.anisotropy = renderer?.capabilities.getMaxAnisotropy() ?? 1;
 		return t;
@@ -567,6 +577,20 @@
 		z.objekte; z.sichtbar; z.bereinigt; z.plangebiet; z.kasten; z.baeume; z.baumpunkte; feld;
 		if (!renderer) return;
 		bauen(); anfordern();
+	});
+	// Sättigung und Kontrast: nur die Textur neu rechnen, die Szene bleibt.
+	let anpassungOffen = false;
+	$effect(() => {
+		z.karte.saettigung; z.karte.kontrast;
+		if (!bodenRoh || !bodenTextur || anpassungOffen) return;
+		anpassungOffen = true;
+		requestAnimationFrame(() => {
+			anpassungOffen = false;
+			if (!bodenRoh || !bodenTextur) return;
+			anpassen(bodenRoh, bodenTextur.image as HTMLCanvasElement, z.karte);
+			bodenTextur.needsUpdate = true;
+			anfordern();
+		});
 	});
 	// Der Effekt liest den Zustand, gezeichnet wird erst im nächsten Takt.
 	$effect(() => {

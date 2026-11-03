@@ -3,6 +3,7 @@ import { Rahmen, VERHAELTNISSE, AUSGABEBREITEN, type Verhaeltnis } from './geo/r
 import { ortsgitter, nachGitter } from './geo/utm';
 import { lesen, imRahmen, sichtEbene, zweifelhafteGebaeude, ZWEIFEL_ENTHAELT, type Objekt, type Zweifel } from './osm';
 import { drin, beruehrt, ausserhalb, schwerpunkt } from './schneiden';
+import { NEUTRAL, type Anpassung } from './anpassen';
 import { STIFTE, type StiftId } from './stifte';
 import { base } from '$app/paths';
 import { ablegen, abholen, wegwerfen } from './ablage';
@@ -83,6 +84,8 @@ class Zustand {
 	 */
 	baeume = $state(false);
 	bereinigt = $state(false);
+	/** Sättigung und Kontrast des Bodenbilds im 3D-Modell und in `model_texture.png`. */
+	karte = $state<Anpassung>({ ...NEUTRAL });
 
 	/**
 	 * Gelände zuschaltbar, wie die Bäume.
@@ -593,6 +596,7 @@ class Zustand {
 			linien: this.linien,
 			rest: this.rest,
 			baeume: this.baeume,
+			karte: this.karte,
 			ergaenzung: this.ergaenzung,
 			zweifel: this.zweifel,
 			places: this.places,
@@ -645,6 +649,7 @@ class Zustand {
 		this.linien = p.linien ?? [];
 		this.rest = p.rest ?? [];
 		this.baeume = p.baeume ?? false;
+		this.karte = p.karte ?? { ...NEUTRAL };
 		this.baumpunkte = baeumeAus(this.rest);
 		this.ergaenzung = p.ergaenzung ?? null;
 		this.zweifel = p.zweifel ?? [];

@@ -3,6 +3,7 @@ import { Rahmen } from '$lib/geo/rahmen';
 import { zip } from 'fflate';
 import { zeichneBlatt } from '$lib/zeichnen';
 import { alsDxf } from '$lib/export/dxf';
+import { anpassen, istNeutral, type Anpassung } from '$lib/anpassen';
 import { alsObj } from '$lib/export/obj';
 import type { Objekt } from '$lib/osm';
 import type { Gelaende } from '$lib/geo/gelaende';
@@ -38,8 +39,8 @@ export const WEBP = 'image/webp';
 export async function bild(objekte: Objekt[], r: Rahmen, darstellung: string, bereinigt: boolean,
 	beschriftung: boolean, plangebiet: [number, number][] | null, sichtbar: Set<any>,
 	ohneBauten = false, typ = 'image/png',
-	baeume?: { x: number; y: number; krone: number }[]): Promise<Blob> {
-	const c = document.createElement('canvas');
+	baeume?: { x: number; y: number; krone: number }[], anpassung?: Anpassung): Promise<Blob> {
+	let c = document.createElement('canvas');
 	c.width = r.pixelBreite; c.height = r.pixelHoehe;
 	const ctx = c.getContext('2d');
 	if (!ctx) throw new Error(t().bild.keineLeinwand);
@@ -47,6 +48,11 @@ export async function bild(objekte: Objekt[], r: Rahmen, darstellung: string, be
 		darstellung, bereinigt, beschriftung, plangebiet,
 		rahmenZeigen: false, sichtbar, hervorgehoben: null, ohneBauten, baeume
 	});
+	if (anpassung && !istNeutral(anpassung)) {
+		const ziel = document.createElement('canvas');
+		anpassen(c, ziel, anpassung);
+		c = ziel;
+	}
 	return new Promise((gut, schlecht) =>
 		c.toBlob((b) => (b ? gut(b) : schlecht(new Error(t().bild.nichtErzeugt))), typ, 1)
 	);

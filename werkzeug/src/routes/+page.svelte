@@ -8,6 +8,7 @@
 	import { hoehenDeckung, ringflaeche, istTeil, gebaeudeLuecke, sichtEbene, ZWEIFEL_ENTHAELT } from '$lib/osm';
 	import { PLACES_ZUVERSICHT } from '$lib/overture';
 	import { amRahmen } from '$lib/schneiden';
+	import { istNeutral, NEUTRAL } from '$lib/anpassen';
 	import { BAUM } from '$lib/analysedaten';
 	import { feldImRahmen, aequidistanz, tiefsteUnter } from '$lib/geo/gelaende';
 	import type { Rahmen } from '$lib/geo/rahmen';
@@ -191,6 +192,7 @@
 		+ 7    // Modell, Teile vor der Kante, Materialien, Textur, Zeichnung, Vertrag, Liesmich
 	);
 	let raum = $state<Raum | null>(null);
+	let kartenRegler = $state(false);
 	const f0 = (n: number) => zahl(Math.round(n));
 	const f1 = (n: number) => zahl(n, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
@@ -273,7 +275,7 @@
 				modellKronen ? z.baumpunkte : []) },
 			{ name: 'model.mtl', inhalt: alsMtl(textur) },
 			{ name: textur, inhalt: await bild(bestand, rr, 'modellaufsicht', z.bereinigt, z.beschriftung,
-				z.plangebiet, z.sichtbar, true, 'image/png', undefined) }
+				z.plangebiet, z.sichtbar, true, 'image/png', undefined, z.karte) }
 		];
 		if (mitRand)
 			teile.push({ name: 'model_outside.obj', inhalt: obj(bestand, rr, z.gelaendeJetzt, 'model.mtl', 'aussen') });
@@ -789,7 +791,7 @@
 							},
 							...(z.gelaendeJetzt
 								? { terrain_texture: 'model_texture.png',
-									terrain_texture_style: 'top_view_bare, PNG, covers exactly the frame' }
+									terrain_texture_style: `top_view_bare${istNeutral(z.karte) ? '' : `, saturation ${z.karte.saettigung.toFixed(2)}, contrast ${z.karte.kontrast.toFixed(2)}`}, PNG, covers exactly the frame` }
 								: {})
 						},
 						zeichnung: 'zeichnung.dxf',
@@ -925,13 +927,41 @@
 				<div class="sichtleiste">
 					<div class="gruppe" role="group" aria-label={t().sicht.darstellung}>
 						{#each DARSTELLUNGEN as d}
-							<!-- Datentiefe und 3D-Modell stehen abgesetzt: Das eine ist eine
-							     Auskunft über die Daten statt ein Plan, im anderen kann man
-							     nicht auswählen. -->
+							<!-- Das 3D-Modell steht abgesetzt: Darin kann man nicht auswählen,
+							     und es hat eigene Einstellungen. Die Datentiefe gehört zu den
+							     flachen Blättern (Volker, 03.11.2026). -->
 							<button type="button" class:an={z.darstellung === d.id}
-								class:abgesetzt={d.id === 'datentiefe'}
+								class:abgesetzt={d.id === 'modell3d'}
 								onclick={() => (z.darstellung = d.id)} title={t().darstellungen[d.id].zweck}>{t().darstellungen[d.id].name}</button>
 						{/each}
+					</div>
+					<!--
+						Sättigung und Kontrast des Bodenbilds. Nur im 3D-Modell, wo das
+						Bodenbild liegt; dieselbe Anpassung bekommt `model_texture.png`.
+					-->
+					<div class="klapp">
+						<button type="button" class="einzeln" class:an={kartenRegler && raeumlich}
+							class:veraendert={!istNeutral(z.karte)}
+							disabled={!raeumlich} aria-expanded={kartenRegler && raeumlich}
+							onclick={() => (kartenRegler = !kartenRegler)}
+							title={t().sicht.karteTitel}
+						>{t().sicht.karte}</button>
+						{#if kartenRegler && raeumlich}
+							<div class="regler" role="group" aria-label={t().sicht.karte}>
+								<label>
+									<span>{t().sicht.saettigung}</span>
+									<input type="range" min="0" max="1.5" step="0.05" bind:value={z.karte.saettigung} />
+									<em class="mono">{Math.round(z.karte.saettigung * 100)} %</em>
+								</label>
+								<label>
+									<span>{t().sicht.kontrast}</span>
+									<input type="range" min="0.5" max="1.5" step="0.05" bind:value={z.karte.kontrast} />
+									<em class="mono">{Math.round(z.karte.kontrast * 100)} %</em>
+								</label>
+								<button type="button" class="zurueck" disabled={istNeutral(z.karte)}
+									onclick={() => (z.karte = { ...NEUTRAL })}>{t().sicht.karteZurueck}</button>
+							</div>
+						{/if}
 					</div>
 					<button type="button" class="einzeln" class:an={z.beschriftung} disabled={raeumlich}
 						onclick={() => (z.beschriftung = !z.beschriftung)}
@@ -1804,4 +1834,20 @@
 		.zeile { flex-wrap: wrap; gap: 8px 16px; padding-block: 9px; height: auto; }
 		.zeile .recht { margin-left: 0; width: 100%; }
 	}
+	/* Karte anpassen: ein Knopf, darunter die zwei Regler als kleine Tafel. */
+	.sichtleiste .klapp { position: relative; }
+	.sichtleiste button.veraendert:not(.an) { border-color: var(--tinte-3); color: var(--tinte); }
+	.sichtleiste .regler {
+		position: absolute; top: calc(100% + 6px); left: 0; z-index: 20;
+		display: grid; gap: 10px; width: 260px; padding: 12px 14px;
+		background: var(--blatt); border: 1px solid var(--linie); border-radius: var(--rund);
+		box-shadow: var(--heben);
+	}
+	.sichtleiste .regler label {
+		display: grid; grid-template-columns: 70px 1fr 44px; align-items: center; gap: 8px;
+		font-size: 12px; color: var(--tinte-2);
+	}
+	.sichtleiste .regler input { width: 100%; accent-color: var(--tinte); }
+	.sichtleiste .regler em { font-style: normal; font-size: 11px; text-align: right; color: var(--tinte); }
+	.sichtleiste .regler .zurueck { justify-self: end; border-radius: var(--rund); }
 </style>

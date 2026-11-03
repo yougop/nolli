@@ -8,6 +8,7 @@
 	import { hoehenDeckung, ringflaeche, istTeil, gebaeudeLuecke, sichtEbene, ZWEIFEL_ENTHAELT } from '$lib/osm';
 	import { PLACES_ZUVERSICHT } from '$lib/overture';
 	import { amRahmen } from '$lib/schneiden';
+	import { MATERIALIEN, materialFuer, materialDatei } from '$lib/material';
 	import { istNeutral, NEUTRAL } from '$lib/anpassen';
 	import { BAUM } from '$lib/analysedaten';
 	import { feldImRahmen, aequidistanz, tiefsteUnter } from '$lib/geo/gelaende';
@@ -190,7 +191,7 @@
 		2 * DARSTELLUNGEN.filter((d) => d.bauweise !== 'raum').length
 		+ (raeumlich ? 1 : 0)
 		+ DATENDATEIEN.length
-		+ 7    // Modell, Teile vor der Kante, Materialien, Textur, Zeichnung, Vertrag, Liesmich
+		+ 8    // Modell, Teile vor der Kante, Materialien, Textur, Zeichnung, Vertrag, Liesmich, Materialschema
 	);
 	let raum = $state<Raum | null>(null);
 	let kartenRegler = $state(false);
@@ -425,6 +426,9 @@
 
 		teile.push(...await modellTeile(rr, true));
 		teile.push({ name: pfadV2('zeichnung.dxf'), inhalt: dxf(bestand, rr, z.gelaendeJetzt) });
+		// Das Materialschema, als Abschrift des Katalogs. Außerhalb von `legen`,
+		// weil es kein Datensatz aus OpenStreetMap ist, sondern Teil des Vertrags.
+		teile.push({ name: 'data/materials.json', inhalt: JSON.stringify(materialDatei(), null, 2) });
 		const vertrag = vertragJetzt(basis, { bilder, daten });
 		teile.push({ name: 'frame.json', inhalt: JSON.stringify(vertrag, null, 2) });
 		teile.push({ name: 'README.md', inhalt: paketLiesmich(vertrag, sprache.jetzt) });
@@ -443,7 +447,8 @@
 			.map((b) => ({
 				x: b.x, y: b.y,
 				krone_m: Math.round(b.krone * 10) / 10,
-				gemessen: b.gemessen
+				gemessen: b.gemessen,
+				material: 'tree'
 			}));
 	}
 
@@ -456,6 +461,16 @@
 				// Ein ergänzter Körper hat keine OSM-Kennung, sondern die von Overture.
 				osm_id: o.herkunft ? null : o.id,
 				...(o.herkunft === 'overture' ? { overture_id: o.id.slice(2) } : {}),
+				/**
+				 * Die Kennung im OBJ-Namen, gleich woher der Körper stammt: das
+				 * Stück zwischen `building_` (oder `kept_`) und den Zusätzen.
+				 * Darauf verweisen Entwürfe mit `replaces` und `removes`
+				 * (Materialschema). `osm_id` taugt dafür nicht, Overture-Körper
+				 * haben keine.
+				 */
+				body_id: o.id,
+				/** Das Material nach dem Schema; Pons überschreibt es je Körper. */
+				material: materialFuer(o),
 				/**
 				 * Gebäude oder Gebäudeteil. Ein Teil liegt in seinem Gebäude —
 				 * wer Körper stellt, braucht beide; wer Häuser zählt, nur die
@@ -784,12 +799,13 @@
 						model_outside: 'model_outside.obj',
 						material: {
 							file: 'model.mtl',
-							names: {
-								building: 'Buildings inside the frame',
-								building_outside: 'Parts outside the frame edge',
-								tree: 'Tree crowns, one object `trees`, present when trees are switched on',
-								terrain: 'Terrain mesh'
-							},
+							// Seit 03.11.2026 die Einträge des Materialschemas statt
+							// `building`/`building_outside`; je Körper `material` in bodies.json.
+							names: Object.fromEntries([
+								...MATERIALIEN.map((m) => [m.id, m.name.en]),
+								['terrain', 'Terrain mesh']
+							]),
+							schema: 'data/materials.json',
 							...(z.gelaendeJetzt
 								? { terrain_texture: 'model_texture.png',
 									terrain_texture_style: `top_view_bare${istNeutral(z.karte) ? '' : `, saturation ${z.karte.saettigung.toFixed(2)}, contrast ${z.karte.kontrast.toFixed(2)}, brightness ${(z.karte.helligkeit ?? 1).toFixed(2)}`}, PNG, covers exactly the frame` }

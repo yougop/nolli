@@ -5,6 +5,7 @@ import { kronenKoerper } from './baeume';
 import type { Objekt } from '../osm';
 import type { Rahmen } from '../geo/rahmen';
 import { drin, amRahmen } from '../schneiden';
+import { MATERIALIEN, materialFuer, kd } from '../material';
 
 /**
  * Wavefront OBJ, extrudierte Gebaeude. Ursprung auf der linken unteren
@@ -100,7 +101,9 @@ export function alsObj(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | null =
 		const schreiben = (name: string, teile: [number, number][][], loch: [number, number][][]) => {
 			if (!teile.length) return;
 			zeilen.push(`o ${objName(name)}`);
-			if (material) zeilen.push(`usemtl ${name.endsWith('_ausserhalb') ? 'building_outside' : 'building'}`);
+			// Das Material nach dem Schema (`material.ts`), innen wie außen dasselbe:
+			// Es gehört dem Gebäude, nicht dem Stück. Ein `o` je Körper bleibt.
+			if (material) zeilen.push(`usemtl ${materialFuer(o)}`);
 			for (const aussen of teile) {
 				const loecher = loch.filter((l) => drin(l[0], aussen));
 
@@ -255,27 +258,18 @@ function flaeche(r: [number, number][]): number {
 /**
  * Die Materialdatei zum Modell.
  *
- * Drei Materialien: Häuser weiß, die Teile vor der Rahmenkante grau, damit
- * man sie sieht und auswählen kann, und das Gelände mit der Aufsicht ohne
- * Bauten als Bild. Die Textur ist PNG, nicht WebP wie die übrigen Bilder des
- * Pakets: Nicht jedes CAD-Programm liest WebP als Textur.
+ * Der Katalog aus `material.ts`, ein Material je Eintrag, dazu das Gelände
+ * mit der Aufsicht ohne Bauten als Bild. Seit 03.11.2026 (Volker): Graustufen
+ * nach Nutzungsklasse statt Weiß; vorher hieß es `building` und, vor der
+ * Rahmenkante, `building_outside`. Die Textur ist PNG, nicht WebP wie die
+ * übrigen Bilder des Pakets: Nicht jedes CAD-Programm liest WebP als Textur.
  */
 export function alsMtl(textur: string | null): string {
 	return [
-		'# Nolli — materials for model.obj',
+		'# Nolli — materials for model.obj, model_outside.obj and model_design.obj',
+		'# One material per entry of data/materials.json (schema 1): greys by use class, design warm.',
 		'',
-		'newmtl building',
-		'Kd 0.92 0.92 0.92',
-		'Ka 0 0 0',
-		'',
-		'newmtl building_outside',
-		'Kd 0.62 0.62 0.62',
-		'Ka 0 0 0',
-		'',
-		'newmtl tree',
-		'Kd 0.55 0.68 0.45',
-		'Ka 0 0 0',
-		'',
+		...MATERIALIEN.flatMap((m) => [`newmtl ${m.id}`, `Kd ${kd(m.color)}`, 'Ka 0 0 0', '']),
 		'newmtl terrain',
 		'Kd 1 1 1',
 		'Ka 0 0 0',

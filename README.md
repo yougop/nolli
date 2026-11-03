@@ -24,9 +24,10 @@ Overture Maps.
 |---|---|
 | **Images** | Figure-ground, inverted, line, use, top view, white model, data depth, 3D view — up to 4096 px, with a bare version (no buildings, no trees) of each to use as a ground texture |
 | **`drawing.dxf`** | Separate layers with pen widths (`N_BUILDINGS`, `N_STREETS`, `N_WATER`, …), labels, frame, and contour lines when terrain is on. Cut at the frame. Metres, origin at the lower-left frame corner. With terrain, also `drawing_terrain.dxf`: the same drawing on the terrain mesh |
-| **Model (ZIP)** | `model.obj`, `model.mtl` and `model_texture.png`, ready for Rhino: extruded buildings with hard edges, cut cleanly at the frame edge; the ground textured with the top view, on the terrain or flat; tree crowns as one object `trees`. It contains what the 3D view shows — switch terrain and trees there, and set saturation, contrast and brightness of the ground under **Adjust map** (a fully desaturated texture gives a grey plan in Rhino) |
+| **Model (ZIP)** | `model.obj`, `model.mtl` and `model_texture.png`, ready for Rhino: extruded buildings with hard edges, in greys by use class (one material per body, see `data/materials.json`), cut cleanly at the frame edge; the ground textured with the top view, on the terrain or flat; tree crowns as one object `trees`. It contains what the 3D view shows — switch terrain and trees there, and set saturation, contrast and brightness of the ground under **Adjust map** (a fully desaturated texture gives a grey plan in Rhino) |
 | **Package (ZIP)** | Everything above plus `model_outside.obj`, the parts of buildings beyond the frame edge, which still cast shadows into it |
 | **`frame.json`** | The data contract: frame, projection, scale, provenance, caveats, and a table of contents of the package |
+| **`data/materials.json`** | The material schema shared by the pipeline: an id, a grey (warm for design) and a mask index per class. Every body names its material in `data/bodies.json`, together with its `body_id` |
 | **`data/*.json`** | Everything OpenStreetMap knows inside the frame: buildings with height and origin of the height, street network as a graph, points of interest, stops and lines, land use, trees, terrain raster. If added: buildings from Overture (marked as such) and `data/places.json` |
 | **`README.md`** | Written into every package, in the interface language |
 

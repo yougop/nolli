@@ -42,6 +42,7 @@ ${v.license}.
 | \`drawing.dxf\` | Zeichnung mit getrennten Ebenen (\`N_BUILDINGS\`, \`N_STREETS\`, …), Meter |
 ${ter ? '| \`drawing_terrain.dxf\` | Dieselbe Zeichnung aufs Geländenetz von \`model.obj\` gelegt, als 3D-Polylinien. Gebäudeumrisse auf der Fußhöhe ihres Körpers |\n' : ''}| \`images/\` | Jede Darstellung, dazu je eine Fassung \`_bare\` ohne Baukörper und Bäume |
 | \`data/\` | Alle Daten als JSON, Feldnamen siehe unten |
+| \`data/materials.json\` | Das Materialschema der Kette: Graustufen nach Nutzungsklasse, warm für Entwürfe. Jeder Körper trägt sein Material in \`data/bodies.json\` (\`material\`), im OBJ als \`usemtl\` |
 
 Die Feld- und Dateinamen sind englisch (Datenvertrag v${v.contract_version}), unabhängig von der Sprache dieser Datei. Die Beschreibungen in den Tabellen unten stammen aus dem Vertrag und sind deshalb ebenfalls englisch.
 
@@ -117,6 +118,7 @@ ${v.license}.
 | \`drawing.dxf\` | Drawing with separate layers (\`N_BUILDINGS\`, \`N_STREETS\`, …), metres |
 ${ter ? '| \`drawing_terrain.dxf\` | The same drawing laid onto the terrain mesh of \`model.obj\`, as 3D polylines. Building outlines at the base height of their body |\n' : ''}| \`images/\` | Every style, plus a \`_bare\` version without buildings and trees |
 | \`data/\` | All data as JSON, field names below |
+| \`data/materials.json\` | The material schema of the pipeline: greys by use class, warm for design. Every body carries its material in \`data/bodies.json\` (\`material\`), in the OBJ as \`usemtl\` |
 
 Data contract v${v.contract_version}.
 

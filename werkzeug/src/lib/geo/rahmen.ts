@@ -12,7 +12,13 @@ export const VERHAELTNISSE: Verhaeltnis[] = [
 	{ name: '1:1', wert: 1 },
 	{ name: 'frei', wert: null }
 ];
-export const AUSGABEBREITEN = [2048, 3840, 4096];
+/**
+ * Die Ausgabebreiten. 8K seit 03.11.2026 (Volker), für Texturen in Rhino und
+ * große Plots. Die Daten hängen nur am Rahmen, nicht an der Breite: Umschalten
+ * holt nichts neu.
+ */
+export const AUSGABEBREITEN = [2048, 3840, 4096, 8192];
+export const breiteName = (b: number) => (b === 8192 ? '8K' : b === 4096 ? '4K' : b === 3840 ? 'UHD' : '2K');
 
 /** Untergrenze: eine 12 m tiefe Gebaeudezeile muss 12 px breit bleiben. */
 export const PRUEFTIEFE_M = 12;

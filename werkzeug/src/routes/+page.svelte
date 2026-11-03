@@ -3,6 +3,7 @@
 	import Blatt from '$lib/ui/Blatt.svelte';
 	import Raum from '$lib/ui/Raum.svelte';
 	import { z, VERHAELTNISSE, AUSGABEBREITEN } from '$lib/zustand.svelte';
+	import { breiteName } from '$lib/geo/rahmen';
 	import { STIFTE, FAHRBAHN } from '$lib/stifte';
 	import { ebenenZaehlen } from '$lib/zeichnen';
 	import { hoehenDeckung, ringflaeche, istTeil, gebaeudeLuecke, sichtEbene, ZWEIFEL_ENTHAELT } from '$lib/osm';
@@ -1099,7 +1100,7 @@
 					<div class="wahl">
 						{#each AUSGABEBREITEN as b}
 							<button type="button" class:an={z.ausgabeBreite === b}
-								onclick={() => (z.ausgabeBreite = b)}>{b === 4096 ? '4K' : b === 3840 ? 'UHD' : '2K'}<em class="mono">{b}</em></button>
+								onclick={() => (z.ausgabeBreite = b)}>{breiteName(b)}<em class="mono">{b}</em></button>
 						{/each}
 					</div>
 				</div>
@@ -1409,6 +1410,17 @@
 						<div><dt>{t().gelaende.zeile}</dt><dd class="mono">{gelaendeFeld ? t().gelaende.spanne(f0(gelaendeFeld.min), f0(gelaendeFeld.max)) : t().gelaende.eben}</dd></div>
 						<div><dt>{t().ausgeben.groesse}</dt><dd class="mono">{r?.pixelBreite} × {r?.pixelHoehe}</dd></div>
 					</dl>
+					<!--
+						Die Breite auch hier, wo sie wirkt: Sie bestimmt jedes Bild und die
+						Textur im Modell. Die Daten bleiben, nur gezeichnet wird neu.
+					-->
+					<div class="wahl breiten">
+						{#each AUSGABEBREITEN as b}
+							<button type="button" class:an={z.ausgabeBreite === b}
+								onclick={() => (z.ausgabeBreite = b)}>{breiteName(b)}<em class="mono">{b}</em></button>
+						{/each}
+					</div>
+					{#if z.ausgabeBreite > 4096}<p class="hinweis leise">{t().ausgeben.achtK}</p>{/if}
 					<p class="hinweis leise">
 						{t().darstellungen[darstellungJetzt.id].zweck}
 						{#if hoehenAbstand}

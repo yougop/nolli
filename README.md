@@ -22,7 +22,7 @@ Overture Maps.
 
 | Output | Contents |
 |---|---|
-| **Images** | Figure-ground, inverted, line, use, top view, white model, data depth, 3D view — up to 4096 px, with a bare version (no buildings, no trees) of each to use as a ground texture |
+| **Images** | Figure-ground, inverted, line, use, top view, white model, data depth, 3D view — up to 8192 px (8K; the width can be switched in step 3 without fetching again), with a bare version (no buildings, no trees) of each to use as a ground texture |
 | **`drawing.dxf`** | Separate layers with pen widths (`N_BUILDINGS`, `N_STREETS`, `N_WATER`, …), labels, frame, and contour lines when terrain is on. Cut at the frame. Metres, origin at the lower-left frame corner. With terrain, also `drawing_terrain.dxf`: the same drawing on the terrain mesh |
 | **Model (ZIP)** | `model.obj`, `model.mtl` and `model_texture.png`, ready for Rhino: extruded buildings with hard edges, in greys by use class (one material per body, see `data/materials.json`), cut cleanly at the frame edge; the ground textured with the top view, on the terrain or flat; tree crowns as one object `trees`. It contains what the 3D view shows — switch terrain and trees there, and set saturation, contrast and brightness of the ground under **Adjust map** (a fully desaturated texture gives a grey plan in Rhino) |
 | **Package (ZIP)** | Everything above plus `model_outside.obj`, the parts of buildings beyond the frame edge, which still cast shadows into it |

@@ -547,8 +547,19 @@ class Zustand {
 	}
 	zustandSetzen(zu: 'normal' | 'gestrichen' | 'erhalt') {
 		if (!this.ausgewaehlt.size) return;
+		/**
+		 * Die Ebene „Erhalt" gibt es nur für Gebäude. Erhalten lässt sich jedes
+		 * Objekt — ein Park, den das Freiräumen eines Plangebiets nicht treffen
+		 * soll —, aber nur ein Gebäude wechselt dabei die Ebene. Vorher wechselte
+		 * jedes: Ein erhaltener Kanal stand danach als acht Meter hoher Körper
+		 * im Modell, und „Zurücksetzen" machte ihn endgültig zum Gebäude
+		 * (gefunden von Umbra am 03.11.2026, way 25388265 in der HafenCity).
+		 */
+		const bau = (o: Objekt) => o.ebene === 'gebaeude' || o.ebene === 'erhalt';
 		this.objekte = this.objekte.map((o) =>
-			this.ausgewaehlt.has(o.id) ? { ...o, zustand: zu, ebene: zu === 'erhalt' ? 'erhalt' : (o.ebene === 'erhalt' ? 'gebaeude' : o.ebene) } : o
+			this.ausgewaehlt.has(o.id)
+				? { ...o, zustand: zu, ebene: bau(o) ? (zu === 'erhalt' ? 'erhalt' : 'gebaeude') : o.ebene }
+				: o
 		);
 		this.ausgewaehlt = new Set();
 	}

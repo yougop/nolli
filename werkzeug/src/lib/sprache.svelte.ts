@@ -175,6 +175,7 @@ const de = {
 		weiter: 'Weiter zur Ausgabe'
 	},
 	ausgeben: {
+		achtK: '8K heißt rund 50 Millionen Bildpunkte je Bild. Das Paket dauert damit deutlich länger und wird um ein Mehrfaches größer; auf schwächeren Rechnern kann der Browser an seine Grenze kommen.',
 		bild: 'Bild',
 		darstellung: 'Darstellung',
 		beschriftung: 'Beschriftung',
@@ -449,6 +450,7 @@ const en: typeof de = {
 		weiter: 'Continue to export'
 	},
 	ausgeben: {
+		achtK: '8K means about 50 million pixels per image. The package takes much longer and grows several times larger; on weaker machines the browser may reach its limit.',
 		bild: 'Image',
 		darstellung: 'Style',
 		beschriftung: 'Labels',

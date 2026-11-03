@@ -39,8 +39,9 @@ function lagen(a: Punkt, b: Punkt, p: Punkt[]): number[] {
  * Einen Linienzug am Polygon schneiden und nur behalten, was draussen liegt.
  * Ergebnis sind null, ein oder mehrere Teilzuege.
  */
-export function ausserhalb(zug: Punkt[], polygon: Punkt[]): Punkt[][] {
-	if (zug.length < 2) return drin(zug[0] ?? [0, 0], polygon) ? [] : [zug];
+export function ausserhalb(zug: Punkt[], polygon: Punkt[], behalten: 'aussen' | 'innen' = 'aussen'): Punkt[][] {
+	const weg = (q: Punkt) => drin(q, polygon) === (behalten === 'aussen');
+	if (zug.length < 2) return weg(zug[0] ?? [0, 0]) ? [] : [zug];
 	const teile: Punkt[][] = [];
 	let lauf: Punkt[] = [];
 
@@ -52,7 +53,7 @@ export function ausserhalb(zug: Punkt[], polygon: Punkt[]): Punkt[][] {
 			const p0: Punkt = [a[0] + (b[0] - a[0]) * t0, a[1] + (b[1] - a[1]) * t0];
 			const p1: Punkt = [a[0] + (b[0] - a[0]) * t1, a[1] + (b[1] - a[1]) * t1];
 			const mitte: Punkt = [(p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2];
-			if (drin(mitte, polygon)) {
+			if (weg(mitte)) {
 				if (lauf.length > 1) teile.push(lauf);
 				lauf = [];
 			} else {
@@ -64,6 +65,9 @@ export function ausserhalb(zug: Punkt[], polygon: Punkt[]): Punkt[][] {
 	if (lauf.length > 1) teile.push(lauf);
 	return teile;
 }
+
+/** Das Gegenstueck: nur behalten, was im Polygon liegt. */
+export const innerhalb = (zug: Punkt[], polygon: Punkt[]) => ausserhalb(zug, polygon, 'innen');
 
 /** Beruehrt der Zug das Polygon irgendwo? Fuer die Auswahl von Linien. */
 export function beruehrt(zug: Punkt[], polygon: Punkt[]): boolean {

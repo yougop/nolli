@@ -4,6 +4,7 @@ import { sichtEbene, type Objekt } from '../osm';
 import { alleRinge } from '../zeichnen';
 import type { Rahmen } from '../geo/rahmen';
 import { STIFTE, stift } from '../stifte';
+import { amRahmen, innerhalb, type Punkt } from '../schneiden';
 
 /**
  * DXF R12, von Hand geschrieben. Bewusst ohne Bibliothek: Das Format ist
@@ -57,17 +58,34 @@ export function alsDxf(objekte: Objekt[], r: Rahmen, mitGestrichenen = false, ge
 	s += p(0, 'SECTION') + p(2, 'ENTITIES');
 	const versatz = (x: number, y: number): [number, number] => [x - r.x0, y - r.y0];
 
+	/**
+	 * Am Rahmen geschnitten, wie das Modell. Ausgewählt wird, was den Rahmen
+	 * berührt; ein Wald oder eine Landstraße, die ihn streift, reicht aber
+	 * Kilometer hinaus (Jonathan, 03.11.2026: das Grün lief weit über das
+	 * Modell). Flächen werden auf den Rahmen beschnitten, Linien an der Kante
+	 * geteilt. Die Teile draußen braucht eine Zeichnung nicht; für Schatten
+	 * gibt es `model_outside.obj`.
+	 */
+	const kasten: Punkt[] = [[r.x0, r.y0], [r.x1, r.y0], [r.x1, r.y1], [r.x0, r.y1]];
+	const zug = (ebene: string, punkte: Punkt[], zu: boolean) => {
+		s += p(0, 'POLYLINE') + p(8, ebene) + p(66, 1) + p(70, zu ? 1 : 0);
+		for (const [x, y] of punkte) {
+			const [vx, vy] = versatz(x, y);
+			s += p(0, 'VERTEX') + p(8, ebene) + p(10, vx.toFixed(3)) + p(20, vy.toFixed(3)) + p(30, '0.0');
+		}
+		s += p(0, 'SEQEND') + p(8, ebene);
+	};
 	for (const o of objekte) {
 		if (o.zustand === 'gestrichen' && !mitGestrichenen) continue;
 		const ebene = o.zustand === 'gestrichen' ? dxfEbene(stift('gestrichen').dxf) : dxfEbene(stift(sichtEbene(o)).dxf);
 		for (const ring of alleRinge(o)) {
 			if (ring.length < 2) continue;
-			s += p(0, 'POLYLINE') + p(8, ebene) + p(66, 1) + p(70, o.art === 'flaeche' ? 1 : 0);
-			for (const [x, y] of ring) {
-				const [vx, vy] = versatz(x, y);
-				s += p(0, 'VERTEX') + p(8, ebene) + p(10, vx.toFixed(3)) + p(20, vy.toFixed(3)) + p(30, '0.0');
+			if (o.art === 'flaeche') {
+				const innen = amRahmen(ring, r.x0, r.y0, r.x1, r.y1).innen;
+				if (innen.length >= 3) zug(ebene, innen, true);
+			} else {
+				for (const teil of innerhalb(ring, kasten)) zug(ebene, teil, false);
 			}
-			s += p(0, 'SEQEND') + p(8, ebene);
 		}
 	}
 	// Namen als Text auf eigener Ebene. In CAD abschaltbar, im Plan lesbar.

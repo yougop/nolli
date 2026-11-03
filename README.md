@@ -38,8 +38,8 @@ Overture Maps.
 | **2 · Clean up** | Click objects or draw a polygon to remove them or keep them. Removed objects stay visible as ghosts and are listed by ID in the contract. Buildings that cannot be buildings — one containing ten or more others — are removed by Nolli itself, with a note and a button to keep them (see below). A site area clears everything inside and cuts streets at its boundary. If OpenStreetMap has streets but hardly any buildings, Nolli says so and offers to fill the gap from Overture. |
 | **3 · Export** | One image, the drawing, the model, the data contract, or the complete package. |
 
-![Frame](docs/1-frame.png)
-![Figure-ground with data summary](docs/2-figure-ground.png)
+![Step 1: frame, Prato (Tuscany)](docs/1-frame.png)
+![Step 2: figure-ground with the clean-up tools](docs/2-figure-ground.png)
 
 ## Terrain
 

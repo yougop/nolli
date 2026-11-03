@@ -70,7 +70,7 @@ accuracy, bring in an official terrain model (see below).
 Terrain is off by default. Then everything stands on z = 0 and the contract
 says so (`terrain_flat`).
 
-![Export with the model ZIP, HafenCity (Hamburg)](docs/export-model-zip.png)
+![3D model with trees, ground adjusted under Adjust map, HafenCity (Hamburg)](docs/hafencity-3d.png)
 
 ## Gaps in OpenStreetMap: Overture
 

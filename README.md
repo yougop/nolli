@@ -16,7 +16,7 @@ key: the page talks directly to OpenStreetMap (Overpass), the place search
 (Photon), an open elevation model (AWS Terrain Tiles) and, on request,
 Overture Maps.
 
-![3D context model with terrain, Prato (Tuscany)](docs/terrain-3d-light.png)
+![3D context model with terrain and trees, Prato (Tuscany)](docs/terrain-3d-light.png)
 
 ## What you get
 

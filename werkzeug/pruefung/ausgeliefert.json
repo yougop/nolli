@@ -1,18 +1,18 @@
 {
- "wann": "2026-11-04 13:04",
- "gesamt": "fe9fc7d38d00",
+ "wann": "2026-11-04 20:43",
+ "gesamt": "556685c40dbe",
  "dateien": {
   "200.html": {
    "bytes": 3244,
-   "hash": "75f3a8dae1c3"
+   "hash": "88eb81af80bb"
   },
   "_app/immutable/assets/0.ECumOKm-.css": {
    "bytes": 2774,
    "hash": "8aeba599f3ae"
   },
-  "_app/immutable/assets/2.4qp0OaVy.css": {
-   "bytes": 109605,
-   "hash": "f9aad5c958b2"
+  "_app/immutable/assets/2.BaW4gI2E.css": {
+   "bytes": 110413,
+   "hash": "5eb55407b9b8"
   },
   "_app/immutable/assets/rhino3dm.CWOyICcB.wasm": {
    "bytes": 2670316,
@@ -30,17 +30,17 @@
    "bytes": 47669,
    "hash": "928cafc906f0"
   },
-  "_app/immutable/chunks/CVhVtW0P.js": {
-   "bytes": 60511,
-   "hash": "f52516fc6e5a"
+  "_app/immutable/chunks/RpOm5xlV.js": {
+   "bytes": 60673,
+   "hash": "9436a7356cb8"
   },
-  "_app/immutable/chunks/CuHzjLUo.js": {
-   "bytes": 6902,
-   "hash": "a556f459304f"
-  },
-  "_app/immutable/chunks/D6abC6lj.js": {
+  "_app/immutable/chunks/jFCkb_MT.js": {
    "bytes": 26650,
-   "hash": "f086dc16c887"
+   "hash": "4f437a238b6f"
+  },
+  "_app/immutable/chunks/lsstMX1K.js": {
+   "bytes": 6902,
+   "hash": "b317f6805682"
   },
   "_app/immutable/chunks/uBIymjUX.js": {
    "bytes": 1233,
@@ -50,25 +50,25 @@
    "bytes": 65,
    "hash": "0214edcff772"
   },
-  "_app/immutable/entry/app.Dj65UNh8.js": {
+  "_app/immutable/entry/app.Wrt22vt7.js": {
    "bytes": 2901,
-   "hash": "8e55591c980a"
+   "hash": "528f4b136dd5"
   },
-  "_app/immutable/entry/start.DPckH9Sb.js": {
+  "_app/immutable/entry/start.DKKu8LyP.js": {
    "bytes": 77,
-   "hash": "2552d4592988"
+   "hash": "2b486c65fb85"
   },
   "_app/immutable/nodes/0.DrTbpCUo.js": {
    "bytes": 238,
    "hash": "32450e13341f"
   },
-  "_app/immutable/nodes/1.D0an1nL4.js": {
+  "_app/immutable/nodes/1.CSS-eaU1.js": {
    "bytes": 576,
-   "hash": "4ebaac8f50e9"
+   "hash": "df60e59c1512"
   },
-  "_app/immutable/nodes/2.BmNbtQIF.js": {
-   "bytes": 1911301,
-   "hash": "1044ac795363"
+  "_app/immutable/nodes/2.BHuzCEZF.js": {
+   "bytes": 2048721,
+   "hash": "3d015bf70f9f"
   },
   "_app/immutable/workers/maplibre-gl-worker-B71oqUJw.js": {
    "bytes": 506998,
@@ -76,7 +76,7 @@
   },
   "_app/version.json": {
    "bytes": 27,
-   "hash": "d2625eaf9b14"
+   "hash": "c910f5f14c78"
   },
   "beispiele/hafencity.json": {
    "bytes": 3708497,
@@ -92,7 +92,7 @@
   },
   "index.html": {
    "bytes": 3516,
-   "hash": "c9cfe54d62f5"
+   "hash": "c20f42a1ccc4"
   },
   "robots.txt": {
    "bytes": 63,

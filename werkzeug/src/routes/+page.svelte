@@ -976,8 +976,8 @@
 			title={t().kopf.anleitungTitel}>{t().kopf.anleitung}</a>
 
 		<div class="sprachen" role="group" aria-label={t().kopf.sprache}>
-			<button type="button" class:an={sprache.jetzt === 'de'} lang="de" onclick={() => spracheSetzen('de')}>DE</button>
-			<button type="button" class:an={sprache.jetzt === 'en'} lang="en" onclick={() => spracheSetzen('en')}>EN</button>
+			<button type="button" class:an={sprache.jetzt === 'de'} aria-pressed={sprache.jetzt === 'de'} lang="de" onclick={() => spracheSetzen('de')}>DE</button>
+			<button type="button" class:an={sprache.jetzt === 'en'} aria-pressed={sprache.jetzt === 'en'} lang="en" onclick={() => spracheSetzen('en')}>EN</button>
 		</div>
 
 		<button class="schema" type="button" onclick={schemaWechseln} aria-label={t().kopf.schema}>
@@ -1000,7 +1000,7 @@
 				<div class="sichtleiste">
 					<div class="gruppe" role="group" aria-label={t().sicht.darstellung}>
 						{#each DARSTELLUNGEN.filter((d) => d.bauweise !== 'raum') as d}
-							<button type="button" class:an={z.darstellung === d.id}
+							<button type="button" class:an={z.darstellung === d.id} aria-pressed={z.darstellung === d.id}
 								onclick={() => (z.darstellung = d.id)} title={t().darstellungen[d.id].zweck}>{t().darstellungen[d.id].name}</button>
 						{/each}
 					</div>
@@ -1011,7 +1011,7 @@
 					-->
 					<div class="gruppe" role="group" aria-label={t().sicht.raum}>
 						{#each DARSTELLUNGEN.filter((d) => d.bauweise === 'raum') as d}
-							<button type="button" class:an={z.darstellung === d.id}
+							<button type="button" class:an={z.darstellung === d.id} aria-pressed={z.darstellung === d.id}
 								onclick={() => (z.darstellung = d.id)} title={t().darstellungen[d.id].zweck}>{t().darstellungen[d.id].name}</button>
 						{/each}
 						<!--
@@ -1021,7 +1021,7 @@
 							bleibt dabei stehen, denn er gilt auch für das Paket — Höhenlinien
 							und Geländenetz kommen mit, gleich in welcher Ansicht man ausgibt.
 						-->
-						<button type="button" class="einzeln" class:an={z.gelaende && raeumlich}
+						<button type="button" class="einzeln" class:an={z.gelaende && raeumlich} aria-pressed={z.gelaende && raeumlich}
 							disabled={!raeumlich || !!z.gelaendeLaedt}
 							onclick={() => z.gelaendeUmschalten()}
 							title={!raeumlich
@@ -1032,9 +1032,12 @@
 						>{z.gelaendeLaedt ? t().gelaende.laedt(z.gelaendeLaedt) : t().gelaende.schalter}</button>
 					</div>
 					<!--
-						Karte anpassen und Kanten: eine eigene Gruppe, weil beide in jeder
-						Darstellung wirken, flach wie räumlich (Volker, 04.11.2026).
+						Karte und Gebäude anpassen: eine eigene Gruppe, weil beide in jeder
+						Darstellung wirken, flach wie räumlich. Nur in Schritt 3, wo das
+						Ergebnis ausgegeben wird; Schritt 2 ist zum Bereinigen da (Volker,
+						04.11.2026). Die Einstellungen bleiben, auch wenn sie nicht zu sehen sind.
 					-->
+					{#if z.schritt === 3}
 					<div class="gruppe" role="group" aria-label={t().sicht.anpassen}>
 						<!--
 							Sättigung, Kontrast und Helligkeit der Karte: im 3D-Modell auf dem
@@ -1097,12 +1100,12 @@
 								<div class="regler" role="group" aria-label={t().sicht.geo}>
 									<span class="unter">{t().sicht.kanten}</span>
 									<div class="wahl schmal">
-										<button type="button" class:an={z.kanten.an} onclick={() => (z.kanten.an = true)}>{t().sicht.kantenAn}</button>
-										<button type="button" class:an={!z.kanten.an} onclick={() => (z.kanten.an = false)}>{t().sicht.kantenAus}</button>
+										<button type="button" class:an={z.kanten.an} aria-pressed={z.kanten.an} onclick={() => (z.kanten.an = true)}>{t().sicht.kantenAn}</button>
+										<button type="button" class:an={!z.kanten.an} aria-pressed={!z.kanten.an} onclick={() => (z.kanten.an = false)}>{t().sicht.kantenAus}</button>
 									</div>
 									<div class="wahl schmal">
-										<button type="button" class:an={!z.kanten.hell} disabled={!z.kanten.an} onclick={() => (z.kanten.hell = false)}>{t().sicht.kantenDunkel}</button>
-										<button type="button" class:an={z.kanten.hell} disabled={!z.kanten.an} onclick={() => (z.kanten.hell = true)}>{t().sicht.kantenHell}</button>
+										<button type="button" class:an={!z.kanten.hell} aria-pressed={!z.kanten.hell} disabled={!z.kanten.an} onclick={() => (z.kanten.hell = false)}>{t().sicht.kantenDunkel}</button>
+										<button type="button" class:an={z.kanten.hell} aria-pressed={z.kanten.hell} disabled={!z.kanten.an} onclick={() => (z.kanten.hell = true)}>{t().sicht.kantenHell}</button>
 									</div>
 									<label>
 										<span>{t().sicht.kantenDicke}</span>
@@ -1120,7 +1123,7 @@
 										<input type="range" min="0" max="1" step="0.01"
 											value={z.kanten.flaeche ?? 0.93}
 											oninput={(e) => (z.kanten.flaeche = Number((e.currentTarget as HTMLInputElement).value))} />
-										<em class="mono">{z.kanten.flaeche == null ? t().sicht.standard : `${Math.round(z.kanten.flaeche * 100)} %`}</em>
+										<em class="mono">{z.kanten.flaeche == null ? (raeumlich ? `93 % · ${t().sicht.standard}` : t().sicht.standard) : `${Math.round(z.kanten.flaeche * 100)} %`}</em>
 									</label>
 									<button type="button" class="zurueck"
 										disabled={z.kanten.an === KANTEN_VORGABE.an && z.kanten.hell === KANTEN_VORGABE.hell && z.kanten.dicke === KANTEN_VORGABE.dicke && z.kanten.deckkraft === KANTEN_VORGABE.deckkraft && z.kanten.flaeche == null}
@@ -1129,8 +1132,9 @@
 							{/if}
 						</div>
 					</div>
+					{/if}
 					<div class="gruppe" role="group" aria-label={t().sicht.ebenen}>
-						<button type="button" class="einzeln" class:an={z.beschriftung} disabled={raeumlich}
+						<button type="button" class="einzeln" class:an={z.beschriftung} aria-pressed={z.beschriftung} disabled={raeumlich}
 							onclick={() => (z.beschriftung = !z.beschriftung)}
 							title={t().sicht.beschriftungTitel}
 						>{t().sicht.beschriftung}</button>
@@ -1142,7 +1146,7 @@
 							sieht. Schrift dagegen gibt es im Modell nicht, deshalb bleibt
 							„Beschriftung" dort aus.
 						-->
-						<button type="button" class="einzeln" class:an={z.baeume}
+						<button type="button" class="einzeln" class:an={z.baeume} aria-pressed={z.baeume}
 							disabled={!z.baumpunkte.length}
 							onclick={() => (z.baeume = !z.baeume)}
 							title={z.baumpunkte.length
@@ -1160,7 +1164,7 @@
 						<div class="gruppe rechts" role="group" aria-label={t().sicht.ansicht}>
 							<button type="button" onclick={() => z.zoomStufe(1 / 1.5)} disabled={z.zoom <= 1} aria-label={t().sicht.heraus}>−</button>
 							<button type="button" onclick={() => z.einpassen()} disabled={z.zoom === 1}>
-								{z.zoom === 1 ? t().sicht.ganz : z.zoom.toFixed(1) + '×'}
+								{z.zoom === 1 ? t().sicht.ganz : zahl(z.zoom, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '×'}
 							</button>
 							<button type="button" onclick={() => z.zoomStufe(1.5)} disabled={z.zoom >= z.MAXZOOM} aria-label={t().sicht.hinein}>+</button>
 						</div>
@@ -1214,20 +1218,20 @@
 					     steht 3:4 für 4:3 gedreht; die Liste bleibt so kurz. -->
 					<div class="wahl">
 						{#each VERHAELTNISSE.filter((v) => !v.wert || v.wert >= 1) as v}
-							<button type="button" class:an={z.verhaeltnis.name === v.name || gedreht(v).name === z.verhaeltnis.name}
+							<button type="button" class:an={z.verhaeltnis.name === v.name || gedreht(v).name === z.verhaeltnis.name} aria-pressed={z.verhaeltnis.name === v.name || gedreht(v).name === z.verhaeltnis.name}
 								onclick={() => z.setzeVerhaeltnis(hochkant ? gedreht(v) : v)}>{v.name === 'frei' ? t().rahmen.frei : (hochkant ? gedreht(v).name : v.name)}</button>
 						{/each}
 					</div>
 					<div class="wahl lage">
-						<button type="button" class:an={!hochkant} disabled={!z.verhaeltnis.wert || z.verhaeltnis.wert === 1}
+						<button type="button" class:an={!hochkant} aria-pressed={!hochkant} disabled={!z.verhaeltnis.wert || z.verhaeltnis.wert === 1}
 							onclick={() => hochkant && z.setzeVerhaeltnis(gedreht(z.verhaeltnis))}>{t().rahmen.quer}</button>
-						<button type="button" class:an={hochkant} disabled={!z.verhaeltnis.wert || z.verhaeltnis.wert === 1}
+						<button type="button" class:an={hochkant} aria-pressed={hochkant} disabled={!z.verhaeltnis.wert || z.verhaeltnis.wert === 1}
 							onclick={() => !hochkant && z.setzeVerhaeltnis(gedreht(z.verhaeltnis))}>{t().rahmen.hoch}</button>
 					</div>
 					<span class="feld">{t().rahmen.ausgabebreite}</span>
 					<div class="wahl">
 						{#each AUSGABEBREITEN as b}
-							<button type="button" class:an={z.ausgabeBreite === b}
+							<button type="button" class:an={z.ausgabeBreite === b} aria-pressed={z.ausgabeBreite === b}
 								onclick={() => (z.ausgabeBreite = b)}>{breiteName(b)}<em class="mono">{b}</em></button>
 						{/each}
 					</div>
@@ -1240,7 +1244,7 @@
 							<div class="gross"><dt>{t().rahmen.hoehe}</dt><dd class="mono">{f0(r.hoeheM)} m</dd></div>
 							<div><dt>{t().rahmen.flaeche}</dt><dd class="mono">{f1(r.flaecheHa)} ha</dd></div>
 							<div><dt>{t().rahmen.ausgabe}</dt><dd class="mono">{r.pixelBreite} × {r.pixelHoehe}</dd></div>
-							<div class:mahnt={!r.traegt}><dt>{t().rahmen.mpp}</dt><dd class="mono">{r.mpp.toFixed(3)}</dd></div>
+							<div class:mahnt={!r.traegt}><dt>{t().rahmen.mpp}</dt><dd class="mono">{zahl(r.mpp, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</dd></div>
 							<div class:mahnt={!r.traegt}><dt>{t().rahmen.tiefe12}</dt><dd class="mono">{Math.round(r.pruefpixel)} px</dd></div>
 						</dl>
 						<p class="urteil" class:mahnt={!r.traegt}>
@@ -1331,7 +1335,7 @@
 									<span class="probe" style:background={s.fuellung ? (schema === 'dunkel' ? s.dunkel : s.hell) : 'transparent'}
 										style:border-color={schema === 'dunkel' ? s.dunkel : s.hell}></span>
 									<span class="ebname">{t().stifte[s.id]}</span>
-									<em class="mono">{s.mm.toFixed(2)}</em>
+									<em class="mono">{zahl(s.mm, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</em>
 									<span class="anzahl mono">{n}</span>
 								</button>
 							</li>
@@ -1358,9 +1362,9 @@
 				<div class="teil">
 					<span class="feld">{t().bereinigen.werkzeug}</span>
 					<div class="wahl">
-						<button type="button" class:an={z.werkzeug === 'zeigen'}
+						<button type="button" class:an={z.werkzeug === 'zeigen'} aria-pressed={z.werkzeug === 'zeigen'}
 							onclick={() => z.polygonAbbrechen()}>{t().bereinigen.zeigen}</button>
-						<button type="button" class:an={z.werkzeug === 'polygon'}
+						<button type="button" class:an={z.werkzeug === 'polygon'} aria-pressed={z.werkzeug === 'polygon'}
 							onclick={() => (z.werkzeug = 'polygon')}>{t().bereinigen.polygon}</button>
 					</div>
 					{#if z.werkzeug === 'polygon'}
@@ -1414,10 +1418,10 @@
 				<div class="teil">
 					<span class="feld">{t().bereinigen.sichtbarkeit}</span>
 					<div class="wahl">
-						<button type="button" class:an={!z.bereinigt} onclick={() => (z.bereinigt = false)}>
+						<button type="button" class:an={!z.bereinigt} aria-pressed={!z.bereinigt} onclick={() => (z.bereinigt = false)}>
 							{t().bereinigen.zeigeGestrichen}
 						</button>
-						<button type="button" class:an={z.bereinigt} onclick={() => (z.bereinigt = true)}>
+						<button type="button" class:an={z.bereinigt} aria-pressed={z.bereinigt} onclick={() => (z.bereinigt = true)}>
 							{t().bereinigen.ausblenden}
 						</button>
 					</div>
@@ -1536,66 +1540,7 @@
 						<div><dt>{t().ausgeben.beschriftung}</dt><dd class="mono">{z.beschriftung ? t().ausgeben.ja : t().ausgeben.nein}</dd></div>
 						<div><dt>{t().ausgeben.baeume}</dt><dd class="mono">{z.baeume ? t().ausgeben.jaN(imRahmenBaeume) : t().ausgeben.nein}</dd></div>
 						<div><dt>{t().gelaende.zeile}</dt><dd class="mono">{gelaendeFeld ? t().gelaende.spanne(f0(gelaendeFeld.min), f0(gelaendeFeld.max)) : t().gelaende.eben}</dd></div>
-						<div><dt>{t().ausgeben.groesse}</dt><dd class="mono">{bildMass[0]} × {bildMass[1]}</dd></div>
-						{#if raeumlich}<div><dt>{t().ausgeben.karteBreite}</dt><dd class="mono">{r?.pixelBreite} × {r?.pixelHoehe}</dd></div>{/if}
 					</dl>
-					<!--
-						Die Breite auch hier, wo sie wirkt: Sie bestimmt jedes Bild und die
-						Textur im Modell. Die Daten bleiben, nur gezeichnet wird neu.
-					-->
-					<!--
-						Hier nur die Breite der Karte: Sie gilt für die Blätter und die
-						Textur im Modell. Format und Breite des 3D-Bilds stehen allein unter
-						„Bildrahmen" in der Leiste, nicht noch einmal hier (Volker, 04.11.2026).
-					-->
-					{#if raeumlich}<span class="feld">{t().ausgeben.karteBreite}</span>{/if}
-					<div class="wahl breiten">
-						{#each AUSGABEBREITEN as b}
-							<button type="button" class:an={z.ausgabeBreite === b}
-								onclick={() => (z.ausgabeBreite = b)}>{breiteName(b)}<em class="mono">{b}</em></button>
-						{/each}
-					</div>
-					{#if z.ausgabeBreite > 4096 || (raeumlich && z.bild3d.breite > 4096)}<p class="hinweis leise">{t().ausgeben.achtK}</p>{/if}
-					{#if raeumlich}
-						<!--
-							Der Bildrahmen: Format, Breite und Grund des 3D-Bilds, und ob der
-							Ausschnitt in der Ansicht zu sehen ist. Hier bei der Ausgabe statt in
-							der Leiste (Volker, 04.11.2026), getrennt von Karte und Textur.
-						-->
-						<span class="feld">{t().sicht.bildrahmen}</span>
-						<div class="bildrahmen">
-						<div class="wahl schmal">
-							<button type="button" class:an={z.bild3d.rahmen} onclick={() => (z.bild3d.rahmen = true)}>{t().sicht.kantenAn}</button>
-							<button type="button" class:an={!z.bild3d.rahmen} onclick={() => (z.bild3d.rahmen = false)}>{t().sicht.kantenAus}</button>
-						</div>
-						<span class="feld">{t().sicht.format}</span>
-						<div class="wahl formate">
-							{#each BILDFORMATE as f}
-								<button type="button" class:an={z.bild3d.format === f.name}
-									onclick={() => (z.bild3d.format = f.name)}>{f.name === 'ansicht' ? t().sicht.formatAnsicht : f.name}</button>
-							{/each}
-						</div>
-						<span class="feld">{t().sicht.bildbreite}</span>
-						<div class="wahl formate breiten3d">
-							{#each AUSGABEBREITEN as b}
-								<button type="button" class:an={z.bild3d.breite === b}
-									onclick={() => (z.bild3d.breite = b)}>{breiteName(b)}</button>
-							{/each}
-						</div>
-						<p class="leise">{bildMass[0]} × {bildMass[1]}</p>
-
-							<span class="feld">{t().sicht.hintergrund}</span>
-							<div class="grund">
-								<input type="color" aria-label={t().sicht.hintergrund} disabled={z.bild3d.transparent}
-									value={z.bild3d.hintergrund ?? (schema === 'dunkel' ? '#1c1c1c' : '#eaeae9')}
-									oninput={(e) => (z.bild3d.hintergrund = (e.currentTarget as HTMLInputElement).value)} />
-								<button type="button" class:an={z.bild3d.transparent}
-									onclick={() => (z.bild3d.transparent = !z.bild3d.transparent)}>{t().sicht.transparent}</button>
-								<button type="button" disabled={!z.bild3d.hintergrund && !z.bild3d.transparent}
-									onclick={() => { z.bild3d.hintergrund = null; z.bild3d.transparent = false; }}>{t().sicht.standard}</button>
-							</div>
-						</div>
-					{/if}
 					<p class="hinweis leise">
 						{t().darstellungen[darstellungJetzt.id].zweck}
 						{#if hoehenAbstand}
@@ -1605,7 +1550,65 @@
 							<br />{t().ausgeben.beschriftungHinweis}
 						{/if}
 					</p>
+					<!--
+						Die Breite der Karte: Sie gilt für jedes Blatt und die Textur im
+						Modell. Die Daten bleiben, nur gezeichnet wird neu. Das Maß steht in
+						der Überschrift, einmal, statt in einer Zeile darüber und darunter.
+					-->
+					<span class="feld feldzeile">{t().ausgeben.karteBreite}<em class="mono">{r?.pixelBreite} × {r?.pixelHoehe}</em></span>
+					<div class="wahl breiten" role="group" aria-label={t().ausgeben.karteBreite}>
+						{#each AUSGABEBREITEN as b}
+							<button type="button" class:an={z.ausgabeBreite === b} aria-pressed={z.ausgabeBreite === b}
+								onclick={() => (z.ausgabeBreite = b)}>{breiteName(b)}<em class="mono">{b}</em></button>
+						{/each}
+					</div>
+					{#if z.ausgabeBreite > 4096}<p class="hinweis leise">{t().ausgeben.achtK}</p>{/if}
 				</div>
+
+				{#if raeumlich}
+					<!--
+						Das 3D-Bild als eigene Karte (Volker, 04.11.2026): Es hat eigenes
+						Format, eigene Breite und eigenen Grund, ist also ein eigener Ausgang
+						und kein Anhang an die Karte. Die Unterpunkte stehen eine Stufe
+						kleiner, damit sichtbar ist, dass sie zu ihm gehören.
+					-->
+					<div class="teil">
+						<span class="feld feldzeile">{t().ausgeben.bild3d}<em class="mono">{bildMass[0]} × {bildMass[1]}</em></span>
+						<div class="bildrahmen">
+							<span class="unter">{t().sicht.ausschnitt}</span>
+							<div class="wahl schmal" role="group" aria-label={t().sicht.ausschnitt}>
+								<button type="button" class:an={z.bild3d.rahmen} aria-pressed={z.bild3d.rahmen} onclick={() => (z.bild3d.rahmen = true)}>{t().sicht.kantenAn}</button>
+								<button type="button" class:an={!z.bild3d.rahmen} aria-pressed={!z.bild3d.rahmen} onclick={() => (z.bild3d.rahmen = false)}>{t().sicht.kantenAus}</button>
+							</div>
+							<span class="unter">{t().sicht.format}</span>
+							<div class="wahl formate" role="group" aria-label={t().sicht.format}>
+								{#each BILDFORMATE as f}
+									<button type="button" class:an={z.bild3d.format === f.name} aria-pressed={z.bild3d.format === f.name}
+										onclick={() => (z.bild3d.format = f.name)}>{f.name === 'ansicht' ? t().sicht.formatAnsicht : f.name}</button>
+								{/each}
+							</div>
+							<span class="unter">{t().sicht.bildbreite}</span>
+							<div class="wahl breiten" role="group" aria-label={t().sicht.bildbreite}>
+								{#each AUSGABEBREITEN as b}
+									<button type="button" class:an={z.bild3d.breite === b} aria-pressed={z.bild3d.breite === b}
+										onclick={() => (z.bild3d.breite = b)}>{breiteName(b)}<em class="mono">{b}</em></button>
+								{/each}
+							</div>
+							{#if z.bild3d.breite > 4096}<p class="hinweis leise">{t().ausgeben.achtK}</p>{/if}
+							<span class="unter">{t().sicht.hintergrund}</span>
+							<div class="grund">
+								<input type="color" aria-label={t().sicht.hintergrund} disabled={z.bild3d.transparent}
+									value={z.bild3d.hintergrund ?? (schema === 'dunkel' ? '#1c1c1c' : '#eaeae9')}
+									oninput={(e) => (z.bild3d.hintergrund = (e.currentTarget as HTMLInputElement).value)} />
+								<button type="button" class:an={z.bild3d.transparent} aria-pressed={z.bild3d.transparent}
+									onclick={() => (z.bild3d.transparent = !z.bild3d.transparent)}>{t().sicht.transparent}</button>
+								<button type="button" disabled={!z.bild3d.hintergrund && !z.bild3d.transparent}
+									onclick={() => { z.bild3d.hintergrund = null; z.bild3d.transparent = false; }}>{t().sicht.standard}</button>
+							</div>
+							<p class="hinweis leise">{t().sicht.bildrahmenTitel}</p>
+						</div>
+					</div>
+				{/if}
 
 				<div class="teil">
 					<span class="feld">{t().ausgeben.weitere}</span>
@@ -1662,12 +1665,12 @@
 		{/if}
 		{#if r}
 			<span title={t().fuss.gitterTitel}>
-				{t().fuss.gitter(r.gitter.lon0.toFixed(4))}
+				{t().fuss.gitter(zahl(r.gitter.lon0, { minimumFractionDigits: 4, maximumFractionDigits: 4 }))}
 			</span>
-			<span>{r.mpp.toFixed(3)} m/px</span>
+			<span>{zahl(r.mpp, { minimumFractionDigits: 3, maximumFractionDigits: 3 })} m/px</span>
 			<span>{t().fuss.aufA1(f0(r.massstabA1))}</span>
 			<span title={t().fuss.nordTitel}>
-				{t().fuss.nord(Math.abs(r.konvergenz) < 0.005 ? '0' : Math.abs(r.konvergenz).toFixed(3))}
+				{t().fuss.nord(Math.abs(r.konvergenz) < 0.005 ? '0' : zahl(Math.abs(r.konvergenz), { minimumFractionDigits: 3, maximumFractionDigits: 3 }))}
 			</span>
 			<span>{t().fuss.objekte(z.objekte.length)}</span>
 			{#if z.nichtGesichert}
@@ -1875,7 +1878,7 @@
 		border: 1px solid var(--linie); border-radius: var(--rund);
 		transition: color 120ms, border-color 120ms;
 	}
-	.wahl button em { font-size: 9.5px; font-style: normal; color: var(--tinte-3); }
+	.wahl button em { font-size: 10.5px; font-style: normal; color: var(--tinte-3); }
 	.wahl button:hover { color: var(--tinte); border-color: var(--linie-stark); }
 	.wahl button.an { background: var(--tinte); border-color: var(--tinte); color: var(--blatt); }
 	.wahl button.an em { color: var(--linie-stark); }
@@ -2081,7 +2084,6 @@
 	/* Acht Formate in zwei gleichen Reihen: oben quer, unten quadratisch bis hoch. */
 	.bildrahmen .wahl.formate:not(.breiten3d) { display: grid; grid-template-columns: repeat(4, 1fr); }
 	.bildrahmen .wahl.formate:not(.breiten3d) button { padding: 4px 4px; font-size: 11px; }
-	.bildrahmen .wahl.formate.breiten3d { display: grid; grid-template-columns: repeat(4, 1fr); }
 	.bildrahmen .wahl.formate button { padding: 5px 8px; }
 	.bildrahmen p { margin: 0; font-size: 11px; color: var(--tinte-3); }
 	.bildrahmen .grund { display: flex; gap: 6px; align-items: center; }
@@ -2093,4 +2095,9 @@
 	.bildrahmen .grund button.an { background: var(--tinte); border-color: var(--tinte); color: var(--blatt); }
 	.bildrahmen .grund button:disabled { opacity: 0.42; cursor: default; }
 	.warnt { color: var(--warn); }
+	/* Überschrift mit ihrem Maß: das Maß rechts, in Mono, als Zahl der Zeile. */
+	.feldzeile { display: flex; justify-content: space-between; align-items: baseline; }
+	.hinweis + .feldzeile { margin-top: 16px; }
+	.feldzeile em { font-style: normal; font-size: 11px; letter-spacing: 0; text-transform: none; color: var(--tinte); }
+	.bildrahmen .unter { font-size: 11px; color: var(--tinte-3); margin-top: 4px; }
 </style>

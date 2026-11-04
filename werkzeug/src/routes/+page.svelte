@@ -196,6 +196,26 @@
 	);
 	let raum = $state<Raum | null>(null);
 	let kartenRegler = $state(false);
+	/**
+	 * Der Ort im Dateinamen: lesbar, aber nur ASCII. Umlaute und Akzente
+	 * werden aufgelöst, Leerzeichen zu Bindestrichen, die Schreibung bleibt —
+	 * `UCX_Upper-Saddle-River_2026-11-04.zip` (Volker, 04.11.2026).
+	 */
+	const ortImNamen = (name?: string) => {
+		const s = (name ?? 'Rahmen')
+			.replace(/ß/g, 'ss').replace(/Ä/g, 'Ae').replace(/Ö/g, 'Oe').replace(/Ü/g, 'Ue')
+			.replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue')
+			.normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+			.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+		return (s || 'Rahmen').slice(0, 40).replace(/-+$/, '');
+	};
+	/** ISO-Zeit mit Zone, für die Herkunft. */
+	const jetztMitZone = () => {
+		const d = new Date(), o = -d.getTimezoneOffset();
+		const p = (n: number) => String(Math.floor(Math.abs(n))).padStart(2, '0');
+		return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+			+ `${o >= 0 ? '+' : '-'}${p(o / 60)}:${p(o % 60)}`;
+	};
 	/** Hochformat, abgelesen am gewählten Verhältnis. */
 	const hochkant = $derived(!!z.verhaeltnis.wert && z.verhaeltnis.wert < 1);
 	/** Seitenverhältnis der 3D-Ansicht; das 3D-Bild übernimmt es. */
@@ -549,6 +569,17 @@
 	}) {
 		const rr = r!;
 		return vertragV2(rr.vertrag({
+			/**
+			 * Die Herkunftskette des Pakets: wer es erzeugt hat, und jede spätere
+			 * Änderung durch ein anderes Werkzeug (Pons hängt an `edits` an).
+			 * Die Schlüssel sind englisch und stehen nicht in den Namenstabellen;
+			 * `generated` statt `created`, weil `created` dort schon der v2-Name
+			 * von `erstellt` ist und das Paketdatum oben trägt.
+			 */
+			provenance: {
+				generated: { tool: 'nolli', version: __NOLLI_STAND__, at: jetztMitZone() },
+				edits: []
+			},
 			ort: z.ort ? { name: z.ort.name, wo: z.ort.wo } : null,
 			objekte: bestand.length,
 			gestrichen: bestand.filter((o) => o.zustand === 'gestrichen').map((o) => o.id),
@@ -869,7 +900,7 @@
 		try {
 			// Ein Rahmen, der sich seit dem Einschalten geändert hat, braucht ein neues Raster.
 			if (z.gelaende && !z.gelaendeJetzt) await z.gelaendeHolen();
-			const basis = `nolli_${(z.ort?.name ?? 'rahmen').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 24)}_${stempel()}`;
+			const basis = `UCX_${ortImNamen(z.ort?.name)}_${stempel()}`;
 			if (art === 'bild') {
 				const b = raeumlich && raum
 					? await raum.alsBild()

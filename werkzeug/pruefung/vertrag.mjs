@@ -118,7 +118,7 @@ for (const p of dateien(v1)) {
 		let j1 = JSON.parse(fs.readFileSync(a, 'utf8'));
 		let j2 = JSON.parse(fs.readFileSync(b, 'utf8'));
 		if (p === 'frame.json') {
-			if (j2.contract !== 'nolli' || j2.contract_version !== 2) melde('frame.json: contract/contract_version fehlt');
+			if (!['ucx', 'nolli'].includes(j2.contract) || j2.contract_version !== 2) melde('frame.json: contract/contract_version fehlt');
 			const { contract, contract_version, ...rest } = j2; j2 = rest;
 			const { nolli, ...rest1 } = j1; j1 = rest1;
 		}

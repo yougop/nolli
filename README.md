@@ -25,7 +25,7 @@ Overture Maps.
 | **Images** | Figure-ground, inverted, line, use, top view, white model, data depth, 3D view — up to 8192 px (8K; the width can be switched in step 3 without fetching again), with a bare version (no buildings, no trees) of each to use as a ground texture |
 | **`drawing.dxf`** | Separate layers with pen widths (`N_BUILDINGS`, `N_STREETS`, `N_WATER`, …), labels, frame, and contour lines when terrain is on. Cut at the frame. Metres, origin at the lower-left frame corner. With terrain, also `drawing_terrain.dxf`: the same drawing on the terrain mesh |
 | **Model (ZIP)** | `model.obj`, `model.mtl` and `model_texture.png`, ready for Rhino: extruded buildings with hard edges, in greys by use class (one material per body, see `data/materials.json`), cut cleanly at the frame edge; the ground textured with the top view, on the terrain or flat; tree crowns as one object `trees`. It contains what the 3D view shows — switch terrain and trees there, and set saturation, contrast and brightness of the ground under **Adjust map** (a fully desaturated texture gives a grey plan in Rhino) |
-| **Package (ZIP)** | Everything above plus `model_outside.obj`, the parts of buildings beyond the frame edge, which still cast shadows into it |
+| **Package (ZIP)** | The UCX package (Urban Context Exchange), e.g. `UCX_Prato_2026-11-04.zip`: everything above plus `model_outside.obj`, the parts of buildings beyond the frame edge, which still cast shadows into it. Single files carry the same name stem |
 | **`frame.json`** | The data contract: frame, projection, scale, provenance, caveats, and a table of contents of the package |
 | **`data/materials.json`** | The material schema shared by the pipeline: an id, a grey (warm for design) and a mask index per class. Every body names its material in `data/bodies.json`, together with its `body_id` |
 | **`data/*.json`** | Everything OpenStreetMap knows inside the frame: buildings with height and origin of the height, street network as a graph, points of interest, stops and lines, land use, trees, terrain raster. If added: buildings from Overture (marked as such) and `data/places.json` |
@@ -139,9 +139,9 @@ grid north = true north at the centre). The exact definition is in
 
 ![The model ZIP imported into Rhino 8: textured ground, trees, nothing mapped by hand. HafenCity (Hamburg)](docs/rhino-import.png)
 
-## Data contract (v2)
+## Data contract: UCX (v2)
 
-`frame.json` starts with `"contract": "nolli", "contract_version": 2`. Field,
+The package format is called UCX, Urban Context Exchange: Nolli generates it, and other tools of the pipeline (Umbra, later Pons in Rhino) read it or carry it on. `frame.json` starts with `"contract": "ucx", "contract_version": 2` (packages before 4 November 2026 say `"nolli"`; readers accept both). Field,
 file, object and layer names are English. The mapping from the earlier German
 names (v1) lives in one place, [`werkzeug/src/lib/vertrag.ts`](werkzeug/src/lib/vertrag.ts),
 so tools can read both versions.
@@ -158,6 +158,9 @@ Principles the contract follows:
 - **Time is local.** `time_zone` names the IANA time zone at the frame
   centre (e.g. `America/New_York`), looked up offline; `null` if unknown. No
   fixed offset: daylight saving is for the reading tool to apply per date.
+- **Every package knows where it comes from.** `provenance.generated` names the
+  tool, its build (git commit) and the time; every later change by another tool
+  is appended to `provenance.edits`.
 - **The contract never contradicts itself.** All dimensions derive from the
   rounded frame corners; `width_m / pixel_width` equals `meters_per_pixel`
   exactly.

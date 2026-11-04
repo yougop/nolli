@@ -16,6 +16,7 @@
  */
 
 export const VERTRAG_VERSION = 2;
+export const VERTRAG_NAME = 'ucx';
 
 /** Feldnamen, v1 → v2. Gilt in jeder Tiefe, außer unter `tags`. */
 export const FELDER: Record<string, string> = {
@@ -275,5 +276,10 @@ export function aufV2(wert: unknown, feld = ''): unknown {
 /** Den ganzen Vertrag: dazu Kennung und Version an den Anfang. */
 export function vertragV2(v: Record<string, unknown>) {
 	const { nolli: _, ...rest } = v;
-	return { contract: 'nolli', contract_version: VERTRAG_VERSION, ...(aufV2(rest) as Record<string, unknown>) };
+	/**
+	 * Seit 04.11.2026 heißt das Format UCX, Urban Context Exchange (Volker):
+	 * Das Paket schreiben bald mehrere Werkzeuge, nicht nur Nolli. Die Version
+	 * zählt weiter; Umbra liest `ucx` und, für alte Pakete, `nolli`.
+	 */
+	return { contract: VERTRAG_NAME, contract_version: VERTRAG_VERSION, ...(aufV2(rest) as Record<string, unknown>) };
 }

@@ -1,6 +1,7 @@
 import earcut from 'earcut';
 import { drin, amRahmen } from './schneiden';
 import { unterkante, type Objekt } from './osm';
+import { hatDach, dachKoerper } from './dach';
 import type { Rahmen } from './geo/rahmen';
 
 /**
@@ -47,6 +48,21 @@ function ring(roh: [number, number][], r: Rahmen): Punkt[] {
  * `fuss` hebt einen Körper an, wenn das Gelände an ist: auf die tiefste
  * Geländehöhe unter seinem Grundriss, gemessen vom tiefsten Punkt im Rahmen.
  */
+/**
+ * Ein Körper mit Dach (`dach.ts`), am Rahmen geschnitten. Das Modul rechnet
+ * im Ortsgitter; hier kommt es in die Achsen der Ansicht: x Ost, y oben,
+ * z Süd. Die Abbildung ist eine Drehung, die Umlaufrichtung bleibt.
+ */
+function mitDach(o: Objekt, r: Rahmen, boden: number) {
+	const zer = o.ringe.map((roh) => amRahmen(roh, r.x0, r.y0, r.x1, r.y1));
+	const teile = zer.filter((t) => t.innen.length >= 3).map((t) => t.innen);
+	const ganz = o.ringe.length === 1 && zer.every((t) => !t.aussen.length);
+	return dachKoerper(o, teile, boden, unterkante(o), ganz);
+}
+const inAnsicht = (q: number[], r: Rahmen, aus: number[]) => {
+	for (let i = 0; i < q.length; i += 3) aus.push(q[i] - r.x0, q[i + 2], -(q[i + 1] - r.y0));
+};
+
 export function baukoerper(objekte: Objekt[], r: Rahmen, fuss: (o: Objekt) => number = () => 0): Float32Array {
 	const punkte: number[] = [];
 	let f = 0;
@@ -66,6 +82,7 @@ export function baukoerper(objekte: Objekt[], r: Rahmen, fuss: (o: Objekt) => nu
 
 	for (const o of objekte) {
 		if (!o.ringe.length) continue;
+		if (hatDach(o)) { inAnsicht(mitDach(o, r, fuss(o)).dreiecke, r, punkte); continue; }
 		const u = unterkante(o);
 		const h = fuss(o) + (o.hoeheM ?? 8);
 		// Ein schwebender Teil beginnt an seiner Unterkante und bekommt einen Boden.
@@ -167,6 +184,7 @@ export function baukanten(objekte: Objekt[], r: Rahmen, fuss: (o: Objekt) => num
 	};
 	for (const o of objekte) {
 		if (!o.ringe.length) continue;
+		if (hatDach(o)) { inAnsicht(mitDach(o, r, fuss(o)).kanten, r, aus); continue; }
 		const h = fuss(o) + (o.hoeheM ?? 8);
 		const f = fuss(o) + unterkante(o);
 		const ringe = [...o.ringe, ...(o.loecher ?? [])]

@@ -3,6 +3,7 @@ import { type Gelaende, tiefsteUnter, feldImRahmen } from '../geo/gelaende';
 import earcut from 'earcut';
 import { kronenKoerper } from './baeume';
 import { unterkante, umrisseMitTeilen, type Objekt } from '../osm';
+import { hatDach, dachKoerper } from '../dach';
 import type { Rahmen } from '../geo/rahmen';
 import { drin, amRahmen } from '../schneiden';
 import { MATERIALIEN, materialFuer, kd } from '../material';
@@ -85,6 +86,37 @@ export function alsObj(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | null =
 		const zerlegt = o.ringe.map((a) => amRahmen(a, r.x0, r.y0, r.x1, r.y1));
 		const loecherZerlegt = (o.loecher ?? []).map((l) => amRahmen(l, r.x0, r.y0, r.x1, r.y1));
 		const nachAussen = zerlegt.some((t) => t.aussen.length);
+
+		/**
+		 * Mit Dach (`dach.ts`): Dreiecke statt Wand und Dachplatte, jedes mit
+		 * eigener Normale, damit Rhino die Dachflächen nicht verschmiert.
+		 * Innen und vor der Kante wie bei den flachen Körpern getrennt.
+		 */
+		if (hatDach(o)) {
+			const boden = gelaende ? tiefsteUnter(gelaende, o.ringe) : 0;
+			const ganz = o.ringe.length === 1 && !nachAussen;
+			const marke = o.hoeheGeschaetzt ? '_hoehe_geschaetzt' : '';
+			const stuecke = teil === 'innen'
+				? zerlegt.filter((t) => t.innen.length >= 3).map((t) => t.innen)
+				: zerlegt.flatMap((t) => t.aussen).filter((a) => a.length >= 3);
+			if (!stuecke.length) continue;
+			const { dreiecke } = dachKoerper(o, stuecke, boden, unterkante(o), ganz);
+			zeilen.push(`o ${objName(`${o.ebene}_${o.id}${marke}${teil === 'aussen' ? '_ausserhalb' : ''}`)}`);
+			if (material) zeilen.push(`usemtl ${materialFuer(o)}`);
+			for (let k = 0; k < dreiecke.length; k += 9) {
+				const p = [0, 3, 6].map((j) => [dreiecke[k + j] - r.x0, dreiecke[k + j + 1] - r.y0, dreiecke[k + j + 2]]);
+				for (const [x, y, zz] of p) zeilen.push(`v ${x.toFixed(3)} ${y.toFixed(3)} ${zz.toFixed(3)}`);
+				const ux = p[1][0] - p[0][0], uy = p[1][1] - p[0][1], uz = p[1][2] - p[0][2];
+				const wx = p[2][0] - p[0][0], wy = p[2][1] - p[0][1], wz = p[2][2] - p[0][2];
+				const nx = uy * wz - uz * wy, ny = uz * wx - ux * wz, nz = ux * wy - uy * wx, l = Math.hypot(nx, ny, nz) || 1;
+				zeilen.push(`vn ${(nx / l).toFixed(5)} ${(ny / l).toFixed(5)} ${(nz / l).toFixed(5)}`);
+				const nn = ++normalen;
+				zeilen.push(`f ${basis + 1}//${nn} ${basis + 2}//${nn} ${basis + 3}//${nn}`);
+				basis += 3;
+			}
+			zeilen.push('');
+			continue;
+		}
 
 		const holen = (
 			was: (t: Zerlegung) => [number, number][][],

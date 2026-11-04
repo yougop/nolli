@@ -2,6 +2,7 @@
 	import Karte from '$lib/ui/Karte.svelte';
 	import Blatt from '$lib/ui/Blatt.svelte';
 	import Raum from '$lib/ui/Raum.svelte';
+	import { DACH_NAME } from '$lib/dach';
 	import { z, VERHAELTNISSE, AUSGABEBREITEN, KANTEN_VORGABE, SONNE_VORGABE } from '$lib/zustand.svelte';
 	import { breiteName, BILDFORMATE, gedreht } from '$lib/geo/rahmen';
 	import { STIFTE, FAHRBAHN } from '$lib/stifte';
@@ -581,6 +582,12 @@
 				 * stünde; in `model.3dm` liegt er auf einer ausgeblendeten Ebene.
 				 */
 				...(ersetzt.has(o.id) ? { durch_teile_ersetzt: true } : {}),
+				/**
+				 * Die Dachform nach `roof:shape`, wie OSM sie nennt (`gabled`,
+				 * `hipped`, …), mit Dachhöhe. Ohne Angabe ist das Dach flach. Die
+				 * Traufe liegt um `roof_height_m` unter `height_m`.
+				 */
+				...(o.dachform ? { dachform: DACH_NAME[o.dachform], dach_hoehe_m: Math.round((o.dachHoeheM ?? 0) * 10) / 10 } : {}),
 				/**
 				 * Mit Gelände: die Höhe über dem Meer, auf der der Körper steht — die
 				 * tiefste Geländehöhe unter seinem Grundriss. Ohne Gelände fehlt das Feld,

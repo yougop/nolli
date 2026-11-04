@@ -1,4 +1,5 @@
 import { nachGitter, type Gitter } from './geo/utm';
+import { dachAusTags } from './dach';
 import { FAHRBAHN, type StiftId } from './stifte';
 import { NUTZUNG, BUCHHALTUNG } from './analysedaten';
 import { meer, type Kasten } from './geo/kueste';
@@ -49,6 +50,15 @@ export type Objekt = {
 	 * führt (Simple 3D Buildings). Ohne Angabe fehlt das Feld.
 	 */
 	unterM?: number;
+	/**
+	 * Dachform aus `roof:shape` (`dach.ts`), mit Dachhöhe, `roof:direction`
+	 * in Grad und `roof:orientation=across`. Ohne bekannte Form fehlt sie, und
+	 * das Dach ist flach.
+	 */
+	dachform?: import('./dach').Dachform;
+	dachHoeheM?: number;
+	dachRichtung?: number;
+	quer?: boolean;
 	/**
 	 * Nicht aus OpenStreetMap, sondern aus Overture ergänzt (`overture.ts`).
 	 * `quelleGeometrie` nennt, woher der Umriss stammt, etwa „Microsoft ML
@@ -284,11 +294,16 @@ export function lesen(roh: { elements: RohElement[] }, gitter: Gitter, kasten?: 
 				name: t.name, nutzung: t.construction ?? t.landuse ?? t.building, zustand: 'normal' });
 		} else if (t.building || t['building:part']) {
 			const h = hoehe(t);
+			const dach = dachAusTags(t, flaechen[0]);
+			// Ohne gemessene Höhe: Geschosse bis zur Traufe, das Dach kommt dazu.
+			if (dach && h.geschaetzt) h.m = (h.geschosse ? h.geschosse * 3.2 : Math.max(6, h.unter ?? 0)) + dach.hoeheM;
 			const art = t.building && t.building !== 'yes' ? t.building : (t['building:use'] ?? t.amenity ?? '');
 			aus.push({ id, ebene: 'gebaeude', art: 'flaeche', ringe: flaechen, loecher, tiefe,
 				teil: !t.building && !!t['building:part'],
 				hoeheM: h.m, geschosse: h.geschosse, hoeheGeschaetzt: h.geschaetzt,
 				...(h.unter ? { unterM: h.unter } : {}),
+				...(dach ? { dachform: dach.form, dachHoeheM: dach.hoeheM,
+					...(dach.richtung !== undefined ? { dachRichtung: dach.richtung } : {}), ...(dach.quer ? { quer: true } : {}) } : {}),
 				name: t.name, nutzung: t.building, denkmal: denkmal(t), adresse: adresse(t),
 				klasse: KLASSEN[art] ?? 'unbestimmt', zustand: 'normal' });
 		} else if (t.natural === 'water' || t.waterway === 'riverbank' || t.landuse === 'reservoir') {

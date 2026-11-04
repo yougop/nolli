@@ -136,6 +136,18 @@
 	 * Shader; dann den Hinweis wieder weg. Mehrere Anstöße im selben Takt
 	 * werden ein Aufbau.
 	 */
+	/**
+	 * Erst nach einem gezeichneten Bild weiter, damit der Hinweis zu sehen
+	 * ist — mit derselben Leine wie `anfordern`: Schläft der Bildtakt (ein
+	 * Hintergrundreiter, manche Grafikschicht), käme der Aufbau sonst nie, und
+	 * der Hinweis stünde für immer.
+	 */
+	function nachAnstrich(f: () => void) {
+		let los = false;
+		const einmal = () => { if (los) return; los = true; setTimeout(f, 0); };
+		requestAnimationFrame(einmal);
+		setTimeout(einmal, 150);
+	}
 	let baut = $state(false);
 	/** Breite des Bodenbilds im Hinweis; die Ursache, wenn es dauert. */
 	let bautPx = $state(0);
@@ -145,12 +157,18 @@
 		bauGeplant = baut = true;
 		schaerfTakt++; schaerft = false;
 		bautPx = Math.min(BODEN_VORSCHAU, bodenVoll());
-		requestAnimationFrame(() => setTimeout(() => {
+		nachAnstrich(() => {
 			bauGeplant = false;
-			if (renderer && aktiv) { bauen(); zeichne(); schaerfen(); }
-			else if (renderer) veraltet = true;
-			baut = false;
-		}, 0));
+			// Auch bei einem Fehler den Hinweis abräumen, sonst steht er für immer.
+			try {
+				if (renderer && aktiv) { bauen(); zeichne(); schaerfen(); }
+				else if (renderer) veraltet = true;
+			} catch (e) {
+				console.error('Nolli: 3D-Aufbau fehlgeschlagen', e);
+			} finally {
+				baut = false;
+			}
+		});
 	}
 
 	/** Das Bodenbild in voller Breite nachzeichnen, mit eigenem Hinweis. */
@@ -161,7 +179,7 @@
 		if (voll <= BODEN_VORSCHAU) return;
 		const takt = ++schaerfTakt;
 		schaerft = true; bautPx = voll;
-		requestAnimationFrame(() => setTimeout(() => {
+		nachAnstrich(() => {
 			const r = z.rahmen, m = bodenNetz?.material as THREE.MeshStandardMaterial | undefined;
 			// Inzwischen neu gebaut oder verlassen: dann gilt dieser Auftrag nicht mehr.
 			if (takt === schaerfTakt && r && m && aktiv) {
@@ -171,7 +189,7 @@
 				zeichne();
 			}
 			if (takt === schaerfTakt) schaerft = false;
-		}, 0));
+		});
 	}	/** Wofür zuletzt gebaut wurde, als Schlüssel: `z.rahmen` ist bei jedem Lesen ein neues Objekt. */
 	let gebautFuer = '';
 	const rahmenSchluessel = (r: Rahmen | null) => (r ? `${r.x0}|${r.y0}|${r.x1}|${r.y1}` : '');

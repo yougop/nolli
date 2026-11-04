@@ -129,6 +129,8 @@ export const FELDER: Record<string, string> = {
 	fuss_m: 'base_m',
 	unterkante_m: 'min_height_m',
 	durch_teile_ersetzt: 'replaced_by_parts',
+	dachform: 'roof_shape',
+	dach_hoehe_m: 'roof_height_m',
 	// Gelände
 	modelle: 'models',
 	kachel_m_pro_px: 'tile_m_per_px',

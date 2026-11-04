@@ -24,6 +24,7 @@
 import wasmUrl from 'rhino3dm/rhino3dm.wasm?url';
 import earcut from 'earcut';
 import { unterkante, umrisseMitTeilen, type Objekt } from '../osm';
+import { hatDach, dachKoerper, DACH_NAME } from '../dach';
 import type { Rahmen } from '../geo/rahmen';
 import { type Gelaende, tiefsteUnter, feldImRahmen, hoeheBei } from '../geo/gelaende';
 import { amRahmen, drin } from '../schneiden';
@@ -181,25 +182,46 @@ export async function als3dm(e: Rhino3dmEingabe): Promise<Uint8Array> {
 		m.compact();
 		return m;
 	};
+	/** UserText je Körper, wie die Felder in `data/bodies.json`. `boden`: Gelände unter dem Körper. */
+	const merkmale = (o: Objekt, ebeneIndex: number, name: string, boden: number) => {
+		const a = new rh.ObjectAttributes();
+		a.layerIndex = ebeneIndex;
+		a.name = name;
+		a.setUserString('body_id', o.id);
+		if (!o.herkunft) a.setUserString('osm_id', o.id);
+		if (o.herkunft) a.setUserString('origin', o.herkunft);
+		// Die Oberkante über dem Boden, wie `height_m` in den Daten.
+		a.setUserString('height_m', (o.hoeheM ?? 8).toFixed(2));
+		a.setUserString('height_source', !o.hoeheGeschaetzt ? 'measured' : o.geschosse ? 'storeys'
+			: o.herkunft && o.hoeheM !== undefined ? 'imagery' : 'assumed');
+		if (o.geschosse) a.setUserString('storeys', String(o.geschosse));
+		if (o.klasse) a.setUserString('use_class', WERTE.klasse[o.klasse] ?? o.klasse);
+		a.setUserString('material', materialFuer(o));
+		if (gelaende) a.setUserString('base_m', boden.toFixed(2));
+		if (unterkante(o) > 0) a.setUserString('min_height_m', unterkante(o).toFixed(2));
+		if (o.dachform) {
+			a.setUserString('roof_shape', DACH_NAME[o.dachform]);
+			a.setUserString('roof_height_m', (o.dachHoeheM ?? 0).toFixed(2));
+		}
+		return a;
+	};
+	/** Ein Körper mit Dach als ein Netz aus den Dreiecken von `dach.ts`. */
+	const dachNetz = (dreiecke: number[]) => {
+		const m = new rh.Mesh();
+		for (let k = 0; k < dreiecke.length; k += 9) {
+			const i = m.vertices().count;
+			for (let j = 0; j < 9; j += 3) m.vertices().add(dreiecke[k + j] - r.x0, dreiecke[k + j + 1] - r.y0, dreiecke[k + j + 2]);
+			m.faces().addTriFace(i, i + 1, i + 2);
+		}
+		m.normals().computeNormals();
+		m.compact();
+		return m;
+	};
 	const koerperSchreiben = (o: Objekt, aussenteile: P[][], loecherAlle: P[][], fuss: number, h: number,
 		ebeneIndex: number, name: string) => {
 		for (const aussen of aussenteile) {
 			const loecher = loecherAlle.filter((l) => drin(l[0], aussen));
-			const a = new rh.ObjectAttributes();
-			a.layerIndex = ebeneIndex;
-			a.name = name;
-			a.setUserString('body_id', o.id);
-			if (!o.herkunft) a.setUserString('osm_id', o.id);
-			if (o.herkunft) a.setUserString('origin', o.herkunft);
-			a.setUserString('height_m', h.toFixed(2));
-			a.setUserString('height_source', !o.hoeheGeschaetzt ? 'measured' : o.geschosse ? 'storeys'
-				: o.herkunft && o.hoeheM !== undefined ? 'imagery' : 'assumed');
-			if (o.geschosse) a.setUserString('storeys', String(o.geschosse));
-			if (o.klasse) a.setUserString('use_class', WERTE.klasse[o.klasse] ?? o.klasse);
-			a.setUserString('material', materialFuer(o));
-			// `base_m` wie in `data/bodies.json`: das Gelände unter dem Körper, nicht seine Unterkante.
-			if (gelaende) a.setUserString('base_m', (fuss - unterkante(o)).toFixed(2));
-			if (unterkante(o) > 0) a.setUserString('min_height_m', unterkante(o).toFixed(2));
+			const a = merkmale(o, ebeneIndex, name, fuss - unterkante(o));
 			if (loecher.length) {
 				f.objects().addMesh(netzMitHoefen(aussen, loecher, fuss, h), a);
 			} else {
@@ -234,6 +256,17 @@ export async function als3dm(e: Rhino3dmEingabe): Promise<Uint8Array> {
 			? ebene('overture', { eltern: BAU, farbe: KANTE, material: mat })
 			: ebene(mat, { eltern: BAU, farbe: KANTE, material: mat });
 		const marke = o.hoeheGeschaetzt ? '_hoehe_geschaetzt' : '';
+		// Mit Dach als Netz: Eine Extrusion kann keine geneigten Flächen.
+		if (hatDach(o)) {
+			const boden = fuss - u, ganz = o.ringe.length === 1 && zer.every((t) => !t.aussen.length);
+			const rein = zer.filter((t) => t.innen.length >= 3).map((t) => t.innen);
+			if (rein.length) f.objects().addMesh(dachNetz(dachKoerper(o, rein, boden, u, ganz).dreiecke),
+				merkmale(o, klasseEbene, objName(`${o.ebene}_${o.id}${marke}`), boden));
+			const raus = zer.flatMap((t) => t.aussen).filter((a) => a.length >= 3);
+			if (raus.length) f.objects().addMesh(dachNetz(dachKoerper(o, raus, boden, u, false).dreiecke),
+				merkmale(o, ebene(DRAUSSEN, { eltern: BAU, farbe: '#6E6E6B', sichtbar: false }), objName(`${o.ebene}_${o.id}${marke}_ausserhalb`), boden));
+			continue;
+		}
 		koerperSchreiben(o, innen, linnen, fuss, h, klasseEbene, objName(`${o.ebene}_${o.id}${marke}`));
 		const draussen = zer.flatMap((t) => t.aussen).map((a) => ccw(ring(a))).filter((a) => a.length >= 3);
 		if (draussen.length) {

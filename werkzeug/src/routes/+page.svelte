@@ -197,11 +197,14 @@
 	let raum = $state<Raum | null>(null);
 	let kartenRegler = $state(false);
 	let kartenKlapp = $state<HTMLDivElement | null>(null);
-	/** Die Regeltafel schließt bei einem Klick daneben und mit Escape, wie jedes Aufklappfeld. */
+	let kantenRegler = $state(false);
+	let kantenKlapp = $state<HTMLDivElement | null>(null);
+	/** Die Regeltafeln schließen bei einem Klick daneben und mit Escape, wie jedes Aufklappfeld. */
 	function kartenZu(e: Event) {
-		if (!kartenRegler) return;
-		if (e instanceof KeyboardEvent ? e.key === 'Escape' : !kartenKlapp?.contains(e.target as Node))
-			kartenRegler = false;
+		const zu = (huelle: HTMLDivElement | null) =>
+			e instanceof KeyboardEvent ? e.key === 'Escape' : !huelle?.contains(e.target as Node);
+		if (kartenRegler && zu(kartenKlapp)) kartenRegler = false;
+		if (kantenRegler && zu(kantenKlapp)) kantenRegler = false;
 	}
 	const f0 = (n: number) => zahl(Math.round(n));
 	const f1 = (n: number) => zahl(n, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -1016,6 +1019,31 @@
 								</div>
 							{/if}
 						</div>
+						<!--
+							Die Kanten der Körper, aus dem Grundriss: an oder aus, und wie
+							kräftig. Gilt für die Ansicht und das 3D-Bild, nicht fürs OBJ.
+						-->
+						<div class="klapp" bind:this={kantenKlapp}>
+							<button type="button" class="einzeln" class:an={kantenRegler && raeumlich}
+								class:veraendert={!z.kanten.an || z.kanten.dicke !== 1.5}
+								disabled={!raeumlich} aria-expanded={kantenRegler && raeumlich}
+								onclick={() => (kantenRegler = !kantenRegler)}
+								title={t().sicht.kantenTitel}
+							>{t().sicht.kanten}</button>
+							{#if kantenRegler && raeumlich}
+								<div class="regler" role="group" aria-label={t().sicht.kanten}>
+									<div class="wahl schmal">
+										<button type="button" class:an={z.kanten.an} onclick={() => (z.kanten.an = true)}>{t().sicht.kantenAn}</button>
+										<button type="button" class:an={!z.kanten.an} onclick={() => (z.kanten.an = false)}>{t().sicht.kantenAus}</button>
+									</div>
+									<label>
+										<span>{t().sicht.kantenDicke}</span>
+										<input type="range" min="0.5" max="4" step="0.25" disabled={!z.kanten.an} bind:value={z.kanten.dicke} />
+										<em class="mono">{zahl(z.kanten.dicke, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} px</em>
+									</label>
+								</div>
+							{/if}
+						</div>
 					</div>
 					<div class="gruppe" role="group" aria-label={t().sicht.ebenen}>
 						<button type="button" class="einzeln" class:an={z.beschriftung} disabled={raeumlich}
@@ -1623,6 +1651,9 @@
 	.sichtleiste .gruppe > .einzeln { border-radius: 0; }
 	/* Der aufklappende Knopf steht in einer Hülle und ist dort letztes Glied der Gruppe. */
 	.sichtleiste .gruppe > .klapp > button { border-left: 0; border-radius: 0 var(--rund) var(--rund) 0; }
+	.sichtleiste .gruppe > .klapp:not(:last-child) > button { border-radius: 0; }
+	.sichtleiste .regler .wahl.schmal { margin: 0; }
+	.sichtleiste .regler .wahl.schmal button { flex: 1; padding: 4px 8px; }
 	.sichtleiste button:hover:not(:disabled) { color: var(--tinte); }
 	.sichtleiste button:disabled { opacity: 0.42; cursor: default; }
 	.sichtleiste button.an { background: var(--tinte); border-color: var(--tinte); color: var(--blatt); }
@@ -1892,7 +1923,7 @@
 		box-shadow: var(--heben);
 	}
 	.sichtleiste .regler label {
-		display: grid; grid-template-columns: 70px 1fr 44px; align-items: center; gap: 8px;
+		display: grid; grid-template-columns: 70px 1fr 56px; align-items: center; gap: 8px;
 		font-size: 12px; color: var(--tinte-2);
 	}
 	.sichtleiste .regler input { width: 100%; accent-color: var(--tinte); }

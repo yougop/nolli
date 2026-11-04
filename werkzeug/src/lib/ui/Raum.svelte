@@ -9,7 +9,10 @@
 	import { sichtEbene } from '$lib/osm';
 	import { Rahmen } from '$lib/geo/rahmen';
 	import { zeichneBlatt } from '$lib/zeichnen';
-	import { baukoerper, hoechstes } from '$lib/raum';
+	import { baukoerper, baukanten, hoechstes } from '$lib/raum';
+	import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
+	import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
+	import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 	import { feldImRahmen, tiefsteUnter, hoeheBei } from '$lib/geo/gelaende';
 	import { BAUM } from '$lib/analysedaten';
 	import type { StiftId } from '$lib/stifte';
@@ -134,6 +137,9 @@
 		composer.addPass(new OutputPass());
 	}
 
+	/** Ein Stoff für alle Kanten; Breite und Auflösung setzt `zeichne`. */
+	const kantenStoff = new LineMaterial({ color: 0x3a3a37, linewidth: 1.5, worldUnits: false });
+
 	/**
 	 * Sättigung, Kontrast und Helligkeit des Bodens als Shaderwerte. Ein Zug am
 	 * Regler setzt nur diese drei Zahlen; das Bodenbild bleibt, wie es ist.
@@ -211,8 +217,11 @@
 			geo.computeVertexNormals();
 			// Rückseiten werden weggeschnitten. Das ist nur erlaubt, weil die
 			// Umlaufrichtung der Ringe in raum.ts vereinheitlicht wird.
+			// Die Flächen ein wenig nach hinten, damit die Kanten auf ihnen
+			// durchgezogen stehen statt mit ihnen um die Tiefe zu streiten.
 			const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({
-				color: farbe, side: THREE.FrontSide
+				color: farbe, side: THREE.FrontSide,
+				polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1
 			}));
 			m.castShadow = true; m.receiveShadow = true;
 			szene!.add(m); geloescht.push(m);
@@ -220,13 +229,16 @@
 			/**
 			 * Kanten. Weiß auf Weiß braucht eine Linie, sonst endet ein Körper
 			 * dort, wo zufällig das Licht wechselt, und nicht dort, wo er
-			 * wirklich endet.
+			 * wirklich endet. Aus dem Grundriss (`baukanten`), nicht aus den
+			 * Dreiecken; als breite Linien, weil WebGL einfache Linien immer
+			 * nur einen Bildpunkt breit zeichnet.
 			 */
-			const kanten = new THREE.LineSegments(
-				new THREE.EdgesGeometry(geo, 18),
-				new THREE.LineBasicMaterial({ color: 0x4a4a46, transparent: true, opacity: 0.55 })
-			);
-			szene!.add(kanten); geloescht.push(kanten);
+			if (z.kanten.an) {
+				const lg = new LineSegmentsGeometry();
+				lg.setPositions(baukanten(liste, r, g ? (o) => tiefsteUnter(g, o.ringe) - bezug : undefined));
+				const kanten = new LineSegments2(lg, kantenStoff);
+				szene!.add(kanten); geloescht.push(kanten);
+			}
 			return m;
 		};
 		koerper(bauten, 0xeeeeed);
@@ -537,6 +549,11 @@
 			zuletzt = { b, h };
 		}
 		kameraStellen(stand);
+		// Die Stärke gilt für die Ansicht. Ein Bild in voller Ausgabegröße
+		// bekommt sie im Verhältnis mit, sonst würden die Kanten im 8K-Bild
+		// zu Haaren.
+		kantenStoff.resolution.set(b, h);
+		kantenStoff.linewidth = z.kanten.dicke * Math.max(1, b / Math.max(1, breite));
 		composer.render();
 	}
 
@@ -584,9 +601,12 @@
 	});
 	$effect(() => {
 		z.objekte; z.sichtbar; z.bereinigt; z.plangebiet; z.kasten; z.baeume; z.baumpunkte; feld;
+		z.kanten.an;
 		if (!renderer) return;
 		bauen(); anfordern();
 	});
+	// Die Kantenstärke: nur neu zeichnen.
+	$effect(() => { z.kanten.dicke; anfordern(); });
 	// Die Regler: drei Zahlen in den Shader, dann neu zeichnen. Sonst nichts.
 	$effect(() => {
 		karteWerte.uSaettigung.value = z.karte.saettigung;

@@ -135,3 +135,53 @@ export function baukoerper(objekte: Objekt[], r: Rahmen, fuss: (o: Objekt) => nu
 /** Wie hoch steht das hoechste Haus? Bestimmt Kamera und Schattenraum. */
 export const hoechstes = (objekte: Objekt[]) =>
 	objekte.reduce((m, o) => Math.max(m, o.hoeheM ?? 0), 0);
+
+/** Ab diesem Knick zwischen zwei Wandstücken steht an der Ecke eine senkrechte Kante. */
+export const KANTE_KNICK_GRAD = 20;
+
+/**
+ * Die Kanten der Baukörper, aus dem Grundriss statt aus den Dreiecken.
+ *
+ * Bis 04.11.2026 zog die Ansicht die Kanten aus dem Netz (`EdgesGeometry`).
+ * Wo Dreiecke nicht exakt in einer Ebene lagen, erschien dann die Zerlegung
+ * als Linie: Fächer auf dem Dach, Senkrechte an jeder Stützstelle einer
+ * runden Fassade (Volker, Lower Manhattan). Hier entstehen nur die Kanten,
+ * die ein Zeichner zöge: der Dachumriss oben, die Fußlinie unten und eine
+ * Senkrechte an jeder Ecke, an der die Wand um mehr als `KANTE_KNICK_GRAD`
+ * abknickt. Hofränder gehören dazu.
+ *
+ * Dieselbe Vorbereitung der Ringe wie `baukoerper`: am Rahmen geschnitten,
+ * dieselben Achsen. Ausgabe: Strecken als Paare von Punkten, x y z x y z.
+ */
+export function baukanten(objekte: Objekt[], r: Rahmen, fuss: (o: Objekt) => number = () => 0,
+	knickGrad = KANTE_KNICK_GRAD): Float32Array {
+	const aus: number[] = [];
+	const grenze = Math.cos((knickGrad * Math.PI) / 180);
+	const innen = (roh: [number, number][]) => {
+		const t = amRahmen(roh, r.x0, r.y0, r.x1, r.y1);
+		return t.innen.length >= 3 ? [t.innen] : [];
+	};
+	for (const o of objekte) {
+		if (!o.ringe.length) continue;
+		const f = fuss(o);
+		const h = f + (o.hoeheM ?? 8);
+		const ringe = [...o.ringe, ...(o.loecher ?? [])]
+			.flatMap(innen)
+			.map((a) => ring(a, r))
+			.filter((a) => a.length >= 3);
+		for (const k of ringe) {
+			const n = k.length;
+			for (let i = 0; i < n; i++) {
+				const a = k[i], b = k[(i + 1) % n], v = k[(i + n - 1) % n];
+				aus.push(a[0], h, a[1], b[0], h, b[1]);   // Dachumriss
+				aus.push(a[0], f, a[1], b[0], f, b[1]);   // Fußlinie
+				// Senkrechte nur an einer echten Ecke
+				const ux = a[0] - v[0], uz = a[1] - v[1], wx = b[0] - a[0], wz = b[1] - a[1];
+				const lu = Math.hypot(ux, uz), lw = Math.hypot(wx, wz);
+				if (lu < 1e-6 || lw < 1e-6) continue;
+				if ((ux * wx + uz * wz) / (lu * lw) < grenze) aus.push(a[0], f, a[1], a[0], h, a[1]);
+			}
+		}
+	}
+	return new Float32Array(aus);
+}

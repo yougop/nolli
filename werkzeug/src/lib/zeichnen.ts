@@ -159,6 +159,9 @@ function lagenblatt(ctx: CanvasRenderingContext2D, b: number, h: number, teil: n
  * 4K-Ausgabe; nur die Pixelbreite des Rahmens unterscheidet sich.
  * Genau deshalb zeigt der Bildschirm, was die Datei enthaelt.
  */
+/** Ob eine Darstellung ein Linienblatt ist, schon vor dem Zeichnen. */
+const nurLinieVorab = (id: string) => darstellung(id).bauweise === 'linie';
+
 export function zeichneBlatt(
 	ctx: CanvasRenderingContext2D, objekte: Objekt[], r: Rahmen, w: Zeichenwunsch
 ) {
@@ -248,6 +251,14 @@ export function zeichneBlatt(
 	 * ist, und nicht für Gebäude.
 	 */
 	const kf = w.kanten?.karteDicke ?? 1, ka = w.kanten?.karteDeckkraft ?? 1;
+	/**
+	 * Wo eine Darstellung keine Kante führt — Straßen ohne Saum, Grün und
+	 * Wasser in den Flächenblättern —, wächst eine erst über 100 % heraus
+	 * (Volker, 04.11.2026). Bei 100 % bleibt das Blatt, wie es gestaltet ist.
+	 * Halbdurchsichtig schwarz, damit sie auf jeder Füllfarbe als Kante liest.
+	 */
+	const zusatz = nurLinieVorab(w.darstellung) ? 0 : Math.max(0, kf - 1);
+	const ZUSATZ_FARBE = 'rgba(0,0,0,0.38)';
 	const linieKarte = (strich: () => void) => {
 		if (ka === 1) { strich(); return; }
 		ctx.save(); ctx.globalAlpha *= ka; strich(); ctx.restore();
@@ -263,6 +274,9 @@ export function zeichneBlatt(
 		} else {
 			ctx.fillStyle = f; ctx.fill('evenodd');
 			if (kante) { ctx.strokeStyle = kante; ctx.lineWidth = (breite ?? r.strich(0.13)) * m; zug(); }
+			else if (karte && zusatz > 0) {
+				ctx.strokeStyle = ZUSATZ_FARBE; ctx.lineWidth = r.strich(0.2) * zusatz; zug();
+			}
 		}
 	};
 
@@ -292,6 +306,17 @@ export function zeichneBlatt(
 	const saum = d.kante?.strasse;
 	ctx.save();
 	ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+	// Ohne eigenen Saum: der wachsende Rand aus „Linien", unter allen Fahrbahnen.
+	if (!saum && !nurLinie && zusatz > 0) {
+		ctx.save();
+		ctx.strokeStyle = ZUSATZ_FARBE;
+		for (const o of strassen) {
+			if ((o.rang ?? 9) >= 9) continue;
+			ctx.lineWidth = fahrbahn(o) + r.strich(0.3) * zusatz;
+			pfad(o, false); linieKarte(() => ctx.stroke());
+		}
+		ctx.restore();
+	}
 	if (saum && !nurLinie) {
 		ctx.save();
 		ctx.strokeStyle = saum; ctx.globalAlpha = 0.45 * ka;

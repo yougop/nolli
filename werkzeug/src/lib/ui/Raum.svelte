@@ -127,7 +127,52 @@
 	 */
 	let { schema = 'hell', seite = $bindable(0.75), aktiv = true }: { schema?: 'hell' | 'dunkel'; seite?: number; aktiv?: boolean } = $props();
 	let veraltet = false;
-	/** Wofür zuletzt gebaut wurde, als Schlüssel: `z.rahmen` ist bei jedem Lesen ein neues Objekt. */
+
+	/**
+	 * Aufbauen mit Hinweis. Der Aufbau hält den Browser an — bei einem
+	 * 8K-Bodenbild mehrere Sekunden —, und ohne Hinweis sieht das aus wie ein
+	 * Absturz (Volker, 04.11.2026). Deshalb erst den Hinweis zeichnen lassen,
+	 * dann bauen und das erste Bild rechnen, darin auch das Übersetzen der
+	 * Shader; dann den Hinweis wieder weg. Mehrere Anstöße im selben Takt
+	 * werden ein Aufbau.
+	 */
+	let baut = $state(false);
+	/** Breite des Bodenbilds im Hinweis; die Ursache, wenn es dauert. */
+	let bautPx = $state(0);
+	let bauGeplant = false;
+	function neuBauen() {
+		if (bauGeplant) return;
+		bauGeplant = baut = true;
+		schaerfTakt++; schaerft = false;
+		bautPx = Math.min(BODEN_VORSCHAU, bodenVoll());
+		requestAnimationFrame(() => setTimeout(() => {
+			bauGeplant = false;
+			if (renderer && aktiv) { bauen(); zeichne(); schaerfen(); }
+			else if (renderer) veraltet = true;
+			baut = false;
+		}, 0));
+	}
+
+	/** Das Bodenbild in voller Breite nachzeichnen, mit eigenem Hinweis. */
+	let schaerft = $state(false);
+	let schaerfTakt = 0;
+	function schaerfen() {
+		const voll = bodenVoll();
+		if (voll <= BODEN_VORSCHAU) return;
+		const takt = ++schaerfTakt;
+		schaerft = true; bautPx = voll;
+		requestAnimationFrame(() => setTimeout(() => {
+			const r = z.rahmen, m = bodenNetz?.material as THREE.MeshStandardMaterial | undefined;
+			// Inzwischen neu gebaut oder verlassen: dann gilt dieser Auftrag nicht mehr.
+			if (takt === schaerfTakt && r && m && aktiv) {
+				const alt = m.map;
+				m.map = bodenbild(r, voll);
+				alt?.dispose();
+				zeichne();
+			}
+			if (takt === schaerfTakt) schaerft = false;
+		}, 0));
+	}	/** Wofür zuletzt gebaut wurde, als Schlüssel: `z.rahmen` ist bei jedem Lesen ein neues Objekt. */
 	let gebautFuer = '';
 	const rahmenSchluessel = (r: Rahmen | null) => (r ? `${r.x0}|${r.y0}|${r.x1}|${r.y1}` : '');
 
@@ -261,7 +306,16 @@
 	}
 
 	/** Der Plan als Bodenbild. Derselbe Zeichner wie in der Aufsicht. */
-	function bodenbild(r: Rahmen) {
+	/** Die volle Breite des Bodenbilds: die Ausgabe, so weit die Grafikkarte sie annimmt. */
+	const bodenVoll = () => Math.min(z.ausgabeBreite, renderer?.capabilities.maxTextureSize ?? 4096);
+	/**
+	 * Erst grob, dann scharf. Das Bodenbild kostet mit der Fläche: 8K sind
+	 * viermal 4K und sechzehnmal 2K, gemessen im Software-Zeichner 7,5 s für
+	 * 4K. Der Aufbau nimmt deshalb 2048 Punkte, das Modell steht sofort da,
+	 * und die volle Breite wird gleich danach nachgezeichnet (04.11.2026).
+	 */
+	const BODEN_VORSCHAU = 2048;
+	function bodenbild(r: Rahmen, k = bodenVoll()) {
 		const c = document.createElement('canvas');
 		// 2048 waren bei eineinhalb Kilometer Rahmenbreite 0,72 Meter je Bildpunkt;
 		// eine zwei Meter breite Gasse bekam drei Punkte und franste aus.
@@ -270,7 +324,6 @@
 		// dran wirkte der Boden pixelig, obwohl Rhino schon 8K bekam). Die
 		// Ansicht zeigt damit dieselbe Schärfe wie `model_texture.png`. Begrenzt
 		// durch das, was die Grafikkarte als Textur annimmt.
-		const k = Math.min(z.ausgabeBreite, renderer?.capabilities.maxTextureSize ?? 4096);
 		c.width = k; c.height = Math.round((k * r.hoeheM) / r.breiteM);
 		const tex = new Rahmen({
 			lon0: r.gitter.lon0, bbox: [r.x0, r.y0, r.x1, r.y1],
@@ -424,7 +477,7 @@
 		}
 		const boden = new THREE.Mesh(
 			platte,
-			bodenStoff(bodenbild(r))
+			bodenStoff(bodenbild(r, Math.min(BODEN_VORSCHAU, bodenVoll())))
 		);
 		bodenNetz = boden;
 		boden.rotation.x = -Math.PI / 2;
@@ -883,7 +936,7 @@
 			// Wird der Zeichner neu aufgebaut — beim Wechsel des Schemas etwa —,
 			// ist die Szene danach leer. Der Aufbau muss sich selbst genuegen und
 			// darf nicht darauf warten, dass sich zufaellig die Daten aendern.
-			bauen();
+			neuBauen();
 		});
 		anfordern();
 		const beob = new ResizeObserver(() => { messen(); anfordern(); });
@@ -907,7 +960,7 @@
 		// Nur auf die Werte oben hin neu bauen. `bauen` liest nebenbei mehr —
 		// etwa alle Kanteneinstellungen fürs Bodenbild —, und jeder Zug an
 		// einem Regler baute sonst die ganze Szene neu: 4,6 s je Schritt.
-		untrack(() => bauen()); anfordern();
+		untrack(neuBauen);
 	});
 	// Zurück in die Ansicht: nachholen, was ruhend liegen blieb. Ein neuer
 	// Ort beginnt mit dem Ausgangsblick, wie früher beim Neuanlegen.
@@ -915,7 +968,7 @@
 		if (!aktiv || !renderer) return;
 		untrack(() => {
 			if (rahmenSchluessel(z.rahmen) !== gebautFuer) zuruecksetzen();
-			if (veraltet) { veraltet = false; bauen(); }
+			if (veraltet) { veraltet = false; neuBauen(); }
 			messen();
 		});
 		anfordern();
@@ -1091,7 +1144,32 @@
 
 <p class="wink">{t().raum.wink}</p>
 
+{#if baut || schaerft}
+	<div class="baut" class:leise={schaerft && !baut} role="status" aria-live="polite">
+		<span class="ring" aria-hidden="true"></span>
+		<span>{baut ? t().raum.baut : t().raum.schaerft}</span>
+		<span class="mono">{t().raum.bodenbild(bautPx)}</span>
+	</div>
+{/if}
+
 <style>
+	.baut {
+		position: absolute; left: 50%; top: 50%; z-index: 3; transform: translate(-50%, -50%);
+		display: flex; align-items: center; gap: 9px;
+		padding: 9px 14px; font-size: 12.5px; color: var(--tinte);
+		background: var(--blatt); border: 1px solid var(--linie); border-radius: var(--rund);
+		box-shadow: 0 2px 10px rgb(0 0 0 / 0.08); pointer-events: none;
+	}
+	.baut .mono { color: var(--tinte-2); font-size: 11px; }
+	/* Nachschärfen: das Modell ist schon zu sehen, der Hinweis rückt nach oben. */
+	.baut.leise { top: 18px; transform: translateX(-50%); }
+	.ring {
+		width: 11px; height: 11px; flex: none;
+		border: 2px solid var(--akzent); border-top-color: transparent; border-radius: 50%;
+		animation: dreht 900ms linear infinite;
+	}
+	@keyframes dreht { to { transform: rotate(360deg); } }
+	@media (prefers-reduced-motion: reduce) { .ring { animation-duration: 2.4s; } }
 	.raum {
 		position: absolute; inset: 0; z-index: 1;
 		cursor: grab; touch-action: none; line-height: 0;

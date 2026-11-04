@@ -274,6 +274,9 @@ const de = {
 	},
 	raum: {
 		nichtBereit: 'Die Raumansicht ist nicht bereit.',
+		baut: '3D-Modell wird aufgebaut',
+		schaerft: 'Bodenbild wird geschärft',
+		bodenbild: (px: number) => `Bodenbild ${zahl(px)} px`,
 		massstabTitel: 'Gilt für waagerechte Strecken in der Tiefe des Blickpunkts. In einer Perspektive ist Vorderes größer abgebildet als Hinteres.',
 		nordTitel: 'Gitternord. Die Abweichung zu geographisch Nord steht in der Fußzeile; in der Rahmenmitte ist sie null.',
 		norden: 'Norden',
@@ -590,6 +593,9 @@ const en: typeof de = {
 	},
 	raum: {
 		nichtBereit: 'The 3D view is not ready.',
+		baut: 'Building the 3D model',
+		schaerft: 'Sharpening the ground image',
+		bodenbild: (px: number) => `ground image ${zahl(px)} px`,
 		massstabTitel: 'Applies to horizontal distances at the depth of the focal point. In perspective, near things appear larger than far ones.',
 		nordTitel: 'Grid north. The deviation from true north is in the footer; at the frame centre it is zero.',
 		norden: 'North',

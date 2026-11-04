@@ -327,6 +327,7 @@
 		return als3dm({
 			objekte: bestand, r: rr, gelaende: z.gelaendeJetzt, baeume: modellKronen ? z.baumpunkte : [],
 			textur: new Uint8Array(await t.arrayBuffer()), kantenHell: z.kanten.hell,
+			ecke: { lat: v.bbox_wgs84.sued, lon: v.bbox_wgs84.west },
 			kopf: {
 				contract: VERTRAG_NAME, contract_version: VERTRAG_VERSION,
 				grid: { proj4: v.gitter.proj4, central_meridian: v.gitter.mittelmeridian }, bbox_grid: v.bbox_gitter, units: 'metres, Z up, Y north, origin at the lower-left frame corner',

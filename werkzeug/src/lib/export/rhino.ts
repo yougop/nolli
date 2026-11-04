@@ -29,7 +29,6 @@ import { type Gelaende, tiefsteUnter, feldImRahmen, hoeheBei } from '../geo/gela
 import { amRahmen, drin } from '../schneiden';
 import { MATERIALIEN, materialFuer } from '../material';
 import { planZuege } from './dxf';
-import { STIFTE } from '../stifte';
 import { dxfEbene, objName, WERTE } from '../vertrag';
 import { BAUM } from '$lib/analysedaten';
 import { ECKEN, FLAECHEN } from './baeume';
@@ -68,6 +67,8 @@ export type Rhino3dmEingabe = {
 	textur?: Uint8Array;
 	/** Kantenfarbe aus „Gebäude": die Farbe der Gebäudeebenen, mit der Rhino Kanten zeichnet. */
 	kantenHell?: boolean;
+	/** Lage der linken unteren Rahmenecke, für den Erdanker. */
+	ecke?: { lat: number; lon: number };
 };
 
 export async function als3dm(e: Rhino3dmEingabe): Promise<Uint8Array> {
@@ -78,6 +79,20 @@ export async function als3dm(e: Rhino3dmEingabe): Promise<Uint8Array> {
 	f.applicationName = 'Nolli';
 	f.applicationUrl = 'https://zinssmeister.info/app/nolli/';
 	f.strings().set('ucx', JSON.stringify(e.kopf));
+	/**
+	 * Der Erdanker: Der Ursprung des Modells ist die linke untere Rahmenecke.
+	 * Damit kennt Rhino die Lage, etwa für die Sonne. Gitternord ist Nord.
+	 */
+	if (e.ecke) {
+		const ea = f.settings().earthAnchorPoint;
+		ea.earthBasepointLatitude = e.ecke.lat;
+		ea.earthBasepointLongitude = e.ecke.lon;
+		ea.modelBasePoint = [0, 0, 0];
+		ea.modelNorth = [0, 1, 0];
+		ea.modelEast = [1, 0, 0];
+		ea.name = 'UCX frame origin';
+		f.settings().earthAnchorPoint = ea;
+	}
 
 	// ---- Materialien und Ebenen ------------------------------------------
 	const stoff = new Map<string, number>();
@@ -102,14 +117,39 @@ export async function als3dm(e: Rhino3dmEingabe): Promise<Uint8Array> {
 		ebenen.set(schluessel, i);
 		return i;
 	};
+	/**
+	 * Ordnung der Ebenen (Volker, 04.11.2026): ganz oben `Default`, aktiv,
+	 * damit Gezeichnetes nicht auf einer Nolli-Ebene landet; dann die
+	 * Gebäude, die Landschaft (Gelände, Bäume, Höhenlinien), die übrigen
+	 * OSM-Ebenen, der Rahmen. Dunkle Farben, weil Rhino Kurven und Kanten
+	 * in der Ebenenfarbe zeichnet und helle Töne auf dem Modell verschwinden.
+	 */
+	ebene('Default');
 	const BAU = dxfEbene('N_GEBAEUDE');
+	ebene(BAU, { farbe: '#2B2B29' });
+	const LAND = 'N_LANDSCAPE', OSM = 'N_OSM';
+	ebene(LAND, { farbe: '#4A4A48' });
+	ebene(OSM, { farbe: '#4A4A48' });
+	/** Wohin eine Kurvenebene gehört und in welcher Farbe. */
+	const KURVEN: Record<string, { eltern?: string; farbe: string }> = {
+		[dxfEbene('N_STRASSE')]: { eltern: OSM, farbe: '#5A5A58' },
+		[dxfEbene('N_WASSER')]: { eltern: OSM, farbe: '#3F5866' },
+		[dxfEbene('N_GRUEN')]: { eltern: OSM, farbe: '#55654A' },
+		[dxfEbene('N_BAHN')]: { eltern: OSM, farbe: '#333331' },
+		[dxfEbene('N_BAU')]: { eltern: OSM, farbe: '#6B5F4E' },
+		[dxfEbene('N_BESCHRIFTUNG')]: { eltern: OSM, farbe: '#4A4A48' },
+		[dxfEbene('N_HOEHENLINIE')]: { eltern: LAND, farbe: '#6E6E6B' },
+		[dxfEbene('N_HOEHENLINIE_HAUPT')]: { eltern: LAND, farbe: '#4A4A48' },
+		[dxfEbene('N_RAHMEN')]: { farbe: '#5D7A16' },
+		[dxfEbene('N_PLANGEBIET')]: { farbe: '#5D7A16' }
+	};
 	/**
 	 * Die Gebäudeebenen tragen die Kantenfarbe aus „Gebäude", nicht die
 	 * Flächenfarbe: Rhino zeichnet Kanten und Drahtmodell in der Ebenenfarbe,
 	 * die Fläche zeigt das Material (Volker, 04.11.2026).
 	 */
 	const KANTE = e.kantenHell ? '#F4F4F2' : '#2B2B29';
-	const DRAUSSEN = 'N_OUTSIDE';
+	const DRAUSSEN = 'outside';
 
 	// ---- Körper -------------------------------------------------------------
 	const ring = (roh: P[]) => {
@@ -188,7 +228,7 @@ export async function als3dm(e: Rhino3dmEingabe): Promise<Uint8Array> {
 		const draussen = zer.flatMap((t) => t.aussen).map((a) => ccw(ring(a))).filter((a) => a.length >= 3);
 		if (draussen.length) {
 			const dl = lzer.flatMap((t) => t.aussen).map((a) => cw(ring(a))).filter((a) => a.length >= 3);
-			koerperSchreiben(o, draussen, dl, fuss, h, ebene(DRAUSSEN, { farbe: '#9E9E9E', sichtbar: false }),
+			koerperSchreiben(o, draussen, dl, fuss, h, ebene(DRAUSSEN, { eltern: BAU, farbe: '#6E6E6B', sichtbar: false }),
 				objName(`${o.ebene}_${o.id}${marke}_ausserhalb`));
 		}
 	}
@@ -228,7 +268,7 @@ export async function als3dm(e: Rhino3dmEingabe): Promise<Uint8Array> {
 			}
 			m.normals().computeNormals();
 			const a = new rh.ObjectAttributes();
-			a.layerIndex = ebene('terrain', { farbe: '#BDBDBD', material: 'ground' });
+			a.layerIndex = ebene('terrain', { eltern: LAND, farbe: '#5A5A58', material: 'ground' });
 			a.name = 'terrain';
 			if (bodenStoff !== undefined) {
 				a.materialSource = rh.ObjectMaterialSource.MaterialFromObject;
@@ -251,7 +291,7 @@ export async function als3dm(e: Rhino3dmEingabe): Promise<Uint8Array> {
 		}
 		m.normals().computeNormals();
 		const a = new rh.ObjectAttributes();
-		a.layerIndex = ebene('trees', { farbe: '#9A9A9A', material: 'tree' });
+		a.layerIndex = ebene('trees', { eltern: LAND, farbe: '#3E4A3A', material: 'tree' });
 		a.name = 'trees';
 		f.objects().addMesh(m, a);
 	}
@@ -259,19 +299,20 @@ export async function als3dm(e: Rhino3dmEingabe): Promise<Uint8Array> {
 	// ---- Kurven der Zeichnung ---------------------------------------------
 	const { zuege, texte } = planZuege(objekte, r, gelaende, !!gelaende);
 	const gebaeudeEbenen = new Set(['N_GEBAEUDE', 'N_ERHALT', 'N_OVERTURE'].map(dxfEbene));
-	const stiftFarbe = new Map(STIFTE.map((s) => [dxfEbene(s.dxf), s.hell]));
+
 	for (const zg of zuege) {
 		// Die Gebäudeumrisse stehen schon als Körper da.
 		if (gebaeudeEbenen.has(zg.ebene) || zg.punkte.length < 2) continue;
 		const pk = zg.zu ? [...zg.punkte, zg.punkte[0]] : zg.punkte;
 		const a = new rh.ObjectAttributes();
-		a.layerIndex = ebene(zg.ebene, { farbe: stiftFarbe.get(zg.ebene) ?? '#8C8C8C' });
+		const k = KURVEN[zg.ebene] ?? { eltern: OSM, farbe: '#5A5A58' };
+		a.layerIndex = ebene(zg.ebene, k);
 		f.objects().addCurve(new rh.PolylineCurve(pk), a);
 	}
 	if (texte.length) {
 		// Ausgeblendet und klein: Im 3D-Raum stehen Hunderte Namen sonst
 		// übereinander und verdecken das Modell (Volker, 04.11.2026).
-		const li = ebene(dxfEbene('N_BESCHRIFTUNG'), { farbe: '#6A6A6A', sichtbar: false });
+		const li = ebene(dxfEbene('N_BESCHRIFTUNG'), { ...KURVEN[dxfEbene('N_BESCHRIFTUNG')], sichtbar: false });
 		for (const t of texte) {
 			const a = new rh.ObjectAttributes();
 			a.layerIndex = li;

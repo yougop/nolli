@@ -7,7 +7,9 @@
  * nichts selbst.
  *
  * Bewusst schmal (Volker, 03.11.2026): Graustufen statt Materialbibliothek,
- * eine einzige warme Farbe für den Entwurf. Rauheit, Reflexion und Albedo
+ * eine einzige warme Farbe für den Entwurf.
+ * Bäume grün wie im 3D-Modell (04.11.2026: graue Kronen lasen in Rhino als
+ * Fehler). Rauheit, Reflexion und Albedo
  * kommen erst, wenn ein Werkzeug sie rechnet — dann als `schema_version: 2`.
  *
  * Die Namen sind englisch und gehen ungeändert ins Paket; die Tabellen in
@@ -35,7 +37,7 @@ export const MATERIALIEN: Material[] = [
 	{ id: 'kept',         name: { de: 'Erhalt', en: 'Kept' },              category: 'building',   color: '#6E6E6E', mask_index: 6 },
 	{ id: 'design',       name: { de: 'Entwurf', en: 'Design' },           category: 'design',     color: '#D4B483', mask_index: 7 },
 	{ id: 'green',        name: { de: 'Grün', en: 'Green' },               category: 'vegetation', color: '#EEEEEE', mask_index: 10 },
-	{ id: 'tree',         name: { de: 'Baum', en: 'Tree' },                category: 'vegetation', color: '#9A9A9A', mask_index: 11 },
+	{ id: 'tree',         name: { de: 'Baum', en: 'Tree' },                category: 'vegetation', color: '#4F7F4A', mask_index: 11 },
 	{ id: 'water',        name: { de: 'Wasser', en: 'Water' },             category: 'water',      color: '#DCDCDC', mask_index: 12 },
 	{ id: 'street',       name: { de: 'Straße', en: 'Street' },            category: 'ground',     color: '#E8E8E8', mask_index: 13 },
 	{ id: 'rail',         name: { de: 'Bahn', en: 'Rail' },                category: 'ground',     color: '#D0D0D0', mask_index: 14 },

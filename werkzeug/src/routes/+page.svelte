@@ -3,7 +3,7 @@
 	import Blatt from '$lib/ui/Blatt.svelte';
 	import Raum from '$lib/ui/Raum.svelte';
 	import { z, VERHAELTNISSE, AUSGABEBREITEN, KANTEN_VORGABE } from '$lib/zustand.svelte';
-	import { breiteName } from '$lib/geo/rahmen';
+	import { breiteName, BILDFORMATE, gedreht } from '$lib/geo/rahmen';
 	import { STIFTE, FAHRBAHN } from '$lib/stifte';
 	import { ebenenZaehlen } from '$lib/zeichnen';
 	import { hoehenDeckung, ringflaeche, istTeil, gebaeudeLuecke, sichtEbene, ZWEIFEL_ENTHAELT } from '$lib/osm';
@@ -196,20 +196,31 @@
 	);
 	let raum = $state<Raum | null>(null);
 	let kartenRegler = $state(false);
+	/** Hochformat, abgelesen am gewählten Verhältnis. */
+	const hochkant = $derived(!!z.verhaeltnis.wert && z.verhaeltnis.wert < 1);
 	/** Seitenverhältnis der 3D-Ansicht; das 3D-Bild übernimmt es. */
 	let raumSeite = $state(0.75);
-	const raumHoehe = (b: number) => Math.round(b * raumSeite);
-	/** Was das Bild misst: im 3D-Modell wie die Ansicht, sonst wie der Rahmen. */
-	const bildMass = $derived(r ? (raeumlich ? [r.pixelBreite, raumHoehe(r.pixelBreite)] : [r.pixelBreite, r.pixelHoehe]) : [0, 0]);
+	/** Höhe durch Breite des 3D-Bilds: nach Format, im Format `ansicht` wie das Fenster. */
+	const bild3dSeite = $derived.by(() => {
+		const f = BILDFORMATE.find((x) => x.name === z.bild3d.format)?.wert;
+		return f ? 1 / f : raumSeite;
+	});
+	/** Was das Bild misst: im 3D-Modell nach den eigenen Einstellungen, sonst wie der Rahmen. */
+	const bildMass = $derived(r ? (raeumlich
+		? [z.bild3d.breite, Math.round(z.bild3d.breite * bild3dSeite)]
+		: [r.pixelBreite, r.pixelHoehe]) : [0, 0]);
 	let kartenKlapp = $state<HTMLDivElement | null>(null);
 	let kantenRegler = $state(false);
 	let kantenKlapp = $state<HTMLDivElement | null>(null);
+	let bildRegler = $state(false);
+	let bildKlapp = $state<HTMLDivElement | null>(null);
 	/** Die Regeltafeln schließen bei einem Klick daneben und mit Escape, wie jedes Aufklappfeld. */
 	function kartenZu(e: Event) {
 		const zu = (huelle: HTMLDivElement | null) =>
 			e instanceof KeyboardEvent ? e.key === 'Escape' : !huelle?.contains(e.target as Node);
 		if (kartenRegler && zu(kartenKlapp)) kartenRegler = false;
 		if (kantenRegler && zu(kantenKlapp)) kantenRegler = false;
+		if (bildRegler && zu(bildKlapp)) bildRegler = false;
 	}
 	const f0 = (n: number) => zahl(Math.round(n));
 	const f1 = (n: number) => zahl(n, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -358,7 +369,7 @@
 		if (raeumlich && raum) {
 			arbeitet = `paket:${t().ausgeben.paket3d}`;
 			await anstrich();
-			teile.push({ name: pfadV2('bilder/3d-modell.webp'), inhalt: await raum.alsBild(rr.pixelBreite, raumHoehe(rr.pixelBreite), WEBP) });
+			teile.push({ name: pfadV2('bilder/3d-modell.webp'), inhalt: await raum.alsBild(z.bild3d.breite, WEBP) });
 			bilder.push({ datei: 'bilder/3d-modell.webp', darstellung: 'modell3d',
 				was: 'The 3D view as it currently stands',
 				baeume: !!z.baeume && !!z.baumpunkte.length });
@@ -864,10 +875,10 @@
 			const basis = `nolli_${(z.ort?.name ?? 'rahmen').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 24)}_${stempel()}`;
 			if (art === 'bild') {
 				const b = raeumlich && raum
-					? await raum.alsBild(r.pixelBreite, raumHoehe(r.pixelBreite))
+					? await raum.alsBild()
 					: await bild(bestand, r, z.darstellung, z.bereinigt, z.beschriftung, z.plangebiet, z.sichtbar,
 						false, 'image/png', z.baeume ? z.baumpunkte : undefined);
-				laden(b, `${basis}_${darstellungV2(z.darstellung)}_${r.pixelBreite}px.png`, 'image/png');
+				laden(b, `${basis}_${darstellungV2(z.darstellung)}_${raeumlich ? z.bild3d.breite : r.pixelBreite}px.png`, 'image/png');
 			} else if (art === 'dxf') {
 				laden(dxf(bestand, r, z.gelaendeJetzt), `${basis}.dxf`, 'application/dxf');
 			} else if (art === 'obj') {
@@ -1054,6 +1065,41 @@
 								</div>
 							{/if}
 						</div>
+						<!--
+							Der Bildrahmen: Format und Breite des 3D-Bilds, und ob der
+							Ausschnitt in der Ansicht zu sehen ist (Volker, 04.11.2026).
+						-->
+						<div class="klapp" bind:this={bildKlapp}>
+							<button type="button" class="einzeln" class:an={bildRegler && raeumlich}
+								class:veraendert={z.bild3d.rahmen}
+								disabled={!raeumlich} aria-expanded={bildRegler && raeumlich}
+								onclick={() => (bildRegler = !bildRegler)}
+								title={t().sicht.bildrahmenTitel}
+							>{t().sicht.bildrahmen}</button>
+							{#if bildRegler && raeumlich}
+								<div class="regler" role="group" aria-label={t().sicht.bildrahmen}>
+									<div class="wahl schmal">
+										<button type="button" class:an={z.bild3d.rahmen} onclick={() => (z.bild3d.rahmen = true)}>{t().sicht.kantenAn}</button>
+										<button type="button" class:an={!z.bild3d.rahmen} onclick={() => (z.bild3d.rahmen = false)}>{t().sicht.kantenAus}</button>
+									</div>
+									<span class="feld">{t().sicht.format}</span>
+									<div class="wahl formate">
+										{#each BILDFORMATE as f}
+											<button type="button" class:an={z.bild3d.format === f.name}
+												onclick={() => (z.bild3d.format = f.name)}>{f.name === 'ansicht' ? t().sicht.formatAnsicht : f.name}</button>
+										{/each}
+									</div>
+									<span class="feld">{t().sicht.bildbreite}</span>
+									<div class="wahl formate">
+										{#each AUSGABEBREITEN as b}
+											<button type="button" class:an={z.bild3d.breite === b}
+												onclick={() => (z.bild3d.breite = b)}>{breiteName(b)}</button>
+										{/each}
+									</div>
+									<p class="leise">{bildMass[0]} × {bildMass[1]}</p>
+								</div>
+							{/if}
+						</div>
 					</div>
 					<div class="gruppe" role="group" aria-label={t().sicht.ebenen}>
 						<button type="button" class="einzeln" class:an={z.beschriftung} disabled={raeumlich}
@@ -1136,11 +1182,19 @@
 
 				<div class="teil">
 					<span class="feld">{t().rahmen.verhaeltnis}</span>
+					<!-- Die Verhältnisse im Querformat, daneben die Lage. Im Hochformat
+					     steht 3:4 für 4:3 gedreht; die Liste bleibt so kurz. -->
 					<div class="wahl">
-						{#each VERHAELTNISSE as v}
-							<button type="button" class:an={z.verhaeltnis.name === v.name}
-								onclick={() => z.setzeVerhaeltnis(v)}>{v.name === 'frei' ? t().rahmen.frei : v.name}</button>
+						{#each VERHAELTNISSE.filter((v) => !v.wert || v.wert >= 1) as v}
+							<button type="button" class:an={z.verhaeltnis.name === v.name || gedreht(v).name === z.verhaeltnis.name}
+								onclick={() => z.setzeVerhaeltnis(hochkant ? gedreht(v) : v)}>{v.name === 'frei' ? t().rahmen.frei : (hochkant ? gedreht(v).name : v.name)}</button>
 						{/each}
+					</div>
+					<div class="wahl lage">
+						<button type="button" class:an={!hochkant} disabled={!z.verhaeltnis.wert || z.verhaeltnis.wert === 1}
+							onclick={() => hochkant && z.setzeVerhaeltnis(gedreht(z.verhaeltnis))}>{t().rahmen.quer}</button>
+						<button type="button" class:an={hochkant} disabled={!z.verhaeltnis.wert || z.verhaeltnis.wert === 1}
+							onclick={() => !hochkant && z.setzeVerhaeltnis(gedreht(z.verhaeltnis))}>{t().rahmen.hoch}</button>
 					</div>
 					<span class="feld">{t().rahmen.ausgabebreite}</span>
 					<div class="wahl">
@@ -1460,13 +1514,31 @@
 						Die Breite auch hier, wo sie wirkt: Sie bestimmt jedes Bild und die
 						Textur im Modell. Die Daten bleiben, nur gezeichnet wird neu.
 					-->
-					<div class="wahl breiten">
-						{#each AUSGABEBREITEN as b}
-							<button type="button" class:an={z.ausgabeBreite === b}
-								onclick={() => (z.ausgabeBreite = b)}>{breiteName(b)}<em class="mono">{b}</em></button>
-						{/each}
-					</div>
-					{#if z.ausgabeBreite > 4096}<p class="hinweis leise">{t().ausgeben.achtK}</p>{/if}
+					{#if raeumlich}
+						<!-- Das 3D-Bild hat eigene Breite und eigenes Format, unabhängig
+						     von der Karte. Dieselben Einstellungen wie unter „Bildrahmen". -->
+						<div class="wahl breiten">
+							{#each AUSGABEBREITEN as b}
+								<button type="button" class:an={z.bild3d.breite === b}
+									onclick={() => (z.bild3d.breite = b)}>{breiteName(b)}<em class="mono">{b}</em></button>
+							{/each}
+						</div>
+						<div class="wahl formate">
+							{#each BILDFORMATE as f}
+								<button type="button" class:an={z.bild3d.format === f.name}
+									onclick={() => (z.bild3d.format = f.name)}>{f.name === 'ansicht' ? t().sicht.formatAnsicht : f.name}</button>
+							{/each}
+						</div>
+						{#if z.bild3d.breite > 4096}<p class="hinweis leise">{t().ausgeben.achtK}</p>{/if}
+					{:else}
+						<div class="wahl breiten">
+							{#each AUSGABEBREITEN as b}
+								<button type="button" class:an={z.ausgabeBreite === b}
+									onclick={() => (z.ausgabeBreite = b)}>{breiteName(b)}<em class="mono">{b}</em></button>
+							{/each}
+						</div>
+						{#if z.ausgabeBreite > 4096}<p class="hinweis leise">{t().ausgeben.achtK}</p>{/if}
+					{/if}
 					<p class="hinweis leise">
 						{t().darstellungen[darstellungJetzt.id].zweck}
 						{#if hoehenAbstand}
@@ -1664,6 +1736,11 @@
 	.sichtleiste .gruppe > .klapp:not(:last-child) > button { border-radius: 0; }
 	.sichtleiste .regler .wahl.schmal { margin: 0; }
 	.sichtleiste .regler .wahl.schmal button { flex: 1; padding: 4px 8px; }
+	.wahl.formate { flex-wrap: wrap; }
+	.sichtleiste .regler .wahl.formate { margin: 0; }
+	.sichtleiste .regler .wahl.formate button { padding: 4px 8px; border-radius: var(--rund); }
+	.sichtleiste .regler .feld { font-size: 11px; color: var(--tinte-3); }
+	.sichtleiste .regler p { margin: 0; font-size: 11px; }
 	.sichtleiste button:hover:not(:disabled) { color: var(--tinte); }
 	.sichtleiste button:disabled { opacity: 0.42; cursor: default; }
 	.sichtleiste button.an { background: var(--tinte); border-color: var(--tinte); color: var(--blatt); }

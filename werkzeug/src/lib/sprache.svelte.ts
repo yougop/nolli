@@ -78,6 +78,11 @@ const de = {
 		kantenAus: 'Aus',
 		kantenDicke: 'Stärke',
 		kantenDeckkraft: 'Deckkraft',
+		bildrahmen: 'Bildrahmen',
+		bildrahmenTitel: 'Format und Breite des 3D-Bilds, unabhängig von der Karte. An zeigt den Ausschnitt in der Ansicht.',
+		format: 'Format',
+		formatAnsicht: 'Ansicht',
+		bildbreite: 'Breite',
 		karteZurueck: 'Zurücksetzen',
 		raum: '3D-Modell',
 		ebenen: 'Inhalt',
@@ -87,6 +92,8 @@ const de = {
 		ganz: 'Ganz'
 	},
 	rahmen: {
+		quer: 'Querformat',
+		hoch: 'Hochformat',
 		ort: 'Ort',
 		suche: 'Ort, Quartier oder Adresse',
 		losLegen: 'Gleich loslegen:',
@@ -359,6 +366,11 @@ const en: typeof de = {
 		kantenAus: 'Off',
 		kantenDicke: 'Weight',
 		kantenDeckkraft: 'Opacity',
+		bildrahmen: 'Safe frame',
+		bildrahmenTitel: 'Format and width of the 3D image, independent of the map. On shows the crop in the view.',
+		format: 'Format',
+		formatAnsicht: 'View',
+		bildbreite: 'Width',
 		karteZurueck: 'Reset',
 		raum: '3D model',
 		ebenen: 'Content',
@@ -368,6 +380,8 @@ const en: typeof de = {
 		ganz: 'Fit'
 	},
 	rahmen: {
+		quer: 'Landscape',
+		hoch: 'Portrait',
 		ort: 'Place',
 		suche: 'Place, district or address',
 		losLegen: 'Try right away:',

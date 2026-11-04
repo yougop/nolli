@@ -5,12 +5,37 @@ import {
 import tzlookup from '@photostructure/tz-lookup';
 
 export type Verhaeltnis = { name: string; wert: number | null };
+/**
+ * Die Seitenverhältnisse des Rahmens. Hochformate seit 04.11.2026 (Volker);
+ * in der Oberfläche als Quer/Hoch-Schalter neben den Verhältnissen, damit die
+ * Reihe nicht doppelt so lang wird.
+ */
 export const VERHAELTNISSE: Verhaeltnis[] = [
 	{ name: '4:3', wert: 4 / 3 },
 	{ name: '16:9', wert: 16 / 9 },
 	{ name: '3:2', wert: 3 / 2 },
 	{ name: '1:1', wert: 1 },
-	{ name: 'frei', wert: null }
+	{ name: 'frei', wert: null },
+	{ name: '3:4', wert: 3 / 4 },
+	{ name: '9:16', wert: 9 / 16 },
+	{ name: '2:3', wert: 2 / 3 }
+];
+/** Dasselbe Verhältnis in der anderen Lage: 4:3 ↔ 3:4. Quadrat und frei bleiben. */
+export function gedreht(v: Verhaeltnis): Verhaeltnis {
+	if (!v.wert || v.wert === 1) return v;
+	const [a, b] = v.name.split(':');
+	return VERHAELTNISSE.find((x) => x.name === `${b}:${a}`) ?? v;
+}
+
+/**
+ * Die Formate des 3D-Bilds, unabhängig vom Rahmen. `ansicht` heißt: so wie
+ * das Fenster gerade ist. Breite durch Höhe.
+ */
+export const BILDFORMATE: { name: string; wert: number | null }[] = [
+	{ name: 'ansicht', wert: null },
+	{ name: '16:9', wert: 16 / 9 }, { name: '3:2', wert: 3 / 2 }, { name: '4:3', wert: 4 / 3 },
+	{ name: '1:1', wert: 1 },
+	{ name: '4:5', wert: 4 / 5 }, { name: '3:4', wert: 3 / 4 }, { name: '2:3', wert: 2 / 3 }, { name: '9:16', wert: 9 / 16 }
 ];
 /**
  * Die Ausgabebreiten. 8K seit 03.11.2026 (Volker), für Texturen in Rhino und

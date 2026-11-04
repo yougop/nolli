@@ -7,7 +7,7 @@
 	import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 	import { z } from '$lib/zustand.svelte';
 	import { sichtEbene } from '$lib/osm';
-	import { Rahmen } from '$lib/geo/rahmen';
+	import { Rahmen, BILDFORMATE } from '$lib/geo/rahmen';
 	import { zeichneBlatt } from '$lib/zeichnen';
 	import { baukoerper, baukanten, hoechstes } from '$lib/raum';
 	import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
@@ -553,10 +553,31 @@
 			? treffer : null;
 	}
 
-	function zeichne() {
+	/**
+	 * Der Ausschnitt des 3D-Bilds in der Ansicht, in Bildschirmpunkten: das
+	 * größte Rechteck im gewählten Format, mittig, mit etwas Rand. Im Format
+	 * `ansicht` die ganze Ansicht.
+	 */
+	function ausschnitt(b: number, h: number) {
+		const f = BILDFORMATE.find((x) => x.name === z.bild3d.format)?.wert ?? null;
+		if (!f) return { x: 0, y: 0, w: b, h };
+		const rand = 24;
+		let w = b - 2 * rand, hh = w / f;
+		if (hh > h - 2 * rand) { hh = h - 2 * rand; w = hh * f; }
+		return { x: (b - w) / 2, y: (h - hh) / 2, w, h: hh };
+	}
+	const zeigeRahmen = $derived(z.bild3d.rahmen && z.bild3d.format !== 'ansicht' ? ausschnitt(breite, hoehe) : null);
+
+	/**
+	 * Zeichnen. Ohne `ausgabe` in die Ansicht. Mit `ausgabe` genau den
+	 * Ausschnitt in der verlangten Größe: Die Kamera bleibt die der Ansicht,
+	 * `setViewOffset` schneidet aus ihr den Ausschnitt heraus. So zeigt das Bild
+	 * dasselbe wie der Bildrahmen, nur schärfer.
+	 */
+	function zeichne(ausgabe?: { b: number; h: number; aus: { x: number; y: number; w: number; h: number } }) {
 		const r = z.rahmen;
 		if (!renderer || !szene || !kamera || !composer || !r) return;
-		const { b, h } = stand;
+		const b = ausgabe?.b ?? stand.b, h = ausgabe?.h ?? stand.h;
 		if (zuletzt.b !== b || zuletzt.h !== h) {
 			// Mit Stil, nicht ohne. Der Zeichner rechnet mit der Geraetedichte
 			// und legt bei einem feinen Bildschirm doppelt so viele Bildpunkte
@@ -570,11 +591,14 @@
 			zuletzt = { b, h };
 		}
 		kameraStellen(stand);
+		if (ausgabe) {
+			kamera.setViewOffset(stand.b, stand.h, ausgabe.aus.x, ausgabe.aus.y, ausgabe.aus.w, ausgabe.aus.h);
+		} else kamera.clearViewOffset();
 		// Die Stärke gilt für die Ansicht. Ein Bild in voller Ausgabegröße
 		// bekommt sie im Verhältnis mit, sonst würden die Kanten im 8K-Bild
 		// zu Haaren.
 		kantenStoff.resolution.set(b, h);
-		kantenStoff.linewidth = z.kanten.dicke * Math.max(1, b / Math.max(1, breite));
+		kantenStoff.linewidth = z.kanten.dicke * Math.max(1, b / Math.max(1, ausgabe ? ausgabe.aus.w : b));
 		const deck = z.kanten.deckkraft ?? 1;
 		if (kantenStoff.transparent !== deck < 1) { kantenStoff.transparent = deck < 1; kantenStoff.needsUpdate = true; }
 		kantenStoff.opacity = deck;
@@ -591,22 +615,24 @@
 	 * Bildpunkt je Punkt: Auf einem feinen Bildschirm wäre das Bild sonst um
 	 * die Gerätedichte größer als bestellt.
 	 */
-	export async function alsBild(b: number, h = Math.round((b * hoehe) / breite), typ = 'image/png'): Promise<Blob> {
+	export async function alsBild(b = z.bild3d.breite, typ = 'image/png'): Promise<Blob> {
 		if (!renderer) throw new Error(t().raum.nichtBereit);
-		const alt = { ...stand };
+		const aus = ausschnitt(stand.b, stand.h);
+		const h = Math.round((b * aus.h) / aus.w);
 		const dichte = renderer.getPixelRatio();
 		renderer.setPixelRatio(1);
 		zuletzt = { b: 0, h: 0 };
-		stand = { ...stand, b, h };
-		zeichne();
+		zeichne({ b, h, aus });
 		const blob = await new Promise<Blob>((gut, schlecht) =>
 			renderer!.domElement.toBlob((x) => (x ? gut(x) : schlecht(new Error('Kein Bild'))), typ, 1)
 		);
 		renderer.setPixelRatio(dichte);
 		zuletzt = { b: 0, h: 0 };
-		stand = alt; zeichne();
+		zeichne();
 		return blob;
 	}
+	/** Höhe durch Breite des 3D-Bilds, für die Anzeige des Maßes. */
+	export const bildSeite = () => { const a = ausschnitt(breite, hoehe); return a.h / a.w; };
 
 	function messen() {
 		if (!huelle) return;
@@ -758,6 +784,15 @@
 	Norden dort ist, wo die Spitze hinzeigt, oder dort, wo der Buchstabe steht.
 	Deshalb dreht die Gruppe, und der Text dreht in sich zurueck.
 -->
+{#if zeigeRahmen}
+	<!-- Der Bildrahmen: was das 3D-Bild zeigen wird. Außen abgedunkelt; die
+	     Hülle schneidet den Schatten an der Bühne ab. -->
+	<div class="rahmenhuelle">
+		<div class="bildrahmen" style:left="{zeigeRahmen.x}px" style:top="{zeigeRahmen.y}px"
+			style:width="{zeigeRahmen.w}px" style:height="{zeigeRahmen.h}px"></div>
+	</div>
+{/if}
+
 <div class="nord" title={t().raum.nordTitel}>
 	<svg viewBox="0 0 40 40" aria-label={t().raum.norden} role="img">
 		<g transform="rotate({sicht.nordGrad} 20 20)">
@@ -789,6 +824,12 @@
 	   sollen es nicht zerschneiden. Lesbar bleiben sie durch den Schatten,
 	   der in beiden Schemata gegen den Grund arbeitet.
 	*/
+	.rahmenhuelle { position: absolute; inset: 0; z-index: 1; overflow: hidden; pointer-events: none; }
+	.bildrahmen {
+		position: absolute; pointer-events: none;
+		border: 1px solid var(--akzent);
+		box-shadow: 0 0 0 9999px rgba(17, 17, 17, 0.28);
+	}
 	.massstab {
 		position: absolute; left: 18px; bottom: 18px; z-index: 2;
 		display: flex; align-items: center; gap: 8px;

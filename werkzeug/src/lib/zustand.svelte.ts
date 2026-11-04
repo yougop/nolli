@@ -44,13 +44,11 @@ const atmen = () => new Promise<void>((f) => requestAnimationFrame(() => setTime
  * Nordwesten unter 49°, wie in der Kartografie üblich (Volker, 04.11.2026:
  * Richtung und Winkel einstellbar). Den Sonnenstand eines Tages rechnet Umbra.
  *
- * `licht` wählt das Rezept im 3D-Modell: `real` wie Umbra (Himmelslicht,
- * harter Schatten), `konzept` das ruhige Licht eines Arbeitsmodells, wie
- * Nolli es bis 04.11.2026 hatte. `an: false` ist bedeckter Himmel, ohne
- * Schlagschatten, auch im Weißmodell; `helligkeit` belichtet das 3D-Modell.
+ * `an: false` ist bedeckter Himmel, ohne Schlagschatten, auch im
+ * Weißmodell; `helligkeit` belichtet das 3D-Modell.
  */
-export const SONNE_VORGABE: { azimut: number; hoehe: number; licht: 'real' | 'konzept'; an: boolean; helligkeit: number } =
-	{ azimut: 315, hoehe: 49, licht: 'real', an: true, helligkeit: 1 };
+export const SONNE_VORGABE: { azimut: number; hoehe: number; an: boolean; helligkeit: number } =
+	{ azimut: 315, hoehe: 49, an: true, helligkeit: 1 };
 
 export const KANTEN_VORGABE: { an: boolean; dicke: number; deckkraft: number; karteDicke: number; karteDeckkraft: number; hell: boolean; flaeche: number | null } =
 	{ an: true, dicke: 0.75, deckkraft: 0.75, karteDicke: 1, karteDeckkraft: 1, hell: false, flaeche: null };

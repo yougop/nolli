@@ -1171,9 +1171,9 @@
 							{/if}
 						</div>
 						<!--
-							Licht: das Rezept im 3D-Modell, realistisch wie Umbra oder ruhig wie
-							ein Arbeitsmodell, und die Sonne nach Richtung und Höhe. Die Sonne
-							gilt auch für die Schatten im Weißmodell (Volker, 04.11.2026).
+							Licht: Helligkeit des 3D-Modells und die Sonne, an oder aus, nach
+							Richtung und Höhe. Die Sonne gilt auch für die Schatten im
+							Weißmodell (Volker, 04.11.2026).
 						-->
 						<div class="klapp" bind:this={lichtKlapp}>
 							<button type="button" class="einzeln klappknopf" class:offen={lichtRegler}
@@ -1184,10 +1184,6 @@
 							>{t().sicht.licht}</button>
 							{#if lichtRegler}
 								<div class="regler" role="group" aria-label={t().sicht.licht}>
-									<div class="wahl schmal">
-										<button type="button" class:an={z.sonne.licht === 'real'} aria-pressed={z.sonne.licht === 'real'} disabled={!raeumlich} onclick={() => (z.sonne.licht = 'real')}>{t().sicht.lichtReal}</button>
-										<button type="button" class:an={z.sonne.licht === 'konzept'} aria-pressed={z.sonne.licht === 'konzept'} disabled={!raeumlich} onclick={() => (z.sonne.licht = 'konzept')}>{t().sicht.lichtKonzept}</button>
-									</div>
 									<label>
 										<span>{t().sicht.helligkeit}</span>
 										<input type="range" min="0.5" max="1.6" step="0.01" disabled={!raeumlich} bind:value={z.sonne.helligkeit} />

@@ -60,7 +60,7 @@
 				if ( d < shadowCoord.z ) { summe += d; n += 1.0; }
 			}
 			if ( n == 0.0 ) return 1.0;
-			float breite = clamp( ( shadowCoord.z - summe / n ) * shadowRadius, 1.0 * texel, suche );
+			float breite = clamp( ( shadowCoord.z - summe / n ) * shadowRadius, 0.5 * texel, suche );
 			float licht = 0.0;
 			for ( int i = 0; i < 16; i ++ ) {
 				licht += pcssVergleich( shadowMap, shadowMapSize, shadowCoord.xy + pcssScheibe( i, 16, phi + 1.7 ) * breite, shadowCoord.z );
@@ -82,8 +82,6 @@
 	}
 	/** Umbras Himmelslicht im Betrieb, bei Schattentiefe 0,55. */
 	const UMBRA_HIMMEL = 1.218 - 0.55 * 0.63;
-	/** Die Farbe der Baukörper je Rezept; Realistisch wie Umbra (`edece7`). */
-	const WEISS = { real: 0xedece7, konzept: 0xeeeeed };
 	/** Weichheit des Halbschattens je Meter Abstand zum Werfer, etwas weicher als die echte Sonne (0,005). */
 	const HALBSCHATTEN = 0.035;
 
@@ -194,21 +192,15 @@
 		hintergrund();
 		kamera = new THREE.PerspectiveCamera(38, 1, 1, 20000);
 
-		/**
-		 * Alle Lichter beider Rezepte stehen in der Szene; `lichtSetzen()`
-		 * dreht sie je nach `z.sonne.licht` auf oder ab. Umschalten kostet
-		 * so keinen Neuaufbau.
-		 */
-		const himmel = new THREE.HemisphereLight(0xe0e8f2, 0xfbf8ef, 2.8);
-		const grundlicht = new THREE.AmbientLight(0xffffff, 0.62);
+		// Himmel und Sonne; die Stärken setzt `lichtSetzen()`.
+		const himmel = new THREE.HemisphereLight(0xe0e8f2, 0xfbf8ef, UMBRA_HIMMEL);
 		const sonne = new THREE.DirectionalLight(0xfffaf0, 2.2);
 		sonne.castShadow = true;
 		sonne.shadow.mapSize.set(4096, 4096);
 		// Versatz und Normalversatz setzt `schattenEinpassen()` nach der Punktgröße.
 		sonne.shadow.radius = 2;
-		const gegenlicht = new THREE.DirectionalLight(0xdfe8f2, 0.38);
-		szene.add(himmel, grundlicht, sonne, sonne.target, gegenlicht, gegenlicht.target);
-		szene.userData.licht = { himmel, grundlicht, sonne, gegenlicht };
+		szene.add(himmel, sonne, sonne.target);
+		szene.userData.licht = { himmel, sonne };
 
 		/**
 		 * Verdeckungsschatten. Ein Weißmodell lebt davon: Ohne sie
@@ -224,6 +216,7 @@
 		composer = new EffectComposer(renderer);
 		ao = new N8AOPass(szene, kamera, b, h);
 		ao.setQualityMode('Medium');
+		ao.configuration.intensity = 2.5;
 		Object.assign(ao.configuration, { aoRadius: 12, distanceFalloff: 1, gammaCorrection: false, screenSpaceRadius: false });
 		composer.addPass(ao);
 		composer.addPass(new OutputPass());
@@ -349,7 +342,8 @@
 			return m;
 		};
 		koerperStoffe = [];
-		koerper(bauten, z.sonne.licht === 'konzept' ? WEISS.konzept : WEISS.real);
+		// Umbras warmes Weiß.
+		koerper(bauten, 0xedece7);
 		koerper(bleibt, 0xc7c5c1);
 
 		/**
@@ -426,80 +420,45 @@
 
 
 	/**
-	 * Licht nach Rezept und Sonne nach Richtung und Höhe stellen.
+	 * Licht und Sonne stellen, nach Umbra (04.11.2026).
 	 *
-	 * **Realistisch**, nach Umbra (04.11.2026): Himmelslicht statt
-	 * Grundlicht, kühl von oben, warm vom Boden. Jede Fläche bekommt je nach
+	 * Himmelslicht kühl von oben, warm vom Boden: Jede Fläche bekommt je nach
 	 * Richtung einen eigenen Ton, und der Schatten bleibt leicht kühl, weil
-	 * ihn im Freien der Himmel beleuchtet. Keine Filmkurve: ACES drückte die
-	 * Lichter, weiße Körper wurden hellgrau. Die Stärke der Sonne folgt ihrer
-	 * Höhe, damit eine waagerechte besonnte Fläche gleich hell bleibt.
+	 * ihn im Freien der Himmel beleuchtet. Lineare Kurve, also keine
+	 * Filmkurve, aber belichtbar über `z.sonne.helligkeit`; ACES drückte die
+	 * Lichter, weiße Körper wurden hellgrau und gelblich.
 	 *
-	 * **Konzept**, das bisherige Licht eines fotografierten Arbeitsmodells:
-	 * Grundlicht hebt alles gleich an, die Sonne setzt die Plastik mit
-	 * aufgehelltem Schatten, ein schwaches Gegenlicht von der anderen Seite
-	 * hält abgewandte Wände auseinander. Ruhig, etwa drei zu zwei zwischen
-	 * besonnter und beschatteter Seite.
+	 * Die Stärken sind Umbras, wie sie dort im Betrieb gelten, nicht die
+	 * Anfangswerte im Konstruktor: Himmel 1,218 − 0,55 · 0,63, die Sonne so
+	 * stark, dass eine waagerechte besonnte Fläche bei jeder Höhe 2,78
+	 * bekommt, gedeckelt bei 13. Ohne Sonne bedeckt, Himmel 2,4 und grau.
 	 *
-	 * Die Schattenkarte hat 4096 Punkte und wird genau auf die Ecken des
-	 * Modells im Blick der Sonne zugeschnitten, Rahmen mal höchste Höhe.
-	 * Vorher deckten 2048 Punkte den Rahmen mit großem Rand ab, bei 1,6 km
-	 * rund 1,3 Punkte je Meter; jetzt sind es drei- bis fünfmal so viele.
+	 * Bis 04.11.2026 gab es daneben ein Rezept „Konzept“ mit Grund- und
+	 * Gegenlicht; mit Umbras Werten war der Unterschied zu klein für einen
+	 * eigenen Schalter (Volker). Eine gerechnete Himmelskuppel als
+	 * Umgebungslicht hellte die Schatten zu sehr auf und ist ebenso heraus.
 	 */
 	function lichtSetzen() {
 		const r = z.rahmen;
 		if (!szene || !r || !renderer) return;
-		const { himmel, grundlicht, sonne, gegenlicht } = szene.userData.licht as Record<string, THREE.Light>;
-		const real = z.sonne.licht !== 'konzept';
+		const { himmel, sonne } = szene.userData.licht as { himmel: THREE.HemisphereLight; sonne: THREE.DirectionalLight };
 		const az = (z.sonne.azimut * Math.PI) / 180, hw = (Math.max(3, z.sonne.hoehe) * Math.PI) / 180;
 		// Szene: x nach Osten, y nach oben, z nach Süden. 0° ist Nord.
 		const richtung = new THREE.Vector3(Math.sin(az) * Math.cos(hw), Math.sin(hw), -Math.cos(az) * Math.cos(hw));
-		const gegen = new THREE.Vector3(-richtung.x, 0.4, -richtung.z).normalize();
 		const mitte = new THREE.Vector3(r.breiteM / 2, 0, -r.hoeheM / 2);
 		const weit = Math.hypot(r.breiteM, r.hoeheM) * 2;
-		const s49 = Math.sin((49 * Math.PI) / 180);
-
 		const an = z.sonne.an !== false;
-		// Realistisch linear, also ohne Kurve, aber belichtbar. Konzept mit der
-		// neutralen Kurve statt ACES: ACES schob Grün und helles Grau ins Gelbe
-		// (Volker, 04.11.2026), die neutrale Kurve hält den Farbton. Ihr fehlt
-		// die eingebaute Anhebung von ACES, das gleicht der Faktor aus.
-		renderer.toneMapping = real ? THREE.LinearToneMapping : THREE.NeutralToneMapping;
-		renderer.toneMappingExposure = (z.sonne.helligkeit ?? 1) * (real ? 1 : 1.3);
-		// Realistisch genau wie Umbra: Himmelslicht kühl von oben, warm vom
-		// Boden. Eine gerechnete Himmelskuppel als Umgebungslicht (04.11.2026)
-		// hellte die Schatten so weit auf, dass sie neben Umbra flau wirkten
-		// (Volker); sie ist wieder heraus. Bedeckt: heller und grau.
-		//
-		// Die Stärken sind Umbras, wie sie dort im Betrieb gelten, nicht die
-		// Anfangswerte im Konstruktor: Himmel 1,218 − 0,55 · 0,63, die Sonne so
-		// stark, dass eine waagerechte besonnte Fläche bei jeder Höhe 2,78
-		// bekommt, gedeckelt bei 13. Ohne Sonne Himmel 2,4.
-		himmel.intensity = real ? (an ? UMBRA_HIMMEL : 2.4) : 0;
-		(himmel as THREE.HemisphereLight).color.set(an ? 0xe0e8f2 : 0xe8e9eb);
-		grundlicht.intensity = real ? 0 : an ? 0.62 : 1.25;
-		// Konzept einen Hauch kühl: neutral weiß wirkte neben Realistisch gelb.
-		grundlicht.color.set(0xf2f5fa);
-		gegenlicht.intensity = real ? 0 : 0.38;
-		const hell = Math.min(3, Math.max(0.6, s49 / Math.sin(hw)));
-		sonne.intensity = !an ? 0 : real
-			? Math.min(13, (2.78 - UMBRA_HIMMEL) / Math.max(0.02, Math.sin(hw)))
-			: 2.0 * hell;
-		// Konzept neutral weiß, Realistisch ein Hauch warm wie Tageslicht.
-		sonne.color.set(real ? 0xfffaf0 : 0xfafcff);
-		gegenlicht.color.set(real ? 0xdfe8f2 : 0xeef1f4);
-		(sonne as THREE.DirectionalLight).shadow.intensity = real ? 1 : 0.62;
-		if (ao) ao.configuration.intensity = real ? 2.5 : 3;
-		// Die Gebäude im Rezept: Umbras warmes Weiß, im Konzept neutral.
-		for (const m of koerperStoffe) if (m.userData.vorgabe === WEISS.konzept || m.userData.vorgabe === WEISS.real) { m.userData.vorgabe = real ? WEISS.real : WEISS.konzept; flaecheSetzen(m); }
 
-		const sl = sonne as THREE.DirectionalLight, gl = gegenlicht as THREE.DirectionalLight;
+		renderer.toneMapping = THREE.LinearToneMapping;
+		renderer.toneMappingExposure = z.sonne.helligkeit ?? 1;
+		himmel.intensity = an ? UMBRA_HIMMEL : 2.4;
+		himmel.color.set(an ? 0xe0e8f2 : 0xe8e9eb);
+		sonne.intensity = an ? Math.min(13, (2.78 - UMBRA_HIMMEL) / Math.max(0.02, Math.sin(hw))) : 0;
+
+		const sl = sonne;
 		sl.position.copy(mitte).addScaledVector(richtung, weit);
 		sl.target.position.copy(mitte);
 		sl.target.updateMatrixWorld();
-		gl.position.copy(mitte).addScaledVector(gegen, weit);
-		gl.target.position.copy(mitte);
-		gl.target.updateMatrixWorld();
 
 		const s = sl.shadow.camera as THREE.OrthographicCamera;
 		s.position.copy(sl.position);
@@ -561,13 +520,15 @@
 		s.near = Math.max(0.5, -tmax.z - 10); s.far = -tmin.z + 10;
 		s.updateProjectionMatrix();
 		const punkt = Math.max(s.right - s.left, s.top - s.bottom) / sl.shadow.mapSize.x;
-		sl.shadow.bias = -(1.5 * punkt) / (s.far - s.near);
-		sl.shadow.normalBias = punkt;
+		// Klein halten: Mit 1,5 Punkten Versatz und einem Punkt Normalversatz
+		// lief am Fuß der Häuser Licht unter die Wand (Volker, 04.11.2026).
+		sl.shadow.bias = -(0.4 * punkt) / (s.far - s.near);
+		sl.shadow.normalBias = 0.35 * punkt;
 		// Für die Kontaktschatten: Tiefe der Karte in Meter, Meter in Kartenbreite.
 		sl.shadow.radius = (HALBSCHATTEN * (s.far - s.near)) / (s.right - s.left);
 	}
 	// Sonne oder Rezept verstellt: nur stellen und neu zeichnen, die Szene bleibt.
-	$effect(() => { z.sonne.azimut; z.sonne.hoehe; z.sonne.licht; z.sonne.an; z.sonne.helligkeit; untrack(lichtSetzen); anfordern(); });
+	$effect(() => { z.sonne.azimut; z.sonne.hoehe; z.sonne.an; z.sonne.helligkeit; untrack(lichtSetzen); anfordern(); });
 
 	let zuletzt = { b: 0, h: 0 };
 

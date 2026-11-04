@@ -71,10 +71,19 @@
 	{
 		const c = THREE.ShaderChunk as Record<string, string>;
 		const alt = c.shadowmap_pars_fragment;
-		const a = alt.indexOf('#else // SHADOWMAP_TYPE_BASIC'), b = alt.indexOf('#endif', alt.indexOf('return mix( 1.0, shadow, shadowIntensity );', a));
-		// Nur einmal ersetzen, und nur, wenn three.js den Abschnitt noch so führt.
-		if (a > 0 && b > a && !alt.includes('pcssRausch')) c.shadowmap_pars_fragment = alt.slice(0, a) + '#else\n' + PCSS + '\n\t' + alt.slice(b);
+		// Der einfache Schatten ist die letzte der drei `getShadow`-Fassungen.
+		// Gesucht wird am Code, nicht an Kommentaren: Die fertige three.js-Datei
+		// führt keine (bis 04.11.2026 suchte das hier einen, und die
+		// Kontaktschatten liefen im Build nie).
+		const a = alt.lastIndexOf('float getShadow( sampler2D shadowMap');
+		const b = a < 0 ? -1 : alt.indexOf('#endif', alt.indexOf('return mix( 1.0, shadow, shadowIntensity );', a));
+		if (a > 0 && b > a && !alt.includes('pcssRausch')) c.shadowmap_pars_fragment = alt.slice(0, a) + PCSS + '\n\t' + alt.slice(b);
+		else if (!alt.includes('pcssRausch')) console.warn('Nolli: Kontaktschatten nicht eingesetzt, three.js hat den Schattencode geändert.');
 	}
+	/** Umbras Himmelslicht im Betrieb, bei Schattentiefe 0,55. */
+	const UMBRA_HIMMEL = 1.218 - 0.55 * 0.63;
+	/** Die Farbe der Baukörper je Rezept; Realistisch wie Umbra (`edece7`). */
+	const WEISS = { real: 0xedece7, konzept: 0xeeeeed };
 	/** Weichheit des Halbschattens je Meter Abstand zum Werfer, etwas weicher als die echte Sonne (0,005). */
 	const HALBSCHATTEN = 0.035;
 
@@ -84,9 +93,6 @@
 	let renderer: THREE.WebGLRenderer | null = null;
 	let composer: EffectComposer | null = null;
 	let ao: N8AOPass | null = null;
-	/** Der Himmel als Umgebungslicht, aus `himmelSzene` vorgefiltert. */
-	let pmrem: THREE.PMREMGenerator | null = null;
-	let umgebung: THREE.WebGLRenderTarget | null = null;
 	let szene: THREE.Scene | null = null;
 	let kamera: THREE.PerspectiveCamera | null = null;
 	const geloescht: THREE.Object3D[] = [];
@@ -221,7 +227,7 @@
 		Object.assign(ao.configuration, { aoRadius: 12, distanceFalloff: 1, gammaCorrection: false, screenSpaceRadius: false });
 		composer.addPass(ao);
 		composer.addPass(new OutputPass());
-		pmrem = new THREE.PMREMGenerator(renderer);
+
 	}
 
 	/** Ein Stoff für alle Kanten; Breite und Auflösung setzt `zeichne`. */
@@ -343,7 +349,7 @@
 			return m;
 		};
 		koerperStoffe = [];
-		koerper(bauten, 0xeeeeed);
+		koerper(bauten, z.sonne.licht === 'konzept' ? WEISS.konzept : WEISS.real);
 		koerper(bleibt, 0xc7c5c1);
 
 		/**
@@ -418,41 +424,6 @@
 		lichtSetzen();
 	}
 
-	/**
-	 * Der Himmel für das Umgebungslicht: eine Kuppel, oben kühl und dunkler,
-	 * zum Horizont heller, zur Sonne hin ein Hof, unten der warme Widerschein
-	 * der Stadt. Gerechnet statt als Foto geladen: Er dreht mit der Sonne,
-	 * kostet keine Datei und hat keine fremden Häuser in den Spiegelungen.
-	 *
-	 * Oben etwa so hell wie das frühere Himmelslicht (2,8 mal `e0e8f2`), der
-	 * Widerschein unten aber nur halb: Mit dem hellen Boden von 2,8 mal
-	 * `fbf8ef` bekamen die Schattenseiten so viel Licht, dass die Plastik
-	 * verschwand (Vergleich 04.11.2026).
-	 */
-	const kuppelStoff = new THREE.ShaderMaterial({
-		side: THREE.BackSide, depthWrite: false,
-		uniforms: { uSonne: { value: new THREE.Vector3(0, 1, 0) }, uHof: { value: 1 } },
-		vertexShader: 'varying vec3 vR; void main() { vR = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-		fragmentShader: `
-			uniform vec3 uSonne; uniform float uHof; varying vec3 vR;
-			void main() {
-				vec3 d = normalize(vR);
-				vec3 zenit = vec3(0.42, 0.53, 0.72), horizont = vec3(0.78, 0.81, 0.85), boden = vec3(0.42, 0.40, 0.36);
-				// Ohne Sonne bedeckt: ein gleichmäßig graues Gewölbe, nicht blau.
-				zenit = mix( vec3(0.80, 0.81, 0.83), zenit, uHof ); horizont = mix( vec3(0.74, 0.74, 0.75), horizont, uHof );
-				vec3 c = d.y >= 0.0 ? mix(horizont, zenit, pow(d.y, 0.6)) : mix(horizont * 0.9, boden, min(1.0, -d.y * 6.0));
-				float s = max(dot(d, uSonne), 0.0);
-				if (d.y > -0.05) c += uHof * vec3(1.0, 0.96, 0.88) * (0.35 * pow(s, 6.0) + 0.5 * pow(s, 64.0));
-				gl_FragColor = vec4(c, 1.0);
-			}`
-	});
-	const kuppel = new THREE.Scene();
-	kuppel.add(new THREE.Mesh(new THREE.SphereGeometry(100, 48, 24), kuppelStoff));
-	function himmelSzene(sonne: THREE.Vector3, hof: boolean) {
-		kuppelStoff.uniforms.uSonne.value.copy(sonne);
-		kuppelStoff.uniforms.uHof.value = hof ? 1 : 0;
-		return kuppel;
-	}
 
 	/**
 	 * Licht nach Rezept und Sonne nach Richtung und Höhe stellen.
@@ -495,27 +466,32 @@
 		// die eingebaute Anhebung von ACES, das gleicht der Faktor aus.
 		renderer.toneMapping = real ? THREE.LinearToneMapping : THREE.NeutralToneMapping;
 		renderer.toneMappingExposure = (z.sonne.helligkeit ?? 1) * (real ? 1 : 1.3);
-		// Realistisch: Der Himmel leuchtet als Umgebung, mit Glanz zur Sonne hin.
-		// Er ersetzt das Himmelslicht; das bleibt nur als Rückfall ohne Umgebung.
-		if (real && pmrem) {
-			umgebung?.dispose();
-			umgebung = pmrem.fromScene(himmelSzene(richtung, an), 0, 1, 1000);
-			szene.environment = umgebung.texture;
-			// Bedeckt: Der ganze Himmel leuchtet heller, die Sonne fehlt.
-			szene.environmentIntensity = an ? 1 : 1.35;
-		} else szene.environment = null;
-		himmel.intensity = real && !szene.environment ? 2.8 : 0;
+		// Realistisch genau wie Umbra: Himmelslicht kühl von oben, warm vom
+		// Boden. Eine gerechnete Himmelskuppel als Umgebungslicht (04.11.2026)
+		// hellte die Schatten so weit auf, dass sie neben Umbra flau wirkten
+		// (Volker); sie ist wieder heraus. Bedeckt: heller und grau.
+		//
+		// Die Stärken sind Umbras, wie sie dort im Betrieb gelten, nicht die
+		// Anfangswerte im Konstruktor: Himmel 1,218 − 0,55 · 0,63, die Sonne so
+		// stark, dass eine waagerechte besonnte Fläche bei jeder Höhe 2,78
+		// bekommt, gedeckelt bei 13. Ohne Sonne Himmel 2,4.
+		himmel.intensity = real ? (an ? UMBRA_HIMMEL : 2.4) : 0;
+		(himmel as THREE.HemisphereLight).color.set(an ? 0xe0e8f2 : 0xe8e9eb);
 		grundlicht.intensity = real ? 0 : an ? 0.62 : 1.25;
 		// Konzept einen Hauch kühl: neutral weiß wirkte neben Realistisch gelb.
 		grundlicht.color.set(0xf2f5fa);
 		gegenlicht.intensity = real ? 0 : 0.38;
 		const hell = Math.min(3, Math.max(0.6, s49 / Math.sin(hw)));
-		sonne.intensity = an ? (real ? 2.2 : 2.0) * hell : 0;
+		sonne.intensity = !an ? 0 : real
+			? Math.min(13, (2.78 - UMBRA_HIMMEL) / Math.max(0.02, Math.sin(hw)))
+			: 2.0 * hell;
 		// Konzept neutral weiß, Realistisch ein Hauch warm wie Tageslicht.
 		sonne.color.set(real ? 0xfffaf0 : 0xfafcff);
 		gegenlicht.color.set(real ? 0xdfe8f2 : 0xeef1f4);
 		(sonne as THREE.DirectionalLight).shadow.intensity = real ? 1 : 0.62;
-		if (ao) ao.configuration.intensity = real ? 4 : 3;
+		if (ao) ao.configuration.intensity = real ? 2.5 : 3;
+		// Die Gebäude im Rezept: Umbras warmes Weiß, im Konzept neutral.
+		for (const m of koerperStoffe) if (m.userData.vorgabe === WEISS.konzept || m.userData.vorgabe === WEISS.real) { m.userData.vorgabe = real ? WEISS.real : WEISS.konzept; flaecheSetzen(m); }
 
 		const sl = sonne as THREE.DirectionalLight, gl = gegenlicht as THREE.DirectionalLight;
 		sl.position.copy(mitte).addScaledVector(richtung, weit);
@@ -931,8 +907,7 @@
 			beob.disconnect();
 			renderer?.domElement.remove();
 			renderer?.dispose();
-			umgebung?.dispose(); pmrem?.dispose();
-			renderer = null; composer = null; ao = null; szene = null; kamera = null; umgebung = null; pmrem = null;
+			renderer = null; composer = null; ao = null; szene = null; kamera = null;
 			// Die gemerkte Groesse gehoert zur alten Leinwand. Bleibt sie stehen,
 			// haelt `zeichne` die neue fuer schon richtig eingestellt und laesst
 			// sie bei den 300 auf 150 Punkten, mit denen ein Zeichner aufmacht.

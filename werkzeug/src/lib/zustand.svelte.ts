@@ -38,6 +38,19 @@ const atmen = () => new Promise<void>((f) => requestAnimationFrame(() => setTime
  * „Geometrie anpassen". `null` heißt: jede Darstellung behält ihre eigene
  * Gebäudefarbe.
  */
+/**
+ * Die Sonne der Darstellung, nicht die echte: Richtung, aus der sie scheint
+ * (0° Nord, im Uhrzeigersinn), und Höhe über dem Horizont. Ab Werk aus
+ * Nordwesten unter 49°, wie in der Kartografie üblich (Volker, 04.11.2026:
+ * Richtung und Winkel einstellbar). Den Sonnenstand eines Tages rechnet Umbra.
+ *
+ * `licht` wählt das Rezept im 3D-Modell: `real` wie Umbra (Himmelslicht,
+ * harter Schatten), `konzept` das ruhige Licht eines Arbeitsmodells, wie
+ * Nolli es bis 04.11.2026 hatte.
+ */
+export const SONNE_VORGABE: { azimut: number; hoehe: number; licht: 'real' | 'konzept' } =
+	{ azimut: 315, hoehe: 49, licht: 'real' };
+
 export const KANTEN_VORGABE: { an: boolean; dicke: number; deckkraft: number; karteDicke: number; karteDeckkraft: number; hell: boolean; flaeche: number | null } =
 	{ an: true, dicke: 0.75, deckkraft: 0.75, karteDicke: 1, karteDeckkraft: 1, hell: false, flaeche: null };
 
@@ -98,6 +111,7 @@ class Zustand {
 	karte = $state<Anpassung>({ ...NEUTRAL });
 	/** Die Kanten im 3D-Modell: an oder aus, Stärke in Bildschirmpunkten, Deckkraft 0 bis 1. */
 	kanten = $state({ ...KANTEN_VORGABE });
+	sonne = $state({ ...SONNE_VORGABE });
 	/**
 	 * Das 3D-Bild, getrennt von der Karte (Volker, 04.11.2026): eigenes Format
 	 * und eigene Breite. `rahmen` zeigt den Ausschnitt in der Ansicht.
@@ -637,6 +651,7 @@ class Zustand {
 			karte: $state.snapshot(this.karte),
 			kanten: $state.snapshot(this.kanten),
 			bild3d: $state.snapshot(this.bild3d),
+			sonne: $state.snapshot(this.sonne),
 			ergaenzung: this.ergaenzung,
 			zweifel: this.zweifel,
 			places: this.places,
@@ -693,6 +708,7 @@ class Zustand {
 		this.baeume = p.baeume ?? false;
 		this.karte = { ...NEUTRAL, ...(p.karte ?? {}) };
 		this.kanten = { ...KANTEN_VORGABE, ...(p.kanten ?? {}) };
+		this.sonne = { ...SONNE_VORGABE, ...(p.sonne ?? {}) };
 		this.bild3d = { ...{ format: 'ansicht', breite: 4096, rahmen: false, hintergrund: null, transparent: false }, ...(p.bild3d ?? {}) };
 		this.baumpunkte = baeumeAus(this.rest);
 		this.ergaenzung = p.ergaenzung ?? null;

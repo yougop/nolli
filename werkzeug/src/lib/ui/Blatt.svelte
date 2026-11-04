@@ -68,6 +68,7 @@
 			ausgewaehlt: z.ausgewaehlt, fanglinie: z.fanglinie, ohneSchatten: flott,
 			baeume: z.baeume ? z.baumpunkte : undefined,
 			kanten: { ...z.kanten },
+			sonne: { ...z.sonne },
 			blattrand: (z.kasten ? [z.kasten.x0, z.kasten.y0, z.kasten.x1, z.kasten.y1] : null) as [number, number, number, number] | null
 		};
 		/**

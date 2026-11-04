@@ -116,9 +116,8 @@
 		renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, alpha: true });
 		renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
 		renderer.shadowMap.enabled = true;
-		renderer.shadowMap.type = THREE.PCFShadowMap;
-		renderer.toneMapping = THREE.ACESFilmicToneMapping;
-		renderer.toneMappingExposure = 1;
+		// Die Filmkurve setzt `lichtSetzen()` je nach Rezept.
+		renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 		el.appendChild(renderer.domElement);
 		renderer.domElement.style.display = 'block';
 
@@ -127,28 +126,21 @@
 		kamera = new THREE.PerspectiveCamera(38, 1, 1, 20000);
 
 		/**
-		 * Drei Lichter, wie bei einem fotografierten Arbeitsmodell.
-		 *
-		 * Grundlicht hebt alles gleichmäßig an, die Sonne von Nordwesten setzt
-		 * die Plastik und wirft den Schlagschatten, ein schwaches Gegenlicht
-		 * verhindert, dass abgewandte Wände zu einer Fläche verschmelzen.
-		 *
-		 * Das Verhältnis ist absichtlich etwa drei zu zwei zwischen besonnter
-		 * und beschatteter Seite. Weiter auseinander und die Nordseiten saufen
-		 * ab, enger und das Modell wird flach.
+		 * Alle Lichter beider Rezepte stehen in der Szene; `lichtSetzen()`
+		 * dreht sie je nach `z.sonne.licht` auf oder ab. Umschalten kostet
+		 * so keinen Neuaufbau.
 		 */
+		const himmel = new THREE.HemisphereLight(0xe0e8f2, 0xfbf8ef, 2.8);
 		const grundlicht = new THREE.AmbientLight(0xffffff, 0.62);
-		const sonne = new THREE.DirectionalLight(0xfffcf7, 2.0);
+		const sonne = new THREE.DirectionalLight(0xfffaf0, 2.2);
 		sonne.castShadow = true;
-		sonne.shadow.mapSize.set(2048, 2048);
-		sonne.shadow.bias = -0.0005;
-		sonne.shadow.normalBias = 0.5;
-		sonne.shadow.radius = 1.2;
-		sonne.shadow.intensity = 0.62;
+		sonne.shadow.mapSize.set(4096, 4096);
+		sonne.shadow.bias = -0.0006;
+		sonne.shadow.normalBias = 0.3;
+		sonne.shadow.radius = 2;
 		const gegenlicht = new THREE.DirectionalLight(0xdfe8f2, 0.38);
-		szene.add(grundlicht, sonne, sonne.target, gegenlicht, gegenlicht.target);
-		szene.userData.sonne = sonne;
-		szene.userData.gegenlicht = gegenlicht;
+		szene.add(himmel, grundlicht, sonne, sonne.target, gegenlicht, gegenlicht.target);
+		szene.userData.licht = { himmel, grundlicht, sonne, gegenlicht };
 
 		/**
 		 * Verdeckungsschatten. Ein Weißmodell lebt davon: Ohne sie
@@ -355,20 +347,76 @@
 		boden.receiveShadow = true;
 		szene.add(boden); geloescht.push(boden);
 
-		const sonne = szene.userData.sonne as THREE.DirectionalLight;
-		const gegen = szene.userData.gegenlicht as THREE.DirectionalLight;
-		const w = Math.max(r.breiteM, r.hoeheM);
+		lichtSetzen();
+	}
+
+	/**
+	 * Licht nach Rezept und Sonne nach Richtung und Höhe stellen.
+	 *
+	 * **Realistisch**, nach Umbra (04.11.2026): Himmelslicht statt
+	 * Grundlicht, kühl von oben, warm vom Boden. Jede Fläche bekommt je nach
+	 * Richtung einen eigenen Ton, und der Schatten bleibt leicht kühl, weil
+	 * ihn im Freien der Himmel beleuchtet. Keine Filmkurve: ACES drückte die
+	 * Lichter, weiße Körper wurden hellgrau. Die Stärke der Sonne folgt ihrer
+	 * Höhe, damit eine waagerechte besonnte Fläche gleich hell bleibt.
+	 *
+	 * **Konzept**, das bisherige Licht eines fotografierten Arbeitsmodells:
+	 * Grundlicht hebt alles gleich an, die Sonne setzt die Plastik mit
+	 * aufgehelltem Schatten, ein schwaches Gegenlicht von der anderen Seite
+	 * hält abgewandte Wände auseinander. Ruhig, etwa drei zu zwei zwischen
+	 * besonnter und beschatteter Seite.
+	 *
+	 * Die Schattenkarte hat 4096 Punkte und wird genau auf die Ecken des
+	 * Modells im Blick der Sonne zugeschnitten, Rahmen mal höchste Höhe.
+	 * Vorher deckten 2048 Punkte den Rahmen mit großem Rand ab, bei 1,6 km
+	 * rund 1,3 Punkte je Meter; jetzt sind es drei- bis fünfmal so viele.
+	 */
+	function lichtSetzen() {
+		const r = z.rahmen;
+		if (!szene || !r || !renderer) return;
+		const { himmel, grundlicht, sonne, gegenlicht } = szene.userData.licht as Record<string, THREE.Light>;
+		const real = z.sonne.licht !== 'konzept';
+		const az = (z.sonne.azimut * Math.PI) / 180, hw = (Math.max(3, z.sonne.hoehe) * Math.PI) / 180;
+		// Szene: x nach Osten, y nach oben, z nach Süden. 0° ist Nord.
+		const richtung = new THREE.Vector3(Math.sin(az) * Math.cos(hw), Math.sin(hw), -Math.cos(az) * Math.cos(hw));
+		const gegen = new THREE.Vector3(-richtung.x, 0.4, -richtung.z).normalize();
 		const mitte = new THREE.Vector3(r.breiteM / 2, 0, -r.hoeheM / 2);
-		sonne.position.set(mitte.x - w * 0.55, w * 0.85, mitte.z - w * 0.5);
-		sonne.target.position.copy(mitte);
-		gegen.position.set(mitte.x + w * 0.7, w * 0.35, mitte.z + w * 0.6);
-		gegen.target.position.copy(mitte);
-		const s = sonne.shadow.camera as THREE.OrthographicCamera;
-		const halb = w * 0.78;
-		s.left = -halb; s.right = halb; s.top = halb; s.bottom = -halb;
-		s.near = 1; s.far = w * 3;
+		const weit = Math.hypot(r.breiteM, r.hoeheM) * 2;
+		const s49 = Math.sin((49 * Math.PI) / 180);
+
+		renderer.toneMapping = real ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
+		himmel.intensity = real ? 2.8 : 0;
+		grundlicht.intensity = real ? 0 : 0.62;
+		gegenlicht.intensity = real ? 0 : 0.38;
+		const hell = Math.min(3, Math.max(0.6, s49 / Math.sin(hw)));
+		sonne.intensity = (real ? 2.2 : 2.0) * hell;
+		(sonne as THREE.DirectionalLight).shadow.intensity = real ? 1 : 0.62;
+		if (gtao) gtao.blendIntensity = real ? 0.55 : 1;
+
+		const sl = sonne as THREE.DirectionalLight, gl = gegenlicht as THREE.DirectionalLight;
+		sl.position.copy(mitte).addScaledVector(richtung, weit);
+		sl.target.position.copy(mitte);
+		sl.target.updateMatrixWorld();
+		gl.position.copy(mitte).addScaledVector(gegen, weit);
+		gl.target.position.copy(mitte);
+		gl.target.updateMatrixWorld();
+
+		const s = sl.shadow.camera as THREE.OrthographicCamera;
+		s.position.copy(sl.position);
+		s.lookAt(mitte);
+		s.updateMatrixWorld();
+		const inv = s.matrixWorldInverse, hMax = modellHoehe();
+		const min = new THREE.Vector3(Infinity, Infinity, Infinity), max = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
+		const p = new THREE.Vector3();
+		for (const x of [0, r.breiteM]) for (const y of [-20, hMax]) for (const zz of [0, -r.hoeheM]) {
+			p.set(x, y, zz).applyMatrix4(inv); min.min(p); max.max(p);
+		}
+		s.left = min.x - 5; s.right = max.x + 5; s.bottom = min.y - 5; s.top = max.y + 5;
+		s.near = Math.max(0.5, -max.z - 10); s.far = -min.z + 10;
 		s.updateProjectionMatrix();
 	}
+	// Sonne oder Rezept verstellt: nur stellen und neu zeichnen, die Szene bleibt.
+	$effect(() => { z.sonne.azimut; z.sonne.hoehe; z.sonne.licht; untrack(lichtSetzen); anfordern(); });
 
 	let zuletzt = { b: 0, h: 0 };
 
@@ -440,7 +488,7 @@
 
 		const ecken: { u: number; v: number; t: number }[] = [];
 		for (const x of [0, r.breiteM])
-			for (const y of [0, hMax])
+			for (const y of [-20, hMax])
 				for (const zz of [0, -r.hoeheM]) {
 					const q = new THREE.Vector3(x, y, zz).sub(boden);
 					ecken.push({ u: q.dot(rechts), v: q.dot(oben), t: q.dot(richtung) });

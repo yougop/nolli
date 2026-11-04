@@ -2,7 +2,7 @@
 	import Karte from '$lib/ui/Karte.svelte';
 	import Blatt from '$lib/ui/Blatt.svelte';
 	import Raum from '$lib/ui/Raum.svelte';
-	import { z, VERHAELTNISSE, AUSGABEBREITEN, KANTEN_VORGABE } from '$lib/zustand.svelte';
+	import { z, VERHAELTNISSE, AUSGABEBREITEN, KANTEN_VORGABE, SONNE_VORGABE } from '$lib/zustand.svelte';
 	import { breiteName, BILDFORMATE, gedreht } from '$lib/geo/rahmen';
 	import { STIFTE, FAHRBAHN } from '$lib/stifte';
 	import { ebenenZaehlen } from '$lib/zeichnen';
@@ -232,12 +232,17 @@
 	let kartenKlapp = $state<HTMLDivElement | null>(null);
 	let kantenRegler = $state(false);
 	let kantenKlapp = $state<HTMLDivElement | null>(null);
+	let lichtRegler = $state(false);
+	let lichtKlapp = $state<HTMLDivElement | null>(null);
+	const sonneVorgabe = $derived(z.sonne.azimut === SONNE_VORGABE.azimut && z.sonne.hoehe === SONNE_VORGABE.hoehe && z.sonne.licht === SONNE_VORGABE.licht);
+	const himmelsrichtung = (a: number) => t().sicht.himmel[Math.round((((a % 360) + 360) % 360) / 45) % 8];
 	/** Die Regeltafeln schließen bei einem Klick daneben und mit Escape, wie jedes Aufklappfeld. */
 	function kartenZu(e: Event) {
 		const zu = (huelle: HTMLDivElement | null) =>
 			e instanceof KeyboardEvent ? e.key === 'Escape' : !huelle?.contains(e.target as Node);
 		if (kartenRegler && zu(kartenKlapp)) kartenRegler = false;
 		if (kantenRegler && zu(kantenKlapp)) kantenRegler = false;
+		if (lichtRegler && zu(lichtKlapp)) lichtRegler = false;
 	}
 	const f0 = (n: number) => zahl(Math.round(n));
 	const f1 = (n: number) => zahl(n, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -316,7 +321,7 @@
 	 */
 	/** Das Bodenbild des Modells, ohne Bauten: für OBJ und 3DM dasselbe. */
 	const bodenTextur = (rr: Rahmen) => bild(bestand, rr, 'modellaufsicht', z.bereinigt, z.beschriftung,
-		z.plangebiet, z.sichtbar, true, 'image/png', undefined, z.karte, z.kanten);
+		z.plangebiet, z.sichtbar, true, 'image/png', undefined, z.karte, z.kanten, z.sonne);
 
 	/** `model.3dm`: Körper als Extrusionen, Kurven, Ebenen, Attribute (`export/rhino.ts`). */
 	async function rhinoDatei(rr: Rahmen, textur?: Blob) {
@@ -370,7 +375,7 @@
 			arbeitet = `paket:${t().ausgeben.paketBild(++n, flach.length)}`;
 			await anstrich();
 			const b = await bild(bestand, rr, d.id, z.bereinigt, z.beschriftung, z.plangebiet, z.sichtbar,
-				false, WEBP, z.baeume ? z.baumpunkte : undefined, z.karte, z.kanten);
+				false, WEBP, z.baeume ? z.baumpunkte : undefined, z.karte, z.kanten, z.sonne);
 			teile.push({ name: pfadV2(`bilder/${d.id}.webp`), inhalt: b });
 			bilder.push({ datei: `bilder/${d.id}.webp`, darstellung: d.id, was: englisch.darstellungen[d.id].zweck,
 				baeume: !!z.baeume && !!z.baumpunkte.length });
@@ -400,7 +405,7 @@
 				 * die als Grund taugt.
 				 */
 				const g = await bild(bestand, rr, d.id, z.bereinigt, z.beschriftung, z.plangebiet, z.sichtbar,
-					true, WEBP, undefined, z.karte, z.kanten);
+					true, WEBP, undefined, z.karte, z.kanten, z.sonne);
 				teile.push({ name: pfadV2(`bilder/${d.id}_grund.webp`), inhalt: g });
 				bilder.push({ datei: `bilder/${d.id}_grund.webp`, darstellung: d.id,
 					was: 'The same extent without buildings and without trees, as a ground texture under a model of your own',
@@ -937,7 +942,7 @@
 				const b = raeumlich && raum
 					? await raum.alsBild()
 					: await bild(bestand, r, z.darstellung, z.bereinigt, z.beschriftung, z.plangebiet, z.sichtbar,
-						false, 'image/png', z.baeume ? z.baumpunkte : undefined, z.karte, z.kanten);
+						false, 'image/png', z.baeume ? z.baumpunkte : undefined, z.karte, z.kanten, z.sonne);
 				laden(b, `${basis}_${darstellungV2(z.darstellung)}_${raeumlich ? z.bild3d.breite : r.pixelBreite}px.png`, 'image/png');
 			} else if (art === 'dxf') {
 				laden(dxf(bestand, r, z.gelaendeJetzt), `${basis}.dxf`, 'application/dxf');
@@ -1162,6 +1167,39 @@
 									<button type="button" class="zurueck"
 										disabled={z.kanten.an === KANTEN_VORGABE.an && z.kanten.hell === KANTEN_VORGABE.hell && z.kanten.dicke === KANTEN_VORGABE.dicke && z.kanten.deckkraft === KANTEN_VORGABE.deckkraft && z.kanten.flaeche == null}
 										onclick={() => { Object.assign(z.kanten, { an: KANTEN_VORGABE.an, hell: KANTEN_VORGABE.hell, dicke: KANTEN_VORGABE.dicke, deckkraft: KANTEN_VORGABE.deckkraft, flaeche: null }); }}>{t().sicht.karteZurueck}</button>
+								</div>
+							{/if}
+						</div>
+						<!--
+							Licht: das Rezept im 3D-Modell, realistisch wie Umbra oder ruhig wie
+							ein Arbeitsmodell, und die Sonne nach Richtung und Höhe. Die Sonne
+							gilt auch für die Schatten im Weißmodell (Volker, 04.11.2026).
+						-->
+						<div class="klapp" bind:this={lichtKlapp}>
+							<button type="button" class="einzeln klappknopf" class:offen={lichtRegler}
+								class:veraendert={!sonneVorgabe}
+								aria-expanded={lichtRegler}
+								onclick={() => (lichtRegler = !lichtRegler)}
+								title={t().sicht.lichtTitel}
+							>{t().sicht.licht}</button>
+							{#if lichtRegler}
+								<div class="regler" role="group" aria-label={t().sicht.licht}>
+									<div class="wahl schmal">
+										<button type="button" class:an={z.sonne.licht === 'real'} aria-pressed={z.sonne.licht === 'real'} disabled={!raeumlich} onclick={() => (z.sonne.licht = 'real')}>{t().sicht.lichtReal}</button>
+										<button type="button" class:an={z.sonne.licht === 'konzept'} aria-pressed={z.sonne.licht === 'konzept'} disabled={!raeumlich} onclick={() => (z.sonne.licht = 'konzept')}>{t().sicht.lichtKonzept}</button>
+									</div>
+									<label>
+										<span>{t().sicht.sonneRichtung}</span>
+										<input type="range" min="0" max="360" step="5" bind:value={z.sonne.azimut} />
+										<em class="mono">{z.sonne.azimut}° {himmelsrichtung(z.sonne.azimut)}</em>
+									</label>
+									<label>
+										<span>{t().sicht.sonneHoehe}</span>
+										<input type="range" min="5" max="85" step="1" bind:value={z.sonne.hoehe} />
+										<em class="mono">{z.sonne.hoehe}°</em>
+									</label>
+									<button type="button" class="zurueck" disabled={sonneVorgabe}
+										onclick={() => { Object.assign(z.sonne, SONNE_VORGABE); }}>{t().sicht.karteZurueck}</button>
 								</div>
 							{/if}
 						</div>

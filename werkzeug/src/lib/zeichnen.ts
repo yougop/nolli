@@ -19,6 +19,8 @@ export type Zeichenwunsch = {
 	 * gemeint und wächst mit dem Blatt mit, damit ein 8K-Bild dieselbe
 	 * Zeichnung zeigt wie der Bildschirm.
 	 */
+	/** Die Sonne der Darstellung (`z.sonne`), für die Schatten im Weißmodell. */
+	sonne?: { azimut: number; hoehe: number };
 	kanten?: { an: boolean; dicke: number; deckkraft: number; karteDicke?: number; karteDeckkraft?: number; hell?: boolean; flaeche?: number | null };
 	hervorgehoben?: StiftId | null;
 	ausgewaehlt?: Set<string>;
@@ -69,6 +71,16 @@ const AKZENT = '#8CA82F';
  * Aendert sich das Licht in raum.ts, gehoert diese Zahl mitgezogen.
  */
 const SONNE: [number, number] = [0.55 / 0.85, 0.5 / 0.85];
+/**
+ * Der Schattenwurf je Meter Höhe in der Aufsicht, aus Richtung und Höhe der
+ * Sonne: entgegen der Sonne, Länge 1 / tan(Höhe). Pixel-y zeigt nach Süden.
+ * Ohne Angabe die feste Sonne oben.
+ */
+export const wurfJeMeter = (s?: { azimut: number; hoehe: number }): [number, number] => {
+	if (!s) return SONNE;
+	const az = (s.azimut * Math.PI) / 180, l = 1 / Math.tan((Math.max(3, s.hoehe) * Math.PI) / 180);
+	return [-Math.sin(az) * l, Math.cos(az) * l];
+};
 
 /**
  * Einen Footprint an den laufenden Pfad eines Kontexts anhaengen, versetzt.
@@ -419,7 +431,8 @@ export function zeichneBlatt(
 		const proBand = Math.ceil(geordnet.length / BAENDER) || 1;
 		const wurfVon = (o: Objekt): [number, number] => {
 			const h = o.hoeheM ?? 8;
-			return [(h * SONNE[0]) / r.mpp, (h * SONNE[1]) / r.mpp];
+			const [wx, wy] = wurfJeMeter(w.sonne);
+			return [(h * wx) / r.mpp, (h * wy) / r.mpp];
 		};
 		/** Eine fertige Lage mit der gewuenschten Deckkraft aufs Blatt legen. */
 		const auflegen = (l: HTMLCanvasElement, deckung: number) => {

@@ -442,3 +442,68 @@ function verbinden(stuecke: [[number, number], [number, number]][]) {
 	}
 	return zuege;
 }
+
+/**
+ * Wasserflächen eben legen (04.11.2026).
+ *
+ * Über Flüssen und Hafenbecken messen die Höhenmodelle der Terrain Tiles
+ * keinen Spiegel, sondern Rauschen, Schiffe, Brückenschatten oder in
+ * manchen Gegenden die Sohle. Im 3D-Modell standen dort harte Beulen im
+ * Wasser (Volker, Bild von Upper Saddle River). Jede Wasserfläche aus OSM
+ * bekommt deshalb eine einzige Höhe, und alle Rasterpunkte darin werden
+ * auf sie gesetzt.
+ *
+ * Die Höhe ist das untere Fünftel der Werte entlang des Ufers, nicht der
+ * Mittelwert: Am Ufer stehen Kaimauern, Bäume und Häuser, und ein
+ * Oberflächenmodell hebt sie an. Inseln (Löcher der Fläche) bleiben, wie
+ * sie sind. Ausgefüllt wird zeilenweise mit der Gerade-ungerade-Regel über
+ * alle Ringe der Fläche, das kostet Zeilen mal Kanten statt Punkte mal
+ * Kanten: Die Elbe hat einige tausend Ecken, das Raster hunderttausende
+ * Punkte.
+ *
+ * Gibt ein neues Raster zurück; das geholte bleibt unberührt.
+ */
+export function wasserEbnen(g: Gelaende, flaechen: { ringe: [number, number][][]; loecher?: [number, number][][] }[]): Gelaende {
+	if (!flaechen.length) return g;
+	const z = new Float32Array(g.z);
+	const x1 = g.x0 + (g.nx - 1) * g.dx, y1 = g.y0 + (g.ny - 1) * g.dy;
+	for (const f of flaechen) {
+		const ringe = [...f.ringe, ...(f.loecher ?? [])].filter((r) => r.length > 2);
+		if (!ringe.length) continue;
+		// Ufer abtasten, nur wo das Raster reicht.
+		const ufer: number[] = [];
+		for (const ring of f.ringe) {
+			for (let k = 0; k < ring.length; k++) {
+				const [ax, ay] = ring[k], [bx, by] = ring[(k + 1) % ring.length];
+				const schritte = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) / g.dx));
+				for (let s = 0; s < schritte; s++) {
+					const x = ax + ((bx - ax) * s) / schritte, y = ay + ((by - ay) * s) / schritte;
+					if (x >= g.x0 && x <= x1 && y >= g.y0 && y <= y1) ufer.push(hoeheBei(g, x, y));
+				}
+			}
+		}
+		if (ufer.length < 3) continue;
+		ufer.sort((a, b) => a - b);
+		const spiegel = ufer[Math.floor(ufer.length * 0.2)];
+		let miny = Infinity, maxy = -Infinity;
+		for (const r of f.ringe) for (const [, y] of r) { miny = Math.min(miny, y); maxy = Math.max(maxy, y); }
+		const j0 = Math.max(0, Math.ceil((miny - g.y0) / g.dy)), j1 = Math.min(g.ny - 1, Math.floor((maxy - g.y0) / g.dy));
+		const schnitte: number[] = [];
+		for (let j = j0; j <= j1; j++) {
+			const y = g.y0 + j * g.dy;
+			schnitte.length = 0;
+			for (const ring of ringe)
+				for (let a = 0, b = ring.length - 1; a < ring.length; b = a++) {
+					const [xa, ya] = ring[a], [xb, yb] = ring[b];
+					if (ya > y !== yb > y) schnitte.push(xa + ((y - ya) * (xb - xa)) / (yb - ya));
+				}
+			schnitte.sort((a, b) => a - b);
+			for (let k = 0; k + 1 < schnitte.length; k += 2) {
+				const i0 = Math.max(0, Math.ceil((schnitte[k] - g.x0) / g.dx));
+				const i1 = Math.min(g.nx - 1, Math.floor((schnitte[k + 1] - g.x0) / g.dx));
+				for (let i = i0; i <= i1; i++) z[j * g.nx + i] = spiegel;
+			}
+		}
+	}
+	return { ...g, z };
+}

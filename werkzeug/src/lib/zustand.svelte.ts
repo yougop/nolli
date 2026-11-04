@@ -8,7 +8,7 @@ import { STIFTE, type StiftId } from './stifte';
 import { base } from '$app/paths';
 import { ablegen, abholen, wegwerfen } from './ablage';
 import { holeBestand, QuellFehler, Abgebrochen } from './quelle';
-import { holeGelaende, type Gelaende } from './geo/gelaende';
+import { holeGelaende, wasserEbnen, type Gelaende } from './geo/gelaende';
 import { holeOverture, gebaeudeErgaenzen, placesAus, type Place } from './overture';
 import { netzAus, nutzflaechenAus, poisAus, halteAus, restAus, baeumeAus,
 	type Netz, type Nutzflaeche, type Poi, type Haltestelle, type Linie, type Rest } from './analysedaten';
@@ -239,9 +239,19 @@ class Zustand {
 	gelaendeFuer = $state<string | null>(null);
 	gelaendeLaedt = $state<string | null>(null);
 
+	/**
+	 * Das Raster mit ebenen Wasserflächen, einmal je geholtem Raster und
+	 * Wasserbestand gerechnet. Alles, was Höhen liest — Ansicht, OBJ, DXF,
+	 * 3DM, Höhenlinien —, bekommt so dieselbe Fläche.
+	 */
+	private geebnet = $derived.by(() => {
+		const g = this.gelaendeDaten;
+		if (!g) return null;
+		return wasserEbnen(g, this.objekte.filter((o) => o.ebene === 'wasser' && o.art === 'flaeche'));
+	});
 	/** Das Raster, wenn das Gelände an ist und zum Rahmen passt. Sonst null. */
 	get gelaendeJetzt(): Gelaende | null {
-		return this.gelaende && this.gelaendeFuer === this.schluessel() ? this.gelaendeDaten : null;
+		return this.gelaende && this.gelaendeFuer === this.schluessel() ? this.geebnet : null;
 	}
 
 	/**

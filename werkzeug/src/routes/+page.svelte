@@ -1088,7 +1088,7 @@
 						-->
 						<div class="klapp" bind:this={kantenKlapp}>
 							<button type="button" class="einzeln" class:an={kantenRegler}
-								class:veraendert={!z.kanten.an || z.kanten.dicke !== KANTEN_VORGABE.dicke || z.kanten.deckkraft !== KANTEN_VORGABE.deckkraft}
+								class:veraendert={!z.kanten.an || z.kanten.hell || z.kanten.dicke !== KANTEN_VORGABE.dicke || z.kanten.deckkraft !== KANTEN_VORGABE.deckkraft}
 								aria-expanded={kantenRegler}
 								onclick={() => (kantenRegler = !kantenRegler)}
 								title={t().sicht.kantenTitel}
@@ -1098,6 +1098,10 @@
 									<div class="wahl schmal">
 										<button type="button" class:an={z.kanten.an} onclick={() => (z.kanten.an = true)}>{t().sicht.kantenAn}</button>
 										<button type="button" class:an={!z.kanten.an} onclick={() => (z.kanten.an = false)}>{t().sicht.kantenAus}</button>
+									</div>
+									<div class="wahl schmal">
+										<button type="button" class:an={!z.kanten.hell} disabled={!z.kanten.an} onclick={() => (z.kanten.hell = false)}>{t().sicht.kantenDunkel}</button>
+										<button type="button" class:an={z.kanten.hell} disabled={!z.kanten.an} onclick={() => (z.kanten.hell = true)}>{t().sicht.kantenHell}</button>
 									</div>
 									<label>
 										<span>{t().sicht.kantenDicke}</span>

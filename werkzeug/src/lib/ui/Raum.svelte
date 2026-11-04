@@ -625,6 +625,7 @@
 		// zu Haaren.
 		kantenStoff.resolution.set(b, h);
 		kantenStoff.linewidth = z.kanten.dicke * Math.max(1, b / Math.max(1, ausgabe ? ausgabe.aus.w : b));
+		kantenStoff.color.set(z.kanten.hell ? 0xf4f4f2 : 0x3a3a37);
 		const deck = z.kanten.deckkraft ?? 1;
 		if (kantenStoff.transparent !== deck < 1) { kantenStoff.transparent = deck < 1; kantenStoff.needsUpdate = true; }
 		kantenStoff.opacity = deck;
@@ -738,7 +739,7 @@
 		}, 120);
 	});
 	// Die Kantenstärke: nur neu zeichnen.
-	$effect(() => { z.kanten.dicke; z.kanten.deckkraft; anfordern(); });
+	$effect(() => { z.kanten.dicke; z.kanten.deckkraft; z.kanten.hell; anfordern(); });
 	// Die Regler: drei Zahlen in den Shader, dann neu zeichnen. Sonst nichts.
 	$effect(() => {
 		karteWerte.uSaettigung.value = z.karte.saettigung;

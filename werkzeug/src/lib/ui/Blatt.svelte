@@ -94,7 +94,7 @@
 	// Während ein Regler der Karte oder der Kanten bewegt wird: ohne Schatten,
 	// wie beim Zoomen. Das fertige Bild kommt, wenn er ruht.
 	$effect(() => {
-		z.kanten.dicke; z.kanten.deckkraft; z.kanten.karteDicke; z.kanten.karteDeckkraft; z.kanten.an;
+		z.kanten.dicke; z.kanten.deckkraft; z.kanten.karteDicke; z.kanten.karteDeckkraft; z.kanten.an; z.kanten.hell;
 		untrack(() => bewegtSich());
 	});
 

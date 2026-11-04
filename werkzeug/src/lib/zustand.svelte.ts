@@ -33,7 +33,7 @@ const atmen = () => new Promise<void>((f) => requestAnimationFrame(() => setTime
 
 
 /** Die Kanten im 3D-Modell, wie sie ab Werk stehen (Volker, 04.11.2026): fein und leise. */
-export const KANTEN_VORGABE = { an: true, dicke: 0.75, deckkraft: 0.75, karteDicke: 1, karteDeckkraft: 1 };
+export const KANTEN_VORGABE = { an: true, dicke: 0.75, deckkraft: 0.75, karteDicke: 1, karteDeckkraft: 1, hell: false };
 
 class Zustand {
 	schritt = $state<1 | 2 | 3>(1);

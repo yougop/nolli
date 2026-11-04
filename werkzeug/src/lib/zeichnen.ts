@@ -19,7 +19,7 @@ export type Zeichenwunsch = {
 	 * gemeint und wächst mit dem Blatt mit, damit ein 8K-Bild dieselbe
 	 * Zeichnung zeigt wie der Bildschirm.
 	 */
-	kanten?: { an: boolean; dicke: number; deckkraft: number; karteDicke?: number; karteDeckkraft?: number };
+	kanten?: { an: boolean; dicke: number; deckkraft: number; karteDicke?: number; karteDeckkraft?: number; hell?: boolean };
 	hervorgehoben?: StiftId | null;
 	ausgewaehlt?: Set<string>;
 	fanglinie?: [number, number][] | null;   // Polygon im Entstehen
@@ -499,7 +499,9 @@ export function zeichneBlatt(
 	if (w.kanten?.an && bauten.length) {
 		ctx.save();
 		ctx.globalAlpha = w.kanten.deckkraft;
-		ctx.strokeStyle = '#2B2B29';
+		// Hell für dunkle Häuser: Im Schwarzplan verschwände eine dunkle Kante
+		// im Schwarz, und die Häuser liefen zu einer Fläche zusammen.
+		ctx.strokeStyle = w.kanten.hell ? '#F4F4F2' : '#2B2B29';
 		ctx.lineJoin = 'round';
 		ctx.lineWidth = w.kanten.dicke * Math.max(1, W / 1200);
 		ctx.beginPath();

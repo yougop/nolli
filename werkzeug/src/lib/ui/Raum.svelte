@@ -54,18 +54,22 @@
 			float texel = 1.0 / shadowMapSize.x;
 			float phi = pcssRausch( gl_FragCoord.xy ) * PI2;
 			float suche = clamp( shadowRadius * 0.15, 3.0 * texel, 32.0 * texel );
+			// Die Grenze kommt aus einem Uniform statt als feste Zahl, damit der
+			// Treiber die Schleife nicht ausrollt: Ausgerollt kosteten 80
+			// Texturzugriffe unter Windows Sekunden beim Übersetzen jedes Stoffs.
+			int proben = int( min( 16.0, shadowMapSize.x ) );
 			float summe = 0.0, n = 0.0;
-			for ( int i = 0; i < 16; i ++ ) {
-				float d = texture2D( shadowMap, shadowCoord.xy + pcssScheibe( i, 16, phi ) * suche ).r;
+			for ( int i = 0; i < proben; i ++ ) {
+				float d = texture2D( shadowMap, shadowCoord.xy + pcssScheibe( i, proben, phi ) * suche ).r;
 				if ( d < shadowCoord.z ) { summe += d; n += 1.0; }
 			}
 			if ( n == 0.0 ) return 1.0;
 			float breite = clamp( ( shadowCoord.z - summe / n ) * shadowRadius, 0.5 * texel, suche );
 			float licht = 0.0;
-			for ( int i = 0; i < 16; i ++ ) {
-				licht += pcssVergleich( shadowMap, shadowMapSize, shadowCoord.xy + pcssScheibe( i, 16, phi + 1.7 ) * breite, shadowCoord.z );
+			for ( int i = 0; i < proben; i ++ ) {
+				licht += pcssVergleich( shadowMap, shadowMapSize, shadowCoord.xy + pcssScheibe( i, proben, phi + 1.7 ) * breite, shadowCoord.z );
 			}
-			return mix( 1.0, licht / 16.0, shadowIntensity );
+			return mix( 1.0, licht / float( proben ), shadowIntensity );
 		}
 	`;
 	{
@@ -113,7 +117,19 @@
 	 * hat dieses Seitenverhältnis, nicht das des Rahmens — sonst zeigte es
 	 * einen anderen Ausschnitt als die Ansicht (Volker, 04.11.2026).
 	 */
-	let { schema = 'hell', seite = $bindable(0.75) }: { schema?: 'hell' | 'dunkel'; seite?: number } = $props();
+	/**
+	 * `aktiv`: Die Ansicht bleibt nach dem ersten Öffnen bestehen und ruht,
+	 * solange eine flache Darstellung gezeigt wird (04.11.2026). Vorher wurde
+	 * sie bei jedem Wechsel neu angelegt, mit neuem Zeichner und allen Shadern
+	 * neu übersetzt; das kostete auf der Grafikkarte jedes Mal Sekunden
+	 * (Volker). Ruhend zeichnet sie nicht und baut nicht, sie merkt sich nur,
+	 * dass sich die Daten geändert haben, und holt das beim Zurückkommen nach.
+	 */
+	let { schema = 'hell', seite = $bindable(0.75), aktiv = true }: { schema?: 'hell' | 'dunkel'; seite?: number; aktiv?: boolean } = $props();
+	let veraltet = false;
+	/** Wofür zuletzt gebaut wurde, als Schlüssel: `z.rahmen` ist bei jedem Lesen ein neues Objekt. */
+	let gebautFuer = '';
+	const rahmenSchluessel = (r: Rahmen | null) => (r ? `${r.x0}|${r.y0}|${r.x1}|${r.y1}` : '');
 
 	/**
 	 * Der Grund der Buehne, neutral gehalten.
@@ -289,6 +305,7 @@
 	const modellHoehe = () => Math.max(hoechstes(z.objekte) + (feld ? feld.max - feld.min : 0), 1);
 
 	function bauen() {
+		gebautFuer = rahmenSchluessel(z.rahmen);
 		const r = z.rahmen;
 		if (!r || !szene) return;
 		const g = z.gelaendeJetzt, f = feld;
@@ -552,7 +569,7 @@
 	 * nur der zuletzt gültige Stand gezeichnet.
 	 */
 	function anfordern() {
-		if (angefordert) return;
+		if (angefordert || !aktiv) return;
 		angefordert = true;
 		const los = () => {
 			if (!angefordert) return;
@@ -886,10 +903,22 @@
 		z.objekte; z.sichtbar; z.bereinigt; z.plangebiet; z.kasten; z.baeume; z.baumpunkte; feld;
 		z.kanten.an; z.ausgabeBreite; z.rahmen; z.gelaendeJetzt; schema;
 		if (!renderer) return;
+		if (!untrack(() => aktiv)) { veraltet = true; return; }
 		// Nur auf die Werte oben hin neu bauen. `bauen` liest nebenbei mehr —
 		// etwa alle Kanteneinstellungen fürs Bodenbild —, und jeder Zug an
 		// einem Regler baute sonst die ganze Szene neu: 4,6 s je Schritt.
 		untrack(() => bauen()); anfordern();
+	});
+	// Zurück in die Ansicht: nachholen, was ruhend liegen blieb. Ein neuer
+	// Ort beginnt mit dem Ausgangsblick, wie früher beim Neuanlegen.
+	$effect(() => {
+		if (!aktiv || !renderer) return;
+		untrack(() => {
+			if (rahmenSchluessel(z.rahmen) !== gebautFuer) zuruecksetzen();
+			if (veraltet) { veraltet = false; bauen(); }
+			messen();
+		});
+		anfordern();
 	});
 	/**
 	 * Die Linien der Karte ändern nur das Bodenbild. Statt die ganze Szene neu
@@ -905,6 +934,7 @@
 		linienTakt = setTimeout(() => {
 			const r = z.rahmen, m = bodenNetz?.material as THREE.MeshLambertMaterial | undefined;
 			if (!r || !m) return;
+			if (!aktiv) { veraltet = true; return; }
 			const alt = m.map;
 			m.map = bodenbild(r);
 			alt?.dispose();

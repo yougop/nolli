@@ -195,6 +195,9 @@
 		+ 9    // Modell, Teile vor der Kante, Materialien, Textur, Zeichnung, Vertrag, Liesmich, Materialschema, 3DM
 	);
 	let raum = $state<Raum | null>(null);
+	const raumSichtbar = $derived(z.schritt > 1 && raeumlich);
+	let raumGeoeffnet = $state(false);
+	$effect(() => { if (raumSichtbar) raumGeoeffnet = true; });
 	let kartenRegler = $state(false);
 	/**
 	 * Der Ort im Dateinamen: lesbar, aber nur ASCII. Umlaute und Akzente
@@ -1263,10 +1266,18 @@
 				{/if}
 				{#if z.schritt === 1}
 					<Karte bind:this={karte} {schema} />
-				{:else if raeumlich}
-					<Raum bind:this={raum} bind:seite={raumSeite} {schema} />
-				{:else}
+				{:else if !raeumlich}
 					<Blatt waehlbar={z.schritt === 2} />
+				{/if}
+				<!--
+					Das 3D-Modell bleibt nach dem ersten Öffnen bestehen und ruht nur:
+					Neu angelegt übersetzte es bei jedem Wechsel alle Shader neu, das
+					dauerte auf der Grafikkarte Sekunden (Volker, 04.11.2026).
+				-->
+				{#if raumGeoeffnet}
+					<div class="raumruhe" class:weg={!raumSichtbar}>
+						<Raum bind:this={raum} bind:seite={raumSeite} {schema} aktiv={raumSichtbar} />
+					</div>
 				{/if}
 			</div>
 		</section>
@@ -2202,6 +2213,8 @@
 	 * was gewählt oder eingeschaltet ist; ein offenes Feld zeigt sich an der
 	 * kräftigeren Kante und am gedrehten Pfeil.
 	 */
+	.raumruhe { display: contents; }
+	.raumruhe.weg { display: none; }
 	.sichtleiste .klappknopf::after {
 		content: ''; display: inline-block; width: 0; height: 0; margin-left: 5px; vertical-align: 2px;
 		border-left: 3.5px solid transparent; border-right: 3.5px solid transparent;

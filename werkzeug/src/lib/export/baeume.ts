@@ -29,10 +29,10 @@ const ROH: [number, number, number][] = [
 	[PHI, 0, -1], [PHI, 0, 1], [-PHI, 0, -1], [-PHI, 0, 1]
 ];
 const L = Math.hypot(1, PHI);
-const ECKEN = ROH.map(([x, y, z]) => [x / L, y / L, z / L] as [number, number, number]);
+export const ECKEN = ROH.map(([x, y, z]) => [x / L, y / L, z / L] as [number, number, number]);
 
 /** Die zwanzig Dreiecke, Ecken eins-basiert wie in OBJ. */
-const FLAECHEN: [number, number, number][] = [
+export const FLAECHEN: [number, number, number][] = [
 	[1, 12, 6], [1, 6, 2], [1, 2, 8], [1, 8, 11], [1, 11, 12],
 	[2, 6, 10], [6, 12, 5], [12, 11, 3], [11, 8, 7], [8, 2, 9],
 	[4, 10, 5], [4, 5, 3], [4, 3, 7], [4, 7, 9], [4, 9, 10],

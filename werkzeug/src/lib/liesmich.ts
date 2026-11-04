@@ -41,9 +41,10 @@ UCX (Urban Context Exchange) ist das Austauschformat der Urban Pipeline. Erzeugt
 |---|---|
 | \`frame.json\` | Der Datenvertrag: Rahmen, Projektion, Maßstab, Herkunft, Inhaltsverzeichnis. **Maßgeblich.** |
 | \`model.obj\` | Baukörper, extrudiert. Meter, Z nach oben, Y nach Norden. Grund mit Textur, bei eingeschalteten Bäumen die Kronen als Körper \`trees\`. Materialien in \`model.mtl\` |
+| \`model.3dm\` | Dasselbe Modell für Rhino: Gebäude als Extrusionen auf Ebenen nach Klasse, die Kurven der Zeichnung, je Körper UserText mit \`body_id\`, Höhe und Herkunft |
 | \`drawing.dxf\` | Zeichnung mit getrennten Ebenen (\`N_BUILDINGS\`, \`N_STREETS\`, …), Meter |
 ${ter ? '| \`drawing_terrain.dxf\` | Dieselbe Zeichnung aufs Geländenetz von \`model.obj\` gelegt, als 3D-Polylinien. Gebäudeumrisse auf der Fußhöhe ihres Körpers |\n' : ''}| \`images/\` | Jede Darstellung, dazu je eine Fassung \`_bare\` ohne Baukörper und Bäume |
-| \`data/\` | Alle Daten als JSON, Feldnamen siehe unten |
+| \`data/\` | Alle Daten als JSON, Feldnamen siehe unten. **Maßgeblich:** \`body_id\`, Material und Herkunft stehen hier; OBJ, 3DM und Zeichnungen sind daraus abgeleitet |
 | \`data/materials.json\` | Das Materialschema der Kette: Graustufen nach Nutzungsklasse, warm für Entwürfe. Jeder Körper trägt sein Material in \`data/bodies.json\` (\`material\`), im OBJ als \`usemtl\` |
 
 Die Feld- und Dateinamen sind englisch (Datenvertrag v${v.contract_version}), unabhängig von der Sprache dieser Datei. Die Beschreibungen in den Tabellen unten stammen aus dem Vertrag und sind deshalb ebenfalls englisch.
@@ -119,9 +120,10 @@ UCX (Urban Context Exchange) is the exchange format of the Urban Pipeline. It wa
 |---|---|
 | \`frame.json\` | The data contract: frame, projection, scale, provenance, table of contents. **Authoritative.** |
 | \`model.obj\` | Extruded building bodies. Metres, Z up, Y north. Textured ground; with trees switched on, the crowns as one object \`trees\`. Materials in \`model.mtl\` |
+| \`model.3dm\` | The same model for Rhino: buildings as extrusions on layers by class, the drawing’s curves, UserText with \`body_id\`, height and origin on every body |
 | \`drawing.dxf\` | Drawing with separate layers (\`N_BUILDINGS\`, \`N_STREETS\`, …), metres |
 ${ter ? '| \`drawing_terrain.dxf\` | The same drawing laid onto the terrain mesh of \`model.obj\`, as 3D polylines. Building outlines at the base height of their body |\n' : ''}| \`images/\` | Every style, plus a \`_bare\` version without buildings and trees |
-| \`data/\` | All data as JSON, field names below |
+| \`data/\` | All data as JSON, field names below. **Authoritative:** \`body_id\`, material and origin are defined here; OBJ, 3DM and drawings are derived from it |
 | \`data/materials.json\` | The material schema of the pipeline: greys by use class, warm for design. Every body carries its material in \`data/bodies.json\` (\`material\`), in the OBJ as \`usemtl\` |
 
 Data contract v${v.contract_version}.

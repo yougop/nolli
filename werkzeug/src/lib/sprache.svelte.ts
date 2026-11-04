@@ -199,6 +199,9 @@ const de = {
 		weiter: 'Weiter zur Ausgabe'
 	},
 	ausgeben: {
+		rhino: 'Rhino',
+		rhinoZeile: (n: number) => `3DM · ${n.toLocaleString('de-DE')} Körper`,
+		rhinoWas: 'Gebäude als Extrusionen, Ebenen nach Klasse, Kurven der Zeichnung, je Körper Attribute mit body_id. Lädt beim ersten Mal die Rhino-Bibliothek, rund 2,7 MB.',
 		bild3d: '3D-Bild',
 		karteBreite: 'Karte und Textur',
 		achtK: '8K heißt rund 50 Millionen Bildpunkte je Bild. Das Paket dauert damit deutlich länger und wird um ein Mehrfaches größer; auf schwächeren Rechnern kann der Browser an seine Grenze kommen.',
@@ -502,6 +505,9 @@ const en: typeof de = {
 		weiter: 'Continue to export'
 	},
 	ausgeben: {
+		rhino: 'Rhino',
+		rhinoZeile: (n) => `3DM · ${n.toLocaleString('en-GB')} bodies`,
+		rhinoWas: 'Buildings as extrusions, layers by class, the drawing’s curves, attributes with body_id on every body. Loads the Rhino library the first time, about 2.7 MB.',
 		bild3d: '3D image',
 		karteBreite: 'Map and texture',
 		achtK: '8K means about 50 million pixels per image. The package takes much longer and grows several times larger; on weaker machines the browser may reach its limit.',

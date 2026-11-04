@@ -24,7 +24,7 @@ Overture Maps.
 |---|---|
 | **Images** | Figure-ground, inverted, line, use, top view, white model, data depth, 3D view — up to 8192 px (8K; the width can be switched in step 3 without fetching again), with a bare version (no buildings, no trees) of each to use as a ground texture |
 | **`drawing.dxf`** | Separate layers with pen widths (`N_BUILDINGS`, `N_STREETS`, `N_WATER`, …), labels, frame, and contour lines when terrain is on. Cut at the frame. Metres, origin at the lower-left frame corner. With terrain, also `drawing_terrain.dxf`: the same drawing on the terrain mesh |
-| **Model (ZIP)** | `model.obj`, `model.mtl` and `model_texture.png`, ready for Rhino: extruded buildings with hard edges, in greys by use class (one material per body, see `data/materials.json`), cut cleanly at the frame edge; the ground textured with the top view, on the terrain or flat; tree crowns as one object `trees`. It contains what the 3D view shows — switch terrain and trees there, and set saturation, contrast and brightness of the ground under **Adjust map** (a fully desaturated texture gives a grey plan in Rhino) |
+| **Model (ZIP)** | `model.obj`, `model.mtl`, `model_texture.png` and `model.3dm`, ready for Rhino: extruded buildings with hard edges, in greys by use class (one material per body, see `data/materials.json`), cut cleanly at the frame edge; the ground textured with the top view, on the terrain or flat; tree crowns as one object `trees`. It contains what the 3D view shows — switch terrain and trees there, and set saturation, contrast and brightness of the ground under **Adjust map** (a fully desaturated texture gives a grey plan in Rhino) |
 | **Package (ZIP)** | The UCX package (Urban Context Exchange), e.g. `UCX_Prato_2026-11-04.zip`: everything above plus `model_outside.obj`, the parts of buildings beyond the frame edge, which still cast shadows into it. Single files carry the same name stem |
 | **`frame.json`** | The data contract: frame, projection, scale, provenance, caveats, and a table of contents of the package |
 | **`data/materials.json`** | The material schema shared by the pipeline: an id, a grey (warm for design) and a mask index per class. Every body names its material in `data/bodies.json`, together with its `body_id` |
@@ -123,7 +123,14 @@ The model uses a transverse Mercator projection centred on the site (scale 1,
 grid north = true north at the centre). The exact definition is in
 `frame.json` under `grid.proj4`.
 
-- **Rhino:** unpack the model ZIP and import `model.obj` in metres; material
+- **Rhino:** open `model.3dm`. Buildings come as Rhino extrusions (closed
+  solids, editable) on layers by use class (`N_BUILDINGS::residential` …),
+  the drawing's curves on their DXF layers, draped on the terrain when it is
+  on, and every body carries UserText: `body_id`, `osm_id`, height and its
+  source, use class, material. Parts beyond the frame edge sit on the hidden
+  layer `N_OUTSIDE`. The Rhino library (rhino3dm, about 2.7 MB) loads only
+  when you export.
+- **Rhino via OBJ:** unpack the model ZIP and import `model.obj` in metres; material
   and texture come with it, nothing to map. `drawing.dxf` lines up with it.
   The drawing stays flat on purpose, so its curves can still be hatched,
   extruded and capped. With terrain on, `drawing_terrain.dxf` is the same
@@ -158,6 +165,9 @@ Principles the contract follows:
 - **Time is local.** `time_zone` names the IANA time zone at the frame
   centre (e.g. `America/New_York`), looked up offline; `null` if unknown. No
   fixed offset: daylight saving is for the reading tool to apply per date.
+- **The data is authoritative, the geometry is derived.** `body_id`, material
+  and origin are defined in `data/*.json`; `model.obj`, `model.3dm` and the
+  drawings are generated from it. When they disagree, the data wins.
 - **Every package knows where it comes from.** `provenance.generated` names the
   tool, its build (git commit) and the time; every later change by another tool
   is appended to `provenance.edits`.

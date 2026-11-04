@@ -18,7 +18,7 @@
 	import { laden, stempel, bild, dxf, dxfAufGelaende, obj, alsMtl, paket, WEBP } from '$lib/ui/ausgeben';
 	import { sucheOrt, ortBei } from '$lib/quelle';
 	import { t, sprache, spracheSetzen, spracheAnfangen, gebiet, zahl, englisch } from '$lib/sprache.svelte';
-	import { aufV2, vertragV2, pfadV2, darstellungV2 } from '$lib/vertrag';
+	import { aufV2, vertragV2, pfadV2, darstellungV2, VERTRAG_NAME, VERTRAG_VERSION } from '$lib/vertrag';
 	import { paketLiesmich } from '$lib/liesmich';
 
 	const SCHRITTE = [1, 2, 3] as const;
@@ -192,7 +192,7 @@
 		2 * DARSTELLUNGEN.filter((d) => d.bauweise !== 'raum').length
 		+ (raeumlich ? 1 : 0)
 		+ DATENDATEIEN.length
-		+ 8    // Modell, Teile vor der Kante, Materialien, Textur, Zeichnung, Vertrag, Liesmich, Materialschema
+		+ 9    // Modell, Teile vor der Kante, Materialien, Textur, Zeichnung, Vertrag, Liesmich, Materialschema, 3DM
 	);
 	let raum = $state<Raum | null>(null);
 	let kartenRegler = $state(false);
@@ -314,6 +314,21 @@
 	 * Paket, als `model_outside.obj` — wer das Modell für Rhino holt,
 	 * braucht den Rand nicht.
 	 */
+	/** `model.3dm`: Körper als Extrusionen, Kurven, Ebenen, Attribute (`export/rhino.ts`). */
+	async function rhinoDatei(rr: Rahmen) {
+		const { als3dm } = await import('$lib/export/rhino');
+		const v = rr.vertrag({}) as Record<string, any>;
+		return als3dm({
+			objekte: bestand, r: rr, gelaende: z.gelaendeJetzt, baeume: modellKronen ? z.baumpunkte : [],
+			kopf: {
+				contract: VERTRAG_NAME, contract_version: VERTRAG_VERSION,
+				grid: { proj4: v.gitter.proj4, central_meridian: v.gitter.mittelmeridian }, bbox_grid: v.bbox_gitter, units: 'metres, Z up, Y north, origin at the lower-left frame corner',
+				provenance: { generated: { tool: 'nolli', version: __NOLLI_STAND__, at: jetztMitZone() } },
+				authoritative: 'data/*.json in the UCX package; this file is derived'
+			}
+		});
+	}
+
 	async function modellTeile(rr: Rahmen, mitRand: boolean) {
 		const textur = 'model_texture.png';
 		const teile: { name: string; inhalt: Blob | string }[] = [
@@ -325,6 +340,8 @@
 		];
 		if (mitRand)
 			teile.push({ name: 'model_outside.obj', inhalt: obj(bestand, rr, z.gelaendeJetzt, 'model.mtl', 'aussen') });
+		// Dasselbe Modell als Rhino-Datei, mit Ebenen, Kurven und Attributen.
+		teile.push({ name: 'model.3dm', inhalt: new Blob([await rhinoDatei(rr) as BlobPart]) });
 		// Mit Gelände der Plan auf dem Netz, damit er in Rhino ohne `_Pull` auf
 		// dem Modell liegt. Gehört deshalb zum Modell, nicht nur ins Paket.
 		if (z.gelaendeJetzt)
@@ -852,6 +869,13 @@
 						 * diese Datei dazu.
 						 */
 						model_outside: 'model_outside.obj',
+						/**
+						 * Dasselbe Modell für Rhino: Gebäude als Extrusionen, Ebenen nach
+						 * Klasse, die Kurven der Zeichnung, UserText je Körper mit body_id.
+						 * Abgeleitet wie das OBJ; maßgeblich ist `data/*.json`.
+						 */
+						model_3dm: 'model.3dm',
+						authoritative: 'data/*.json — body_id, material and origin are defined there; model.obj, model.3dm and the drawings are derived from it',
 						material: {
 							file: 'model.mtl',
 							// Seit 03.11.2026 die Einträge des Materialschemas statt
@@ -891,7 +915,7 @@
 		}));
 	}
 
-	async function ausgeben(art: 'bild' | 'dxf' | 'obj' | 'vertrag' | 'paket') {
+	async function ausgeben(art: 'bild' | 'dxf' | 'obj' | 'vertrag' | 'paket' | '3dm') {
 		if (!r) return;
 		arbeitet = art;
 		// Ohne diese Zeile bliebe die Beschriftung stehen: das Zeichnen von
@@ -911,6 +935,8 @@
 				laden(dxf(bestand, r, z.gelaendeJetzt), `${basis}.dxf`, 'application/dxf');
 			} else if (art === 'obj') {
 				laden(await paket(await modellTeile(r, false)), `${basis}_model.zip`, 'application/zip');
+			} else if (art === '3dm') {
+				laden(await rhinoDatei(r) as BlobPart, `${basis}.3dm`, 'application/octet-stream');
 			} else if (art === 'paket') {
 				laden(await paketSchnueren(basis), `${basis}.zip`, 'application/zip');
 			} else {
@@ -1631,6 +1657,10 @@
 						<li><button type="button" disabled={!!arbeitet} onclick={() => ausgeben('obj')}>
 							<strong>{t().ausgeben.modell}</strong><em class="mono">{arbeitet === 'obj' ? t().ausgeben.schreibt : t().ausgeben.modellZeile(deckung.gesamt, modellKronen)}</em>
 							<span>{t().ausgeben.modellWas(z.gelaende, modellKronen > 0)}</span>
+						</button></li>
+						<li><button type="button" disabled={!!arbeitet} onclick={() => ausgeben('3dm')}>
+							<strong>{t().ausgeben.rhino}</strong><em class="mono">{arbeitet === '3dm' ? t().ausgeben.schreibt : t().ausgeben.rhinoZeile(deckung.gesamt)}</em>
+							<span>{t().ausgeben.rhinoWas}</span>
 						</button></li>
 						<li><button type="button" disabled={!!arbeitet} onclick={() => ausgeben('vertrag')}>
 							<strong>{t().ausgeben.vertrag}</strong><em class="mono">{arbeitet === 'vertrag' ? t().ausgeben.schreibt : 'JSON'}</em>

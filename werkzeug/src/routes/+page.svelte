@@ -196,6 +196,11 @@
 	);
 	let raum = $state<Raum | null>(null);
 	let kartenRegler = $state(false);
+	/** Seitenverhältnis der 3D-Ansicht; das 3D-Bild übernimmt es. */
+	let raumSeite = $state(0.75);
+	const raumHoehe = (b: number) => Math.round(b * raumSeite);
+	/** Was das Bild misst: im 3D-Modell wie die Ansicht, sonst wie der Rahmen. */
+	const bildMass = $derived(r ? (raeumlich ? [r.pixelBreite, raumHoehe(r.pixelBreite)] : [r.pixelBreite, r.pixelHoehe]) : [0, 0]);
 	let kartenKlapp = $state<HTMLDivElement | null>(null);
 	let kantenRegler = $state(false);
 	let kantenKlapp = $state<HTMLDivElement | null>(null);
@@ -353,7 +358,7 @@
 		if (raeumlich && raum) {
 			arbeitet = `paket:${t().ausgeben.paket3d}`;
 			await anstrich();
-			teile.push({ name: pfadV2('bilder/3d-modell.webp'), inhalt: await raum.alsBild(rr.pixelBreite, rr.pixelHoehe, WEBP) });
+			teile.push({ name: pfadV2('bilder/3d-modell.webp'), inhalt: await raum.alsBild(rr.pixelBreite, raumHoehe(rr.pixelBreite), WEBP) });
 			bilder.push({ datei: 'bilder/3d-modell.webp', darstellung: 'modell3d',
 				was: 'The 3D view as it currently stands',
 				baeume: !!z.baeume && !!z.baumpunkte.length });
@@ -859,7 +864,7 @@
 			const basis = `nolli_${(z.ort?.name ?? 'rahmen').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 24)}_${stempel()}`;
 			if (art === 'bild') {
 				const b = raeumlich && raum
-					? await raum.alsBild(r.pixelBreite, r.pixelHoehe)
+					? await raum.alsBild(r.pixelBreite, raumHoehe(r.pixelBreite))
 					: await bild(bestand, r, z.darstellung, z.bereinigt, z.beschriftung, z.plangebiet, z.sichtbar,
 						false, 'image/png', z.baeume ? z.baumpunkte : undefined);
 				laden(b, `${basis}_${darstellungV2(z.darstellung)}_${r.pixelBreite}px.png`, 'image/png');
@@ -1092,7 +1097,7 @@
 				{#if z.schritt === 1}
 					<Karte bind:this={karte} {schema} />
 				{:else if raeumlich}
-					<Raum bind:this={raum} {schema} />
+					<Raum bind:this={raum} bind:seite={raumSeite} {schema} />
 				{:else}
 					<Blatt waehlbar={z.schritt === 2} />
 				{/if}
@@ -1449,7 +1454,7 @@
 						<div><dt>{t().ausgeben.beschriftung}</dt><dd class="mono">{z.beschriftung ? t().ausgeben.ja : t().ausgeben.nein}</dd></div>
 						<div><dt>{t().ausgeben.baeume}</dt><dd class="mono">{z.baeume ? t().ausgeben.jaN(imRahmenBaeume) : t().ausgeben.nein}</dd></div>
 						<div><dt>{t().gelaende.zeile}</dt><dd class="mono">{gelaendeFeld ? t().gelaende.spanne(f0(gelaendeFeld.min), f0(gelaendeFeld.max)) : t().gelaende.eben}</dd></div>
-						<div><dt>{t().ausgeben.groesse}</dt><dd class="mono">{r?.pixelBreite} × {r?.pixelHoehe}</dd></div>
+						<div><dt>{t().ausgeben.groesse}</dt><dd class="mono">{bildMass[0]} × {bildMass[1]}</dd></div>
 					</dl>
 					<!--
 						Die Breite auch hier, wo sie wirkt: Sie bestimmt jedes Bild und die
@@ -1513,7 +1518,7 @@
 						<span class="ring" aria-hidden="true"></span>
 						{arbeitet === 'bild'
 							? t().ausgeben.zeichnet
-							: t().ausgeben.bildAusgeben(r?.pixelBreite ?? 0, r?.pixelHoehe ?? 0)}
+							: t().ausgeben.bildAusgeben(bildMass[0], bildMass[1])}
 					</button>
 				</div>
 			{/if}

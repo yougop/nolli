@@ -41,7 +41,12 @@
 		winkel = ANSICHT_W; neigung = ANSICHT_N; abstand = 1; versatz = { x: 0, z: 0 };
 	}
 
-	let { schema = 'hell' }: { schema?: 'hell' | 'dunkel' } = $props();
+	/**
+	 * `seite`: Höhe durch Breite der Ansicht, nach außen gereicht. Das 3D-Bild
+	 * hat dieses Seitenverhältnis, nicht das des Rahmens — sonst zeigte es
+	 * einen anderen Ausschnitt als die Ansicht (Volker, 04.11.2026).
+	 */
+	let { schema = 'hell', seite = $bindable(0.75) }: { schema?: 'hell' | 'dunkel'; seite?: number } = $props();
 
 	/**
 	 * Der Grund der Buehne, neutral gehalten.
@@ -577,14 +582,28 @@
 	}
 
 	/** Für die Ausgabe: dieselbe Ansicht in voller Größe. */
-	export async function alsBild(b: number, h: number, typ = 'image/png'): Promise<Blob> {
+	/**
+	 * Für die Ausgabe: genau die Ansicht, die man sieht, in der gewählten Breite.
+	 *
+	 * Die Höhe folgt dem Seitenverhältnis der Ansicht. Bis 04.11.2026 bekam das
+	 * Bild das des Rahmens; die Einrahmung rechnet aber mit dem Seitenverhältnis,
+	 * und so zeigte das Bild einen anderen Ausschnitt. Gerechnet wird mit einem
+	 * Bildpunkt je Punkt: Auf einem feinen Bildschirm wäre das Bild sonst um
+	 * die Gerätedichte größer als bestellt.
+	 */
+	export async function alsBild(b: number, h = Math.round((b * hoehe) / breite), typ = 'image/png'): Promise<Blob> {
 		if (!renderer) throw new Error(t().raum.nichtBereit);
 		const alt = { ...stand };
+		const dichte = renderer.getPixelRatio();
+		renderer.setPixelRatio(1);
+		zuletzt = { b: 0, h: 0 };
 		stand = { ...stand, b, h };
 		zeichne();
 		const blob = await new Promise<Blob>((gut, schlecht) =>
 			renderer!.domElement.toBlob((x) => (x ? gut(x) : schlecht(new Error('Kein Bild'))), typ, 1)
 		);
+		renderer.setPixelRatio(dichte);
+		zuletzt = { b: 0, h: 0 };
 		stand = alt; zeichne();
 		return blob;
 	}
@@ -593,6 +612,7 @@
 		if (!huelle) return;
 		breite = Math.max(200, huelle.clientWidth);
 		hoehe = Math.max(150, huelle.clientHeight);
+		seite = hoehe / breite;
 	}
 
 	$effect(() => {

@@ -20,7 +20,7 @@ export type Zeichenwunsch = {
 	 * Zeichnung zeigt wie der Bildschirm.
 	 */
 	/** Die Sonne der Darstellung (`z.sonne`), für die Schatten im Weißmodell. */
-	sonne?: { azimut: number; hoehe: number };
+	sonne?: { azimut: number; hoehe: number; an?: boolean };
 	kanten?: { an: boolean; dicke: number; deckkraft: number; karteDicke?: number; karteDeckkraft?: number; hell?: boolean; flaeche?: number | null };
 	hervorgehoben?: StiftId | null;
 	ausgewaehlt?: Set<string>;
@@ -481,7 +481,7 @@ export function zeichneBlatt(
 			 * dem niedrigen Nachbardach landet statt darunter zu verschwinden.
 			 */
 			const grob = lagenblatt(ctx, W, H, 1 / (2.5 + stufe));
-			if (grob && !w.ohneSchatten) {
+			if (grob && !w.ohneSchatten && w.sonne?.an !== false) {
 				const k = grob.k;
 				k.fillStyle = '#000';
 				k.beginPath();

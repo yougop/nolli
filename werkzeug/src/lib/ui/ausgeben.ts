@@ -40,7 +40,7 @@ export async function bild(objekte: Objekt[], r: Rahmen, darstellung: string, be
 	beschriftung: boolean, plangebiet: [number, number][] | null, sichtbar: Set<any>,
 	ohneBauten = false, typ = 'image/png',
 	baeume?: { x: number; y: number; krone: number }[], anpassung?: Anpassung,
-	kanten?: { an: boolean; dicke: number; deckkraft: number }, sonne?: { azimut: number; hoehe: number }): Promise<Blob> {
+	kanten?: { an: boolean; dicke: number; deckkraft: number }, sonne?: { azimut: number; hoehe: number; an?: boolean }): Promise<Blob> {
 	let c = document.createElement('canvas');
 	c.width = r.pixelBreite; c.height = r.pixelHoehe;
 	const ctx = c.getContext('2d');

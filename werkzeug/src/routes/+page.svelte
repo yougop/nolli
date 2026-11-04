@@ -234,7 +234,7 @@
 	let kantenKlapp = $state<HTMLDivElement | null>(null);
 	let lichtRegler = $state(false);
 	let lichtKlapp = $state<HTMLDivElement | null>(null);
-	const sonneVorgabe = $derived(z.sonne.azimut === SONNE_VORGABE.azimut && z.sonne.hoehe === SONNE_VORGABE.hoehe && z.sonne.licht === SONNE_VORGABE.licht);
+	const sonneVorgabe = $derived((Object.keys(SONNE_VORGABE) as (keyof typeof SONNE_VORGABE)[]).every((k) => z.sonne[k] === SONNE_VORGABE[k]));
 	const himmelsrichtung = (a: number) => t().sicht.himmel[Math.round((((a % 360) + 360) % 360) / 45) % 8];
 	/** Die Regeltafeln schließen bei einem Klick daneben und mit Escape, wie jedes Aufklappfeld. */
 	function kartenZu(e: Event) {
@@ -1189,13 +1189,23 @@
 										<button type="button" class:an={z.sonne.licht === 'konzept'} aria-pressed={z.sonne.licht === 'konzept'} disabled={!raeumlich} onclick={() => (z.sonne.licht = 'konzept')}>{t().sicht.lichtKonzept}</button>
 									</div>
 									<label>
+										<span>{t().sicht.helligkeit}</span>
+										<input type="range" min="0.5" max="1.6" step="0.01" disabled={!raeumlich} bind:value={z.sonne.helligkeit} />
+										<em class="mono">{Math.round(z.sonne.helligkeit * 100)} %</em>
+									</label>
+									<span class="unter">{t().sicht.sonne}</span>
+									<div class="wahl schmal">
+										<button type="button" class:an={z.sonne.an} aria-pressed={z.sonne.an} onclick={() => (z.sonne.an = true)}>{t().sicht.kantenAn}</button>
+										<button type="button" class:an={!z.sonne.an} aria-pressed={!z.sonne.an} onclick={() => (z.sonne.an = false)}>{t().sicht.kantenAus}</button>
+									</div>
+									<label>
 										<span>{t().sicht.sonneRichtung}</span>
-										<input type="range" min="0" max="360" step="5" bind:value={z.sonne.azimut} />
+										<input type="range" min="0" max="360" step="5" disabled={!z.sonne.an} bind:value={z.sonne.azimut} />
 										<em class="mono">{z.sonne.azimut}° {himmelsrichtung(z.sonne.azimut)}</em>
 									</label>
 									<label>
 										<span>{t().sicht.sonneHoehe}</span>
-										<input type="range" min="5" max="85" step="1" bind:value={z.sonne.hoehe} />
+										<input type="range" min="5" max="85" step="1" disabled={!z.sonne.an} bind:value={z.sonne.hoehe} />
 										<em class="mono">{z.sonne.hoehe}°</em>
 									</label>
 									<button type="button" class="zurueck" disabled={sonneVorgabe}

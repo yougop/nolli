@@ -18,6 +18,58 @@
 	import type { StiftId } from '$lib/stifte';
 	import { KARTE_GLSL, mitte } from '$lib/anpassen';
 
+	/**
+	 * Kontaktschatten (PCSS): Am Fuß eines Hauses ist der Schatten scharf,
+	 * zur Spitze hin wird er weich, wie in der Sonne. Die Rechnung sucht je
+	 * Punkt erst die Werfer in der Schattenkarte, ihr Abstand zum Empfänger
+	 * gibt die Breite des Halbschattens, dann wird über diese Breite gemittelt.
+	 *
+	 * Eingesetzt anstelle des einfachen Schattens von three.js
+	 * (`BasicShadowMap`), weil nur der die rohe Tiefe lesen lässt; der
+	 * PCF-Schatten vergleicht in der Hardware und verrät den Abstand nicht.
+	 * `shadowRadius` trägt dabei kein Pixelmaß, sondern den Umrechner von
+	 * Tiefenabstand in Kartenbreite, gesetzt in `lichtSetzen()`.
+	 *
+	 * Gilt für alle Stoffe; in der Szene wirft nur die Sonne Schatten.
+	 */
+	const PCSS = `
+		float pcssRausch( vec2 p ) { return fract( 52.9829189 * fract( dot( p, vec2( 0.06711056, 0.00583715 ) ) ) ); }
+		vec2 pcssScheibe( int i, int n, float phi ) {
+			float r = sqrt( ( float( i ) + 0.5 ) / float( n ) );
+			float t = float( i ) * 2.399963229728653 + phi;
+			return vec2( cos( t ), sin( t ) ) * r;
+		}
+		float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowIntensity, float shadowBias, float shadowRadius, vec4 shadowCoord ) {
+			shadowCoord.xyz /= shadowCoord.w;
+			shadowCoord.z += shadowBias;
+			if ( shadowCoord.x < 0.0 || shadowCoord.x > 1.0 || shadowCoord.y < 0.0 || shadowCoord.y > 1.0 || shadowCoord.z > 1.0 ) return 1.0;
+			float texel = 1.0 / shadowMapSize.x;
+			float phi = pcssRausch( gl_FragCoord.xy ) * PI2;
+			float suche = clamp( shadowRadius * 0.15, 3.0 * texel, 32.0 * texel );
+			float summe = 0.0, n = 0.0;
+			for ( int i = 0; i < 16; i ++ ) {
+				float d = texture2D( shadowMap, shadowCoord.xy + pcssScheibe( i, 16, phi ) * suche ).r;
+				if ( d < shadowCoord.z ) { summe += d; n += 1.0; }
+			}
+			if ( n == 0.0 ) return 1.0;
+			float breite = clamp( ( shadowCoord.z - summe / n ) * shadowRadius, 1.2 * texel, suche );
+			float licht = 0.0;
+			for ( int i = 0; i < 24; i ++ ) {
+				licht += step( shadowCoord.z, texture2D( shadowMap, shadowCoord.xy + pcssScheibe( i, 24, phi + 1.7 ) * breite ).r );
+			}
+			return mix( 1.0, licht / 24.0, shadowIntensity );
+		}
+	`;
+	{
+		const c = THREE.ShaderChunk as Record<string, string>;
+		const alt = c.shadowmap_pars_fragment;
+		const a = alt.indexOf('#else // SHADOWMAP_TYPE_BASIC'), b = alt.indexOf('#endif', alt.indexOf('return mix( 1.0, shadow, shadowIntensity );', a));
+		// Nur einmal ersetzen, und nur, wenn three.js den Abschnitt noch so führt.
+		if (a > 0 && b > a && !alt.includes('pcssRausch')) c.shadowmap_pars_fragment = alt.slice(0, a) + '#else\n' + PCSS + '\n\t' + alt.slice(b);
+	}
+	/** Weichheit des Halbschattens je Meter Abstand zum Werfer, etwas weicher als die echte Sonne (0,005). */
+	const HALBSCHATTEN = 0.035;
+
 	let huelle = $state<HTMLDivElement | null>(null);
 	let breite = $state(900), hoehe = $state(600);
 
@@ -118,8 +170,9 @@
 		renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, alpha: true });
 		renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
 		renderer.shadowMap.enabled = true;
-		// Die Filmkurve setzt `lichtSetzen()` je nach Rezept.
-		renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+		// Die Filmkurve setzt `lichtSetzen()` je nach Rezept. Der einfache
+		// Schatten, weil ihn oben die Kontaktschatten ersetzen.
+		renderer.shadowMap.type = THREE.BasicShadowMap;
 		el.appendChild(renderer.domElement);
 		renderer.domElement.style.display = 'block';
 
@@ -371,23 +424,26 @@
 	 */
 	const kuppelStoff = new THREE.ShaderMaterial({
 		side: THREE.BackSide, depthWrite: false,
-		uniforms: { uSonne: { value: new THREE.Vector3(0, 1, 0) } },
+		uniforms: { uSonne: { value: new THREE.Vector3(0, 1, 0) }, uHof: { value: 1 } },
 		vertexShader: 'varying vec3 vR; void main() { vR = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
 		fragmentShader: `
-			uniform vec3 uSonne; varying vec3 vR;
+			uniform vec3 uSonne; uniform float uHof; varying vec3 vR;
 			void main() {
 				vec3 d = normalize(vR);
 				vec3 zenit = vec3(0.42, 0.53, 0.72), horizont = vec3(0.78, 0.81, 0.85), boden = vec3(0.42, 0.40, 0.36);
+				// Ohne Sonne bedeckt: ein gleichmäßig graues Gewölbe, nicht blau.
+				zenit = mix( vec3(0.80, 0.81, 0.83), zenit, uHof ); horizont = mix( vec3(0.74, 0.74, 0.75), horizont, uHof );
 				vec3 c = d.y >= 0.0 ? mix(horizont, zenit, pow(d.y, 0.6)) : mix(horizont * 0.9, boden, min(1.0, -d.y * 6.0));
 				float s = max(dot(d, uSonne), 0.0);
-				if (d.y > -0.05) c += vec3(1.0, 0.96, 0.88) * (0.35 * pow(s, 6.0) + 0.5 * pow(s, 64.0));
+				if (d.y > -0.05) c += uHof * vec3(1.0, 0.96, 0.88) * (0.35 * pow(s, 6.0) + 0.5 * pow(s, 64.0));
 				gl_FragColor = vec4(c, 1.0);
 			}`
 	});
 	const kuppel = new THREE.Scene();
 	kuppel.add(new THREE.Mesh(new THREE.SphereGeometry(100, 48, 24), kuppelStoff));
-	function himmelSzene(sonne: THREE.Vector3) {
+	function himmelSzene(sonne: THREE.Vector3, hof: boolean) {
 		kuppelStoff.uniforms.uSonne.value.copy(sonne);
+		kuppelStoff.uniforms.uHof.value = hof ? 1 : 0;
 		return kuppel;
 	}
 
@@ -425,19 +481,30 @@
 		const weit = Math.hypot(r.breiteM, r.hoeheM) * 2;
 		const s49 = Math.sin((49 * Math.PI) / 180);
 
-		renderer.toneMapping = real ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
+		const an = z.sonne.an !== false;
+		// Realistisch linear, also ohne Kurve, aber belichtbar. Konzept mit der
+		// neutralen Kurve statt ACES: ACES schob Grün und helles Grau ins Gelbe
+		// (Volker, 04.11.2026), die neutrale Kurve hält den Farbton. Ihr fehlt
+		// die eingebaute Anhebung von ACES, das gleicht der Faktor aus.
+		renderer.toneMapping = real ? THREE.LinearToneMapping : THREE.NeutralToneMapping;
+		renderer.toneMappingExposure = (z.sonne.helligkeit ?? 1) * (real ? 1 : 1.1);
 		// Realistisch: Der Himmel leuchtet als Umgebung, mit Glanz zur Sonne hin.
 		// Er ersetzt das Himmelslicht; das bleibt nur als Rückfall ohne Umgebung.
 		if (real && pmrem) {
 			umgebung?.dispose();
-			umgebung = pmrem.fromScene(himmelSzene(richtung), 0, 1, 1000);
+			umgebung = pmrem.fromScene(himmelSzene(richtung, an), 0, 1, 1000);
 			szene.environment = umgebung.texture;
+			// Bedeckt: Der ganze Himmel leuchtet heller, die Sonne fehlt.
+			szene.environmentIntensity = an ? 1 : 1.35;
 		} else szene.environment = null;
 		himmel.intensity = real && !szene.environment ? 2.8 : 0;
-		grundlicht.intensity = real ? 0 : 0.62;
+		grundlicht.intensity = real ? 0 : an ? 0.62 : 1.25;
 		gegenlicht.intensity = real ? 0 : 0.38;
 		const hell = Math.min(3, Math.max(0.6, s49 / Math.sin(hw)));
-		sonne.intensity = (real ? 2.2 : 2.0) * hell;
+		sonne.intensity = an ? (real ? 2.2 : 2.0) * hell : 0;
+		// Konzept neutral weiß, Realistisch ein Hauch warm wie Tageslicht.
+		sonne.color.set(real ? 0xfffaf0 : 0xffffff);
+		gegenlicht.color.set(real ? 0xdfe8f2 : 0xeef1f4);
 		(sonne as THREE.DirectionalLight).shadow.intensity = real ? 1 : 0.62;
 		if (ao) ao.configuration.intensity = real ? 4 : 3;
 
@@ -462,9 +529,11 @@
 		s.left = min.x - 5; s.right = max.x + 5; s.bottom = min.y - 5; s.top = max.y + 5;
 		s.near = Math.max(0.5, -max.z - 10); s.far = -min.z + 10;
 		s.updateProjectionMatrix();
+		// Für die Kontaktschatten: Tiefe der Karte in Meter, Meter in Kartenbreite.
+		sl.shadow.radius = (HALBSCHATTEN * (s.far - s.near)) / (s.right - s.left);
 	}
 	// Sonne oder Rezept verstellt: nur stellen und neu zeichnen, die Szene bleibt.
-	$effect(() => { z.sonne.azimut; z.sonne.hoehe; z.sonne.licht; untrack(lichtSetzen); anfordern(); });
+	$effect(() => { z.sonne.azimut; z.sonne.hoehe; z.sonne.licht; z.sonne.an; z.sonne.helligkeit; untrack(lichtSetzen); anfordern(); });
 
 	let zuletzt = { b: 0, h: 0 };
 

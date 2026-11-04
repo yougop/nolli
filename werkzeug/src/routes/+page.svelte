@@ -1152,7 +1152,7 @@
 									</div>
 									<label>
 										<span>{t().sicht.kantenDicke}</span>
-										<input type="range" min="0.5" max="4" step="0.25" disabled={!z.kanten.an} bind:value={z.kanten.dicke} />
+										<input type="range" min="0.25" max="2.5" step="0.05" disabled={!z.kanten.an} bind:value={z.kanten.dicke} />
 										<em class="mono">{zahl(z.kanten.dicke, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} px</em>
 									</label>
 									<label>
@@ -1906,7 +1906,11 @@
 	.sichtleiste .regler .unter { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--tinte-3); }
 	.wahl.formate { flex-wrap: wrap; }
 	.wahl.formate button { border-radius: var(--rund); }
-	.sichtleiste button:hover:not(:disabled) { color: var(--tinte); }
+	/* Gefüllte Knöpfe behalten beim Überfahren ihre Schrift; die Regel für die
+	   leeren setzte sie auf die Füllfarbe, und die Beschriftung verschwand
+	   (Volker, 04.11.2026). Gefüllt antwortet der Knopf mit etwas Deckkraft. */
+	.sichtleiste button:hover:not(:disabled):not(.an) { color: var(--tinte); }
+	.sichtleiste button.an:hover:not(:disabled) { opacity: 0.86; }
 	.sichtleiste button:disabled { opacity: 0.42; cursor: default; }
 	.sichtleiste button.an { background: var(--tinte); border-color: var(--tinte); color: var(--blatt); }
 

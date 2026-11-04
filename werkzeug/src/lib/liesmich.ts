@@ -71,7 +71,7 @@ ${ter ? `Höhen aus ${ter.source}, Modelle: ${(ter.models ?? []).join(', ') || '
 - \`drawing.dxf\`: Höhenlinien alle ${ter.contour_interval_m} m auf \`N_CONTOUR\`, jede fünfte auf \`N_CONTOUR_MAJOR\`, jeweils auf ihrer Höhe.
 - \`data/terrain.json\`: das Raster selbst, mit 150 m Rand um den Rahmen.
 
-Die Quellmodelle haben rund 25–30 m Auflösung und messen meist die Oberfläche: Bebauung und Wald heben sie leicht an. Für Hangneigung, Talform und Flusslage im Masterplanmaßstab reicht das, für Böschungen und Stufen nicht. Über Wasser messen sie keinen Spiegel, sondern Rauschen; jede Wasserfläche aus OpenStreetMap ist deshalb auf eine Höhe gelegt, das untere Fünftel der Werte an ihrem Ufer. Ein genaueres amtliches Modell lässt sich wie oben beschrieben einsetzen.
+Die Quellmodelle haben rund 25–30 m Auflösung und messen meist die Oberfläche: Bebauung und Wald heben sie leicht an. Für Hangneigung, Talform und Flusslage im Masterplanmaßstab reicht das, für Böschungen und Stufen nicht. Über Wasser messen sie keinen Spiegel, sondern Rauschen; jede Wasserfläche aus OpenStreetMap ist deshalb auf eine Höhe gelegt, das untere Fünftel der Werte an ihrem Ufer. Ein Uferstreifen von einer Maschenweite liegt höchstens auf dieser Höhe, damit keine Masche steil über die Uferlinie reicht. Ein genaueres amtliches Modell lässt sich wie oben beschrieben einsetzen.
 
 ${ter.license}` : 'Kein Gelände: Alle Körper stehen auf z = 0, ebene Platte (\`terrain_flat\`).'}
 
@@ -150,7 +150,7 @@ ${ter ? `Heights from ${ter.source}, models: ${(ter.models ?? []).join(', ') || 
 - \`drawing.dxf\`: contours every ${ter.contour_interval_m} m on \`N_CONTOUR\`, every fifth on \`N_CONTOUR_MAJOR\`, each at its height.
 - \`data/terrain.json\`: the raster itself, with a 150 m margin around the frame.
 
-The source models have roughly 25–30 m resolution and mostly measure the surface: buildings and forest raise it slightly. Good enough for slope, valley form and river position at masterplan scale, not for embankments and steps. Over water they measure noise rather than a surface, so every OpenStreetMap water area is set to one height, the lower fifth of the values along its shore. A more accurate official model can be brought in as described above.
+The source models have roughly 25–30 m resolution and mostly measure the surface: buildings and forest raise it slightly. Good enough for slope, valley form and river position at masterplan scale, not for embankments and steps. Over water they measure noise rather than a surface, so every OpenStreetMap water area is set to one height, the lower fifth of the values along its shore. A shore strip one mesh wide is held at most at that height, so no mesh reaches steeply across the shoreline. A more accurate official model can be brought in as described above.
 
 ${ter.license}` : 'No terrain: all bodies stand on z = 0, a flat plate (\`terrain_flat\`).'}
 

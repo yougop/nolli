@@ -8,7 +8,7 @@ import { STIFTE, type StiftId } from './stifte';
 import { base } from '$app/paths';
 import { ablegen, abholen, wegwerfen } from './ablage';
 import { holeBestand, QuellFehler, Abgebrochen } from './quelle';
-import { holeGelaende, wasserEbnen, type Gelaende } from './geo/gelaende';
+import { holeGelaende, wasserEbnen, netzWeite, type Gelaende } from './geo/gelaende';
 import { holeOverture, gebaeudeErgaenzen, placesAus, type Place } from './overture';
 import { netzAus, nutzflaechenAus, poisAus, halteAus, restAus, baeumeAus,
 	type Netz, type Nutzflaeche, type Poi, type Haltestelle, type Linie, type Rest } from './analysedaten';
@@ -247,7 +247,9 @@ class Zustand {
 	private geebnet = $derived.by(() => {
 		const g = this.gelaendeDaten;
 		if (!g) return null;
-		return wasserEbnen(g, this.objekte.filter((o) => o.ebene === 'wasser' && o.art === 'flaeche'));
+		const r = this.rahmen;
+		// Saum eine Masche breit: so weit reicht ein Dreieck über die Uferlinie.
+		return wasserEbnen(g, this.objekte.filter((o) => o.ebene === 'wasser' && o.art === 'flaeche'), r ? netzWeite(r) : undefined);
 	});
 	/** Das Raster, wenn das Gelände an ist und zum Rahmen passt. Sonst null. */
 	get gelaendeJetzt(): Gelaende | null {

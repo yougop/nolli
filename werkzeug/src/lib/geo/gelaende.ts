@@ -279,12 +279,18 @@ function innen(x: number, y: number, ring: [number, number][]) {
 /** Ein Raster genau auf dem Rahmen, für Netz und Höhenlinien. Ursprung: linke untere Rahmenecke. */
 export type Feld = { nx: number; ny: number; dx: number; dy: number; z: Float32Array; min: number; max: number };
 
+/**
+ * Die Maschenweite des Netzes im Rahmen. Höchstens rund 250.000 Maschen.
+ * Bei 10 m reicht das für 25 km²; ein größerer Rahmen bekommt ein gröberes
+ * Netz, sonst wüchse das OBJ in die Größenordnung von hundert Megabyte — bei
+ * einer Quelle mit 25 m.
+ */
+export const netzWeite = (r: Rahmen, weite = RASTER_M) =>
+	Math.max(weite, Math.sqrt(((r.x1 - r.x0) * (r.y1 - r.y0)) / 250000));
+
 export function feldImRahmen(g: Gelaende, r: Rahmen, weite = RASTER_M): Feld {
 	const b = r.x1 - r.x0, h = r.y1 - r.y0;
-	// Höchstens rund 250.000 Maschen. Bei 10 m reicht das für 25 km²; ein
-	// größerer Rahmen bekommt ein gröberes Netz, sonst wüchse das OBJ in
-	// die Größenordnung von hundert Megabyte — bei einer Quelle mit 25 m.
-	weite = Math.max(weite, Math.sqrt((b * h) / 250000));
+	weite = netzWeite(r, weite);
 	const nx = Math.max(2, Math.round(b / weite) + 1), ny = Math.max(2, Math.round(h / weite) + 1);
 	const dx = b / (nx - 1), dy = h / (ny - 1);
 	const z = new Float32Array(nx * ny);
@@ -461,11 +467,21 @@ function verbinden(stuecke: [[number, number], [number, number]][]) {
  * Kanten: Die Elbe hat einige tausend Ecken, das Raster hunderttausende
  * Punkte.
  *
+ * Dazu ein Saum am Ufer, `saum` Meter breit, etwa eine Masche des Netzes:
+ * Dort wird das Land höchstens so hoch wie der Spiegel. Ohne ihn stand das
+ * Ufer, wie das Oberflächenmodell es misst — mit Bäumen und Kaimauern —,
+ * über dem nun tieferen Wasser, und die Masche über der Uferlinie wurde
+ * steil. Das Blau der Karte lief als Zunge die Böschung hinunter (Volker,
+ * Battery Park, 04.11.2026). Mit dem Saum liegt die Masche mit dem Blau
+ * flach, und die Steigung beginnt erst auf Land.
+ *
  * Gibt ein neues Raster zurück; das geholte bleibt unberührt.
  */
-export function wasserEbnen(g: Gelaende, flaechen: { ringe: [number, number][][]; loecher?: [number, number][][] }[]): Gelaende {
+export function wasserEbnen(g: Gelaende, flaechen: { ringe: [number, number][][]; loecher?: [number, number][][] }[], saum = RASTER_M): Gelaende {
 	if (!flaechen.length) return g;
 	const z = new Float32Array(g.z);
+	/** Spiegel je Rasterpunkt im Wasser, sonst NaN. Für den Saum. */
+	const spiegelBei = new Float32Array(g.nx * g.ny).fill(NaN);
 	const x1 = g.x0 + (g.nx - 1) * g.dx, y1 = g.y0 + (g.ny - 1) * g.dy;
 	for (const f of flaechen) {
 		const ringe = [...f.ringe, ...(f.loecher ?? [])].filter((r) => r.length > 2);
@@ -501,9 +517,26 @@ export function wasserEbnen(g: Gelaende, flaechen: { ringe: [number, number][][]
 			for (let k = 0; k + 1 < schnitte.length; k += 2) {
 				const i0 = Math.max(0, Math.ceil((schnitte[k] - g.x0) / g.dx));
 				const i1 = Math.min(g.nx - 1, Math.floor((schnitte[k + 1] - g.x0) / g.dx));
-				for (let i = i0; i <= i1; i++) z[j * g.nx + i] = spiegel;
+				for (let i = i0; i <= i1; i++) { z[j * g.nx + i] = spiegel; spiegelBei[j * g.nx + i] = spiegel; }
 			}
 		}
+	}
+	// Der Saum: Land in Reichweite eines Wasserpunkts höchstens auf dessen Spiegel.
+	const ri = Math.ceil(saum / g.dx), rj = Math.ceil(saum / g.dy);
+	if (ri > 0 || rj > 0) {
+		const quelle = new Float32Array(z);
+		for (let j = 0; j < g.ny; j++)
+			for (let i = 0; i < g.nx; i++) {
+				const k = j * g.nx + i;
+				if (!Number.isNaN(spiegelBei[k])) continue;
+				let tief = Infinity;
+				for (let jj = Math.max(0, j - rj); jj <= Math.min(g.ny - 1, j + rj); jj++)
+					for (let ii = Math.max(0, i - ri); ii <= Math.min(g.nx - 1, i + ri); ii++) {
+						const s = spiegelBei[jj * g.nx + ii];
+						if (s < tief) tief = s;
+					}
+				if (tief < quelle[k]) z[k] = tief;
+			}
 	}
 	return { ...g, z };
 }

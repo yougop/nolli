@@ -3,8 +3,7 @@
 	import { t } from '$lib/sprache.svelte';
 	import * as THREE from 'three';
 	import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
-	import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
-	import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
+	import { N8AOPass } from 'n8ao';
 	import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 	import { z } from '$lib/zustand.svelte';
 	import { sichtEbene } from '$lib/osm';
@@ -24,7 +23,10 @@
 
 	let renderer: THREE.WebGLRenderer | null = null;
 	let composer: EffectComposer | null = null;
-	let gtao: GTAOPass | null = null;
+	let ao: N8AOPass | null = null;
+	/** Der Himmel als Umgebungslicht, aus `himmelSzene` vorgefiltert. */
+	let pmrem: THREE.PMREMGenerator | null = null;
+	let umgebung: THREE.WebGLRenderTarget | null = null;
 	let szene: THREE.Scene | null = null;
 	let kamera: THREE.PerspectiveCamera | null = null;
 	const geloescht: THREE.Object3D[] = [];
@@ -146,16 +148,20 @@
 		 * Verdeckungsschatten. Ein Weißmodell lebt davon: Ohne sie
 		 * verschmelzen Hofwände, enge Gassen und Gebäudefugen zu einer
 		 * einzigen hellen Fläche, weil dort überall dieselbe Farbe liegt.
+		 *
+		 * N8AO statt GTAO seit 04.11.2026: weicher und ohne das Rauschen und
+		 * die hellen Säume, die GTAO an Dachkanten ließ, bei gleicher Last.
+		 * Der Pass zeichnet die Szene selbst, ein RenderPass davor entfällt.
+		 * Radius in Metern: etwa eine Gassenbreite. Die Gammakurve macht der
+		 * OutputPass danach, deshalb hier aus.
 		 */
 		composer = new EffectComposer(renderer);
-		composer.addPass(new RenderPass(szene, kamera));
-		gtao = new GTAOPass(szene, kamera, b, h);
-		gtao.updateGtaoMaterial({
-			radius: 14, distanceExponent: 1, thickness: 30,
-			scale: 1.1, samples: 12, distanceFallOff: 1, screenSpaceRadius: false
-		});
-		composer.addPass(gtao);
+		ao = new N8AOPass(szene, kamera, b, h);
+		ao.setQualityMode('Medium');
+		Object.assign(ao.configuration, { aoRadius: 12, distanceFalloff: 1, gammaCorrection: false, screenSpaceRadius: false });
+		composer.addPass(ao);
 		composer.addPass(new OutputPass());
+		pmrem = new THREE.PMREMGenerator(renderer);
 	}
 
 	/** Ein Stoff für alle Kanten; Breite und Auflösung setzt `zeichne`. */
@@ -170,7 +176,7 @@
 		uSaettigung: { value: 1 }, uKontrast: { value: 1 }, uHelligkeit: { value: 1 }, uMitte: { value: 0.5 }
 	};
 	function bodenStoff(map: THREE.Texture) {
-		const m = new THREE.MeshLambertMaterial({ map });
+		const m = new THREE.MeshStandardMaterial({ map, roughness: 1, metalness: 0 });
 		m.onBeforeCompile = (sh) => {
 			Object.assign(sh.uniforms, karteWerte);
 			sh.fragmentShader = 'uniform float uSaettigung;\nuniform float uKontrast;\nuniform float uHelligkeit;\nuniform float uMitte;\n'
@@ -248,8 +254,10 @@
 			// Umlaufrichtung der Ringe in raum.ts vereinheitlicht wird.
 			// Die Flächen ein wenig nach hinten, damit die Kanten auf ihnen
 			// durchgezogen stehen statt mit ihnen um die Tiefe zu streiten.
-			const stoff = new THREE.MeshLambertMaterial({
-				color: farbe, side: THREE.FrontSide,
+			// Matt wie Gips. Physikalisch gerechnet, damit das Himmelslicht greift;
+			// die Streuung ist dieselbe wie bei Lambert, dazu ein Hauch Glanz.
+			const stoff = new THREE.MeshStandardMaterial({
+				color: farbe, side: THREE.FrontSide, roughness: 0.85, metalness: 0,
 				polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1
 			});
 			stoff.userData.vorgabe = farbe;
@@ -307,7 +315,7 @@
 			if (drin.length) {
 				const kugel = new THREE.InstancedMesh(
 					new THREE.IcosahedronGeometry(1, 0),
-					new THREE.MeshLambertMaterial({ color: KRONE[schema], flatShading: true }),
+					new THREE.MeshStandardMaterial({ color: KRONE[schema], flatShading: true, roughness: 1, metalness: 0 }),
 					drin.length
 				);
 				const m = new THREE.Matrix4();
@@ -351,6 +359,39 @@
 	}
 
 	/**
+	 * Der Himmel für das Umgebungslicht: eine Kuppel, oben kühl und dunkler,
+	 * zum Horizont heller, zur Sonne hin ein Hof, unten der warme Widerschein
+	 * der Stadt. Gerechnet statt als Foto geladen: Er dreht mit der Sonne,
+	 * kostet keine Datei und hat keine fremden Häuser in den Spiegelungen.
+	 *
+	 * Oben etwa so hell wie das frühere Himmelslicht (2,8 mal `e0e8f2`), der
+	 * Widerschein unten aber nur halb: Mit dem hellen Boden von 2,8 mal
+	 * `fbf8ef` bekamen die Schattenseiten so viel Licht, dass die Plastik
+	 * verschwand (Vergleich 04.11.2026).
+	 */
+	const kuppelStoff = new THREE.ShaderMaterial({
+		side: THREE.BackSide, depthWrite: false,
+		uniforms: { uSonne: { value: new THREE.Vector3(0, 1, 0) } },
+		vertexShader: 'varying vec3 vR; void main() { vR = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+		fragmentShader: `
+			uniform vec3 uSonne; varying vec3 vR;
+			void main() {
+				vec3 d = normalize(vR);
+				vec3 zenit = vec3(0.42, 0.53, 0.72), horizont = vec3(0.78, 0.81, 0.85), boden = vec3(0.42, 0.40, 0.36);
+				vec3 c = d.y >= 0.0 ? mix(horizont, zenit, pow(d.y, 0.6)) : mix(horizont * 0.9, boden, min(1.0, -d.y * 6.0));
+				float s = max(dot(d, uSonne), 0.0);
+				if (d.y > -0.05) c += vec3(1.0, 0.96, 0.88) * (0.35 * pow(s, 6.0) + 0.5 * pow(s, 64.0));
+				gl_FragColor = vec4(c, 1.0);
+			}`
+	});
+	const kuppel = new THREE.Scene();
+	kuppel.add(new THREE.Mesh(new THREE.SphereGeometry(100, 48, 24), kuppelStoff));
+	function himmelSzene(sonne: THREE.Vector3) {
+		kuppelStoff.uniforms.uSonne.value.copy(sonne);
+		return kuppel;
+	}
+
+	/**
 	 * Licht nach Rezept und Sonne nach Richtung und Höhe stellen.
 	 *
 	 * **Realistisch**, nach Umbra (04.11.2026): Himmelslicht statt
@@ -385,13 +426,20 @@
 		const s49 = Math.sin((49 * Math.PI) / 180);
 
 		renderer.toneMapping = real ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
-		himmel.intensity = real ? 2.8 : 0;
+		// Realistisch: Der Himmel leuchtet als Umgebung, mit Glanz zur Sonne hin.
+		// Er ersetzt das Himmelslicht; das bleibt nur als Rückfall ohne Umgebung.
+		if (real && pmrem) {
+			umgebung?.dispose();
+			umgebung = pmrem.fromScene(himmelSzene(richtung), 0, 1, 1000);
+			szene.environment = umgebung.texture;
+		} else szene.environment = null;
+		himmel.intensity = real && !szene.environment ? 2.8 : 0;
 		grundlicht.intensity = real ? 0 : 0.62;
 		gegenlicht.intensity = real ? 0 : 0.38;
 		const hell = Math.min(3, Math.max(0.6, s49 / Math.sin(hw)));
 		sonne.intensity = (real ? 2.2 : 2.0) * hell;
 		(sonne as THREE.DirectionalLight).shadow.intensity = real ? 1 : 0.62;
-		if (gtao) gtao.blendIntensity = real ? 0.55 : 1;
+		if (ao) ao.configuration.intensity = real ? 4 : 3;
 
 		const sl = sonne as THREE.DirectionalLight, gl = gegenlicht as THREE.DirectionalLight;
 		sl.position.copy(mitte).addScaledVector(richtung, weit);
@@ -668,7 +716,6 @@
 			// auf, auf einem feinen sofort.
 			renderer.setSize(b, h);
 			composer.setSize(b, h);
-			gtao?.setSize(b, h);
 			zuletzt = { b, h };
 		}
 		kameraStellen(stand);
@@ -757,7 +804,8 @@
 			beob.disconnect();
 			renderer?.domElement.remove();
 			renderer?.dispose();
-			renderer = null; composer = null; gtao = null; szene = null; kamera = null;
+			umgebung?.dispose(); pmrem?.dispose();
+			renderer = null; composer = null; ao = null; szene = null; kamera = null; umgebung = null; pmrem = null;
 			// Die gemerkte Groesse gehoert zur alten Leinwand. Bleibt sie stehen,
 			// haelt `zeichne` die neue fuer schon richtig eingestellt und laesst
 			// sie bei den 300 auf 150 Punkten, mit denen ein Zeichner aufmacht.
@@ -797,8 +845,8 @@
 	 * Die Gebäudefläche aus „Geometrie anpassen": nur die Farbe der Stoffe,
 	 * kein Neubau. Ohne Wert die Vorgabe, Bestand hell, Erhalt etwas dunkler.
 	 */
-	let koerperStoffe: THREE.MeshLambertMaterial[] = [];
-	function flaecheSetzen(m: THREE.MeshLambertMaterial) {
+	let koerperStoffe: THREE.MeshStandardMaterial[] = [];
+	function flaecheSetzen(m: THREE.MeshStandardMaterial) {
 		const f = z.kanten.flaeche;
 		if (f == null) m.color.set(m.userData.vorgabe as number);
 		else m.color.setRGB(f, f, f, THREE.SRGBColorSpace);

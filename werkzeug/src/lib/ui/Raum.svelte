@@ -256,10 +256,14 @@
 			// Umlaufrichtung der Ringe in raum.ts vereinheitlicht wird.
 			// Die Flächen ein wenig nach hinten, damit die Kanten auf ihnen
 			// durchgezogen stehen statt mit ihnen um die Tiefe zu streiten.
-			const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({
+			const stoff = new THREE.MeshLambertMaterial({
 				color: farbe, side: THREE.FrontSide,
 				polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1
-			}));
+			});
+			stoff.userData.vorgabe = farbe;
+			koerperStoffe.push(stoff);
+			flaecheSetzen(stoff);
+			const m = new THREE.Mesh(geo, stoff);
 			m.castShadow = true; m.receiveShadow = true;
 			szene!.add(m); geloescht.push(m);
 
@@ -278,6 +282,7 @@
 			}
 			return m;
 		};
+		koerperStoffe = [];
 		koerper(bauten, 0xeeeeed);
 		koerper(bleibt, 0xc7c5c1);
 
@@ -739,6 +744,21 @@
 			alt?.dispose();
 			anfordern();
 		}, 120);
+	});
+	/**
+	 * Die Gebäudefläche aus „Geometrie anpassen": nur die Farbe der Stoffe,
+	 * kein Neubau. Ohne Wert die Vorgabe, Bestand hell, Erhalt etwas dunkler.
+	 */
+	let koerperStoffe: THREE.MeshLambertMaterial[] = [];
+	function flaecheSetzen(m: THREE.MeshLambertMaterial) {
+		const f = z.kanten.flaeche;
+		if (f == null) m.color.set(m.userData.vorgabe as number);
+		else m.color.setRGB(f, f, f, THREE.SRGBColorSpace);
+	}
+	$effect(() => {
+		z.kanten.flaeche;
+		for (const m of koerperStoffe) flaecheSetzen(m);
+		anfordern();
 	});
 	// Die Kantenstärke: nur neu zeichnen.
 	$effect(() => { z.kanten.dicke; z.kanten.deckkraft; z.kanten.hell; anfordern(); });

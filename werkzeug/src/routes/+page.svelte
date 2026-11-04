@@ -1088,13 +1088,14 @@
 						-->
 						<div class="klapp" bind:this={kantenKlapp}>
 							<button type="button" class="einzeln" class:an={kantenRegler}
-								class:veraendert={!z.kanten.an || z.kanten.hell || z.kanten.dicke !== KANTEN_VORGABE.dicke || z.kanten.deckkraft !== KANTEN_VORGABE.deckkraft}
+								class:veraendert={!z.kanten.an || z.kanten.hell || z.kanten.flaeche != null || z.kanten.dicke !== KANTEN_VORGABE.dicke || z.kanten.deckkraft !== KANTEN_VORGABE.deckkraft}
 								aria-expanded={kantenRegler}
 								onclick={() => (kantenRegler = !kantenRegler)}
-								title={t().sicht.kantenTitel}
-							>{t().sicht.kanten}</button>
+								title={t().sicht.geoTitel}
+							>{t().sicht.geo}</button>
 							{#if kantenRegler}
-								<div class="regler" role="group" aria-label={t().sicht.kanten}>
+								<div class="regler" role="group" aria-label={t().sicht.geo}>
+									<span class="unter">{t().sicht.kanten}</span>
 									<div class="wahl schmal">
 										<button type="button" class:an={z.kanten.an} onclick={() => (z.kanten.an = true)}>{t().sicht.kantenAn}</button>
 										<button type="button" class:an={!z.kanten.an} onclick={() => (z.kanten.an = false)}>{t().sicht.kantenAus}</button>
@@ -1113,6 +1114,17 @@
 										<input type="range" min="0.1" max="1" step="0.01" disabled={!z.kanten.an} bind:value={z.kanten.deckkraft} />
 										<em class="mono">{Math.round(z.kanten.deckkraft * 100)} %</em>
 									</label>
+									<span class="unter">{t().sicht.flaeche}</span>
+									<label>
+										<span>{t().sicht.helligkeit}</span>
+										<input type="range" min="0" max="1" step="0.01"
+											value={z.kanten.flaeche ?? 0.93}
+											oninput={(e) => (z.kanten.flaeche = Number((e.currentTarget as HTMLInputElement).value))} />
+										<em class="mono">{z.kanten.flaeche == null ? t().sicht.standard : `${Math.round(z.kanten.flaeche * 100)} %`}</em>
+									</label>
+									<button type="button" class="zurueck"
+										disabled={z.kanten.an === KANTEN_VORGABE.an && z.kanten.hell === KANTEN_VORGABE.hell && z.kanten.dicke === KANTEN_VORGABE.dicke && z.kanten.deckkraft === KANTEN_VORGABE.deckkraft && z.kanten.flaeche == null}
+										onclick={() => { Object.assign(z.kanten, { an: KANTEN_VORGABE.an, hell: KANTEN_VORGABE.hell, dicke: KANTEN_VORGABE.dicke, deckkraft: KANTEN_VORGABE.deckkraft, flaeche: null }); }}>{t().sicht.karteZurueck}</button>
 								</div>
 							{/if}
 						</div>

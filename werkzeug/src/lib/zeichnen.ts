@@ -19,7 +19,7 @@ export type Zeichenwunsch = {
 	 * gemeint und wächst mit dem Blatt mit, damit ein 8K-Bild dieselbe
 	 * Zeichnung zeigt wie der Bildschirm.
 	 */
-	kanten?: { an: boolean; dicke: number; deckkraft: number; karteDicke?: number; karteDeckkraft?: number; hell?: boolean };
+	kanten?: { an: boolean; dicke: number; deckkraft: number; karteDicke?: number; karteDeckkraft?: number; hell?: boolean; flaeche?: number | null };
 	hervorgehoben?: StiftId | null;
 	ausgewaehlt?: Set<string>;
 	fanglinie?: [number, number][] | null;   // Polygon im Entstehen
@@ -376,6 +376,10 @@ export function zeichneBlatt(
 	}
 
 	// 5 Gebaeude
+	/** Die Gebäudefläche aus „Geometrie anpassen", als Grau; sonst die der Darstellung. */
+	const eigeneFlaeche = w.kanten?.flaeche != null
+		? (() => { const v = Math.round(Math.max(0, Math.min(1, w.kanten!.flaeche!)) * 255); return `rgb(${v},${v},${v})`; })()
+		: null;
 	const bauten = w.ohneBauten ? [] : objekte.filter(
 		(o) => (o.ebene === 'gebaeude' || o.ebene === 'erhalt')
 			&& w.sichtbar.has(sichtEbene(o)) && o.zustand !== 'gestrichen'
@@ -477,16 +481,16 @@ export function zeichneBlatt(
 				auflegen(grob.leinwand, 0.2);
 			}
 
-			ctx.fillStyle = farbe('gebaeude');
+			ctx.fillStyle = eigeneFlaeche ?? farbe('gebaeude');
 			ctx.strokeStyle = d.kante?.gebaeude ?? '#3A3C3E';
 			ctx.lineWidth = kante;
 			for (const o of band) { pfad(o, true); ctx.fill('evenodd'); ctx.stroke(); }
 		}
 	} else {
 		for (const o of bauten) {
-			const f = d.nachTiefe
+			const f = eigeneFlaeche ?? (d.nachTiefe
 				? nachTiefe(o)
-				: d.nachNutzung ? d.nachNutzung[o.klasse ?? 'unbestimmt'] : farbe(o.ebene);
+				: d.nachNutzung ? d.nachNutzung[o.klasse ?? 'unbestimmt'] : farbe(o.ebene));
 			flaeche(o, f, nurLinie ? f : d.kante?.[o.ebene], nurLinie ? dick('gebaeude') : undefined);
 		}
 	}

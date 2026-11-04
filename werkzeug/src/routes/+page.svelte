@@ -1670,7 +1670,9 @@
 				{t().fuss.nord(Math.abs(r.konvergenz) < 0.005 ? '0' : Math.abs(r.konvergenz).toFixed(3))}
 			</span>
 			<span>{t().fuss.objekte(z.objekte.length)}</span>
-			{#if z.gesichert}
+			{#if z.nichtGesichert}
+				<span class="warnt" title={t().fuss.nichtGesichertTitel}>{t().fuss.nichtGesichert}</span>
+			{:else if z.gesichert}
 				<span title={t().fuss.gesichertTitel}>
 					{t().fuss.gesichert(uhrzeit(z.gesichert))}
 				</span>
@@ -2090,4 +2092,5 @@
 	}
 	.bildrahmen .grund button.an { background: var(--tinte); border-color: var(--tinte); color: var(--blatt); }
 	.bildrahmen .grund button:disabled { opacity: 0.42; cursor: default; }
+	.warnt { color: var(--warn); }
 </style>

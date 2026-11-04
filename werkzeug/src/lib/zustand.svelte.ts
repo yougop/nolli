@@ -597,6 +597,8 @@ class Zustand {
 	private static readonly FACH = 'sitzung';
 	private takt: ReturnType<typeof setTimeout> | null = null;
 	gesichert = $state<number | null>(null);
+	/** Scheiterte das letzte Sichern? Dann sagt es der Fuß, statt die alte Uhrzeit stehen zu lassen. */
+	nichtGesichert = $state(false);
 
 	/** Ist die Wiederherstellung durch? Karte und Blatt warten darauf. */
 	readonly bereit: Promise<void>;
@@ -625,9 +627,16 @@ class Zustand {
 			linien: this.linien,
 			rest: this.rest,
 			baeume: this.baeume,
-			karte: this.karte,
-			kanten: this.kanten,
-			bild3d: this.bild3d,
+			/**
+			 * Diese drei sind tiefe Zustände, also Proxys, und die kann
+			 * `indexedDB` nicht kopieren: Seit „Karte anpassen" (03.11.2026)
+			 * scheiterte jedes Sichern still mit DataCloneError, auch live,
+			 * und der Fuß zeigte die letzte gelungene Uhrzeit weiter an.
+			 * Klein genug für eine Abschrift.
+			 */
+			karte: $state.snapshot(this.karte),
+			kanten: $state.snapshot(this.kanten),
+			bild3d: $state.snapshot(this.bild3d),
 			ergaenzung: this.ergaenzung,
 			zweifel: this.zweifel,
 			places: this.places,
@@ -661,7 +670,9 @@ class Zustand {
 	async sofortSichern() {
 		if (this.takt) { clearTimeout(this.takt); this.takt = null; }
 		const paket = this.packen();
-		if (await ablegen(Zustand.FACH, paket)) this.gesichert = paket.zeitpunkt;
+		const gut = await ablegen(Zustand.FACH, paket);
+		if (gut) this.gesichert = paket.zeitpunkt;
+		this.nichtGesichert = !gut;
 	}
 
 	private async wiederherstellen(): Promise<void> {

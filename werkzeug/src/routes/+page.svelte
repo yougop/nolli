@@ -2066,7 +2066,14 @@
 	}
 	/* Karte anpassen: ein Knopf, darunter die zwei Regler als kleine Tafel. */
 	.sichtleiste .klapp { position: relative; }
-	.sichtleiste button.veraendert:not(.an) { border-color: var(--tinte-3); color: var(--tinte); }
+	/* Verstellt, aber zu: ein Punkt vor dem Namen statt einer dunkleren Kante.
+	   Die Kante teilte sich der Knopf mit dem Nachbarn, der keine linke hat,
+	   und so wirkte er links abgeschnitten (Volker, 04.11.2026). */
+	.sichtleiste button.veraendert:not(.an) { color: var(--tinte); }
+	.sichtleiste button.veraendert::before {
+		content: ''; display: inline-block; width: 5px; height: 5px; margin-right: 6px;
+		vertical-align: 1px; border-radius: 50%; background: currentColor;
+	}
 	.sichtleiste .regler {
 		position: absolute; top: calc(100% + 6px); left: 0; z-index: 20;
 		display: grid; gap: 10px; width: 260px; padding: 12px 14px;

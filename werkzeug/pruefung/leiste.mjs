@@ -40,7 +40,7 @@ const ids = [...block.split('export const')[0].matchAll(/id:\s*'([^']+)'/g)].map
 // Die Schalter der Sichtleiste: Knöpfe der Klasse `einzeln`, deren Aufschrift
 // aus dem Wörterbuch kommt.
 const seite = lies('routes/+page.svelte');
-const schalter = [...seite.matchAll(/class="einzeln"[\s\S]*?>\{(?:[^{}]*\? [^{}]*: )?t\(\)\.([a-z]+)\.([a-zA-Z]+)\}<\/button>/g)]
+const schalter = [...seite.matchAll(/class="einzeln[^"]*"[\s\S]*?>\{(?:[^{}]*\? [^{}]*: )?t\(\)\.([a-z]+)\.([a-zA-Z]+)\}<\/button>/g)]
 	.map((m) => [m[1], m[2]]);
 
 if (!ids.length) throw new Error('Keine Darstellung gelesen.');

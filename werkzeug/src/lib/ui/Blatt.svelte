@@ -71,6 +71,7 @@
 			sichtbar: z.sichtbar, hervorgehoben: z.hervorgehoben,
 			ausgewaehlt: z.ausgewaehlt, fanglinie: z.fanglinie, ohneSchatten: flott,
 			baeume: z.baeume ? z.baumpunkte : undefined,
+			kanten: { ...z.kanten },
 			blattrand: z.kasten ? [z.kasten.x0, z.kasten.y0, z.kasten.x1, z.kasten.y1] : null
 		});
 	});
@@ -206,7 +207,11 @@
 
 <div class="huelle" bind:this={huelle}>
 	{#if schirmRahmen}
+		<!-- Karte anpassen als CSS-Filter: dieselbe Rechnung wie `anpassen.ts`
+		     (Sättigung nach Rec. 709, Kontrast um die Mitte, Helligkeit als
+		     Faktor, in dieser Reihenfolge), ohne das Blatt neu zu zeichnen. -->
 		<canvas
+			style:filter={`saturate(${z.karte.saettigung}) contrast(${z.karte.kontrast}) brightness(${z.karte.helligkeit ?? 1})`}
 			bind:this={leinwand}
 			class:plottet
 			class:waehlbar

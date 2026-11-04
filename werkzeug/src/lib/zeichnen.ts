@@ -13,6 +13,13 @@ export type Zeichenwunsch = {
 	 *  hineinzoomt und der Blattrand nicht mehr die Leinwandkante ist. */
 	blattrand?: [number, number, number, number] | null;
 	sichtbar: Set<StiftId>;
+	/**
+	 * Zusätzliche Gebäudekanten, wie im 3D-Modell (Volker, 04.11.2026). Die
+	 * Stärke ist in Bildpunkten einer etwa 1.200 Punkte breiten Ansicht
+	 * gemeint und wächst mit dem Blatt mit, damit ein 8K-Bild dieselbe
+	 * Zeichnung zeigt wie der Bildschirm.
+	 */
+	kanten?: { an: boolean; dicke: number; deckkraft: number };
 	hervorgehoben?: StiftId | null;
 	ausgewaehlt?: Set<string>;
 	fanglinie?: [number, number][] | null;   // Polygon im Entstehen
@@ -445,6 +452,19 @@ export function zeichneBlatt(
 	ctx.strokeStyle = d.kante?.erhalt ?? farbe('gebaeude');
 	ctx.lineWidth = dick('erhalt');
 	for (const o of bauten) { if (o.ebene === 'erhalt') { pfad(o, true); ctx.stroke(); } }
+
+	// 5a Die Kanten aus „Kanten", über allen Gebäuden, in einem Zug
+	if (w.kanten?.an && bauten.length) {
+		ctx.save();
+		ctx.globalAlpha = w.kanten.deckkraft;
+		ctx.strokeStyle = '#2B2B29';
+		ctx.lineJoin = 'round';
+		ctx.lineWidth = w.kanten.dicke * Math.max(1, W / 1200);
+		ctx.beginPath();
+		for (const o of bauten) ringeZeichnen(ctx, o, r, 0, 0);
+		ctx.stroke();
+		ctx.restore();
+	}
 
 	/**
 	 * 5b Baeume, wenn zugeschaltet.

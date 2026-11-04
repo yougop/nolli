@@ -325,7 +325,7 @@
 			arbeitet = `paket:${t().ausgeben.paketBild(++n, flach.length)}`;
 			await anstrich();
 			const b = await bild(bestand, rr, d.id, z.bereinigt, z.beschriftung, z.plangebiet, z.sichtbar,
-				false, WEBP, z.baeume ? z.baumpunkte : undefined);
+				false, WEBP, z.baeume ? z.baumpunkte : undefined, z.karte, z.kanten);
 			teile.push({ name: pfadV2(`bilder/${d.id}.webp`), inhalt: b });
 			bilder.push({ datei: `bilder/${d.id}.webp`, darstellung: d.id, was: englisch.darstellungen[d.id].zweck,
 				baeume: !!z.baeume && !!z.baumpunkte.length });
@@ -355,7 +355,7 @@
 				 * die als Grund taugt.
 				 */
 				const g = await bild(bestand, rr, d.id, z.bereinigt, z.beschriftung, z.plangebiet, z.sichtbar,
-					true, WEBP, undefined);
+					true, WEBP, undefined, z.karte);
 				teile.push({ name: pfadV2(`bilder/${d.id}_grund.webp`), inhalt: g });
 				bilder.push({ datei: `bilder/${d.id}_grund.webp`, darstellung: d.id,
 					was: 'The same extent without buildings and without trees, as a ground texture under a model of your own',
@@ -874,7 +874,7 @@
 				const b = raeumlich && raum
 					? await raum.alsBild()
 					: await bild(bestand, r, z.darstellung, z.bereinigt, z.beschriftung, z.plangebiet, z.sichtbar,
-						false, 'image/png', z.baeume ? z.baumpunkte : undefined);
+						false, 'image/png', z.baeume ? z.baumpunkte : undefined, z.karte, z.kanten);
 				laden(b, `${basis}_${darstellungV2(z.darstellung)}_${raeumlich ? z.bild3d.breite : r.pixelBreite}px.png`, 'image/png');
 			} else if (art === 'dxf') {
 				laden(dxf(bestand, r, z.gelaendeJetzt), `${basis}.dxf`, 'application/dxf');
@@ -999,18 +999,25 @@
 								? t().gelaende.titelAn(f0(gelaendeFeld.min), f0(gelaendeFeld.max), z.gelaendeJetzt.quellen.join(', ') || 'AWS Terrain Tiles')
 								: t().gelaende.titelAus}
 						>{z.gelaendeLaedt ? t().gelaende.laedt(z.gelaendeLaedt) : t().gelaende.schalter}</button>
+					</div>
+					<!--
+						Karte anpassen und Kanten: eine eigene Gruppe, weil beide in jeder
+						Darstellung wirken, flach wie räumlich (Volker, 04.11.2026).
+					-->
+					<div class="gruppe" role="group" aria-label={t().sicht.anpassen}>
 						<!--
-							Sättigung und Kontrast des Bodenbilds. Nur im 3D-Modell, wo das
-							Bodenbild liegt; dieselbe Anpassung bekommt `model_texture.png`.
+							Sättigung, Kontrast und Helligkeit der Karte: im 3D-Modell auf dem
+							Boden, in den Blättern auf dem ganzen Blatt, und in jedem Bild, das
+							daraus entsteht, auch in `model_texture.png`.
 						-->
 						<div class="klapp" bind:this={kartenKlapp}>
-							<button type="button" class="einzeln" class:an={kartenRegler && raeumlich}
+							<button type="button" class="einzeln" class:an={kartenRegler}
 								class:veraendert={!istNeutral(z.karte)}
-								disabled={!raeumlich} aria-expanded={kartenRegler && raeumlich}
+								aria-expanded={kartenRegler}
 								onclick={() => (kartenRegler = !kartenRegler)}
 								title={t().sicht.karteTitel}
 							>{t().sicht.karte}</button>
-							{#if kartenRegler && raeumlich}
+							{#if kartenRegler}
 								<div class="regler" role="group" aria-label={t().sicht.karte}>
 									<label>
 										<span>{t().sicht.saettigung}</span>
@@ -1037,13 +1044,13 @@
 							kräftig. Gilt für die Ansicht und das 3D-Bild, nicht fürs OBJ.
 						-->
 						<div class="klapp" bind:this={kantenKlapp}>
-							<button type="button" class="einzeln" class:an={kantenRegler && raeumlich}
+							<button type="button" class="einzeln" class:an={kantenRegler}
 								class:veraendert={!z.kanten.an || z.kanten.dicke !== KANTEN_VORGABE.dicke || z.kanten.deckkraft !== KANTEN_VORGABE.deckkraft}
-								disabled={!raeumlich} aria-expanded={kantenRegler && raeumlich}
+								aria-expanded={kantenRegler}
 								onclick={() => (kantenRegler = !kantenRegler)}
 								title={t().sicht.kantenTitel}
 							>{t().sicht.kanten}</button>
-							{#if kantenRegler && raeumlich}
+							{#if kantenRegler}
 								<div class="regler" role="group" aria-label={t().sicht.kanten}>
 									<div class="wahl schmal">
 										<button type="button" class:an={z.kanten.an} onclick={() => (z.kanten.an = true)}>{t().sicht.kantenAn}</button>
@@ -1510,7 +1517,7 @@
 							{/each}
 						</div>
 						<span class="feld">{t().sicht.bildbreite}</span>
-						<div class="wahl formate">
+						<div class="wahl formate breiten3d">
 							{#each AUSGABEBREITEN as b}
 								<button type="button" class:an={z.bild3d.breite === b}
 									onclick={() => (z.bild3d.breite = b)}>{breiteName(b)}</button>
@@ -1725,6 +1732,8 @@
 	/* Der aufklappende Knopf steht in einer Hülle und ist dort letztes Glied der Gruppe. */
 	.sichtleiste .gruppe > .klapp > button { border-left: 0; border-radius: 0 var(--rund) var(--rund) 0; }
 	.sichtleiste .gruppe > .klapp:not(:last-child) > button { border-radius: 0; }
+	.sichtleiste .gruppe > .klapp:first-child > button { border-left: 1px solid var(--linie); border-radius: var(--rund) 0 0 var(--rund); }
+	.sichtleiste .gruppe > .klapp:first-child > button.an { border-left-color: var(--tinte); }
 	.sichtleiste .regler .wahl.schmal { margin: 0; }
 	.sichtleiste .regler .wahl.schmal button { flex: 1; padding: 4px 8px; }
 	.wahl.formate { flex-wrap: wrap; }
@@ -2007,6 +2016,9 @@
 	/* Bildrahmen in Schritt 3: dieselben Wahlknöpfe wie Karte und Textur, enger. */
 	.bildrahmen { display: grid; gap: 8px; margin-bottom: 14px; }
 	.bildrahmen .wahl { margin: 0; }
+	/* Neun Formate in drei gleichen Reihen: quer, quadratisch bis hoch. */
+	.bildrahmen .wahl.formate:not(.breiten3d) { display: grid; grid-template-columns: repeat(3, 1fr); }
+	.bildrahmen .wahl.formate.breiten3d { display: grid; grid-template-columns: repeat(4, 1fr); }
 	.bildrahmen .wahl.formate button { padding: 5px 8px; }
 	.bildrahmen p { margin: 0; font-size: 11px; color: var(--tinte-3); }
 	.bildrahmen .grund { display: flex; gap: 6px; align-items: center; }

@@ -196,6 +196,13 @@
 	);
 	let raum = $state<Raum | null>(null);
 	let kartenRegler = $state(false);
+	let kartenKlapp = $state<HTMLDivElement | null>(null);
+	/** Die Regeltafel schließt bei einem Klick daneben und mit Escape, wie jedes Aufklappfeld. */
+	function kartenZu(e: Event) {
+		if (!kartenRegler) return;
+		if (e instanceof KeyboardEvent ? e.key === 'Escape' : !kartenKlapp?.contains(e.target as Node))
+			kartenRegler = false;
+	}
 	const f0 = (n: number) => zahl(Math.round(n));
 	const f1 = (n: number) => zahl(n, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
@@ -879,6 +886,7 @@
 {/snippet}
 
 <svelte:head><title>Nolli</title></svelte:head>
+<svelte:window onpointerdown={kartenZu} onkeydown={kartenZu} />
 
 {#snippet overtureKnopf()}
 	{#if z.ergaenzungLaedt}
@@ -979,7 +987,7 @@
 							Sättigung und Kontrast des Bodenbilds. Nur im 3D-Modell, wo das
 							Bodenbild liegt; dieselbe Anpassung bekommt `model_texture.png`.
 						-->
-						<div class="klapp">
+						<div class="klapp" bind:this={kartenKlapp}>
 							<button type="button" class="einzeln" class:an={kartenRegler && raeumlich}
 								class:veraendert={!istNeutral(z.karte)}
 								disabled={!raeumlich} aria-expanded={kartenRegler && raeumlich}

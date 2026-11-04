@@ -1145,7 +1145,8 @@
 <p class="wink">{t().raum.wink}</p>
 
 {#if baut || schaerft}
-	<div class="baut" class:leise={schaerft && !baut} role="status" aria-live="polite">
+	<!-- Beide Hinweise mittig an derselben Stelle (Volker, 04.11.2026). -->
+	<div class="baut" role="status" aria-live="polite">
 		<span class="ring" aria-hidden="true"></span>
 		<span>{baut ? t().raum.baut : t().raum.schaerft}</span>
 		<span class="mono">{t().raum.bodenbild(bautPx)}</span>
@@ -1161,8 +1162,6 @@
 		box-shadow: 0 2px 10px rgb(0 0 0 / 0.08); pointer-events: none;
 	}
 	.baut .mono { color: var(--tinte-2); font-size: 11px; }
-	/* Nachschärfen: das Modell ist schon zu sehen, der Hinweis rückt nach oben. */
-	.baut.leise { top: 18px; transform: translateX(-50%); }
 	.ring {
 		width: 11px; height: 11px; flex: none;
 		border: 2px solid var(--akzent); border-top-color: transparent; border-radius: 50%;

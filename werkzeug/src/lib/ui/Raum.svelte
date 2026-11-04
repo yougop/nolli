@@ -61,6 +61,27 @@
 	const GRUND = { hell: 0xeaeae9, dunkel: 0x1c1c1c };
 
 	/**
+	 * Der Grund hinter dem Modell: nach Schema, oder die gewählte Farbe, oder
+	 * durchsichtig (Volker, 04.11.2026). Durchsichtig heißt kein Hintergrund und
+	 * ein klarer Alphakanal; das PNG trägt ihn mit.
+	 */
+	function hintergrund() {
+		if (!szene || !renderer) return;
+		/**
+		 * Eine eigene Farbe liegt nicht in der Szene, sondern darunter: in der
+		 * Ansicht als Grund der Hülle, im Bild als Fläche unter dem Render. In der
+		 * Szene liefe sie durch die Tonwertanpassung, und aus #ff8800 wurde
+		 * (238, 159, 36). So kommt sie an, wie gewählt.
+		 */
+		const eigen = z.bild3d.transparent || !!z.bild3d.hintergrund;
+		szene.background = eigen ? null : new THREE.Color(GRUND[schema]);
+		renderer.setClearColor(0x000000, eigen ? 0 : 1);
+		if (huelle) huelle.style.background = z.bild3d.transparent
+			? 'repeating-conic-gradient(#d8d8d8 0 25%, #f4f4f4 0 50%) 0 0 / 16px 16px'
+			: (z.bild3d.hintergrund ?? '');
+	}
+
+	/**
 	 * Kronenfarbe, je Schema eine. Abgestimmt mit der Umbra-Sitzung, damit ein
 	 * Baum in der ganzen Kette derselbe Gegenstand ist.
 	 */
@@ -74,8 +95,9 @@
 	 * Ein Weissmodell wird nicht dunkel, nur weil der Raum dunkel ist.
 	 */
 	$effect(() => {
+		schema; z.bild3d.hintergrund; z.bild3d.transparent;
 		if (!szene) return;
-		szene.background = new THREE.Color(GRUND[schema]);
+		hintergrund();
 		anfordern();
 	});
 
@@ -89,7 +111,8 @@
 	 */
 	function aufbauen(el: HTMLDivElement, b: number, h: number) {
 		if (renderer) return;
-		renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+		// Mit Alphakanal, damit das 3D-Bild auf Wunsch einen durchsichtigen Grund hat.
+		renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, alpha: true });
 		renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
 		renderer.shadowMap.enabled = true;
 		renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -99,7 +122,7 @@
 		renderer.domElement.style.display = 'block';
 
 		szene = new THREE.Scene();
-		szene.background = new THREE.Color(GRUND[schema]);
+		hintergrund();
 		kamera = new THREE.PerspectiveCamera(38, 1, 1, 20000);
 
 		/**
@@ -623,8 +646,18 @@
 		renderer.setPixelRatio(1);
 		zuletzt = { b: 0, h: 0 };
 		zeichne({ b, h, aus });
+		// Eine eigene Farbe unter das Render legen; durchsichtig bleibt durchsichtig.
+		let quelle: HTMLCanvasElement = renderer.domElement;
+		if (z.bild3d.hintergrund && !z.bild3d.transparent) {
+			const c = document.createElement('canvas');
+			c.width = quelle.width; c.height = quelle.height;
+			const ctx = c.getContext('2d')!;
+			ctx.fillStyle = z.bild3d.hintergrund; ctx.fillRect(0, 0, c.width, c.height);
+			ctx.drawImage(quelle, 0, 0);
+			quelle = c;
+		}
 		const blob = await new Promise<Blob>((gut, schlecht) =>
-			renderer!.domElement.toBlob((x) => (x ? gut(x) : schlecht(new Error('Kein Bild'))), typ, 1)
+			quelle.toBlob((x) => (x ? gut(x) : schlecht(new Error('Kein Bild'))), typ, 1)
 		);
 		renderer.setPixelRatio(dichte);
 		zuletzt = { b: 0, h: 0 };

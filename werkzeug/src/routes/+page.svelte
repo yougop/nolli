@@ -212,15 +212,12 @@
 	let kartenKlapp = $state<HTMLDivElement | null>(null);
 	let kantenRegler = $state(false);
 	let kantenKlapp = $state<HTMLDivElement | null>(null);
-	let bildRegler = $state(false);
-	let bildKlapp = $state<HTMLDivElement | null>(null);
 	/** Die Regeltafeln schließen bei einem Klick daneben und mit Escape, wie jedes Aufklappfeld. */
 	function kartenZu(e: Event) {
 		const zu = (huelle: HTMLDivElement | null) =>
 			e instanceof KeyboardEvent ? e.key === 'Escape' : !huelle?.contains(e.target as Node);
 		if (kartenRegler && zu(kartenKlapp)) kartenRegler = false;
 		if (kantenRegler && zu(kantenKlapp)) kantenRegler = false;
-		if (bildRegler && zu(bildKlapp)) bildRegler = false;
 	}
 	const f0 = (n: number) => zahl(Math.round(n));
 	const f1 = (n: number) => zahl(n, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -1065,41 +1062,6 @@
 								</div>
 							{/if}
 						</div>
-						<!--
-							Der Bildrahmen: Format und Breite des 3D-Bilds, und ob der
-							Ausschnitt in der Ansicht zu sehen ist (Volker, 04.11.2026).
-						-->
-						<div class="klapp" bind:this={bildKlapp}>
-							<button type="button" class="einzeln" class:an={bildRegler && raeumlich}
-								class:veraendert={z.bild3d.rahmen}
-								disabled={!raeumlich} aria-expanded={bildRegler && raeumlich}
-								onclick={() => (bildRegler = !bildRegler)}
-								title={t().sicht.bildrahmenTitel}
-							>{t().sicht.bildrahmen}</button>
-							{#if bildRegler && raeumlich}
-								<div class="regler" role="group" aria-label={t().sicht.bildrahmen}>
-									<div class="wahl schmal">
-										<button type="button" class:an={z.bild3d.rahmen} onclick={() => (z.bild3d.rahmen = true)}>{t().sicht.kantenAn}</button>
-										<button type="button" class:an={!z.bild3d.rahmen} onclick={() => (z.bild3d.rahmen = false)}>{t().sicht.kantenAus}</button>
-									</div>
-									<span class="feld">{t().sicht.format}</span>
-									<div class="wahl formate">
-										{#each BILDFORMATE as f}
-											<button type="button" class:an={z.bild3d.format === f.name}
-												onclick={() => (z.bild3d.format = f.name)}>{f.name === 'ansicht' ? t().sicht.formatAnsicht : f.name}</button>
-										{/each}
-									</div>
-									<span class="feld">{t().sicht.bildbreite}</span>
-									<div class="wahl formate">
-										{#each AUSGABEBREITEN as b}
-											<button type="button" class:an={z.bild3d.breite === b}
-												onclick={() => (z.bild3d.breite = b)}>{breiteName(b)}</button>
-										{/each}
-									</div>
-									<p class="leise">{bildMass[0]} × {bildMass[1]}</p>
-								</div>
-							{/if}
-						</div>
 					</div>
 					<div class="gruppe" role="group" aria-label={t().sicht.ebenen}>
 						<button type="button" class="einzeln" class:an={z.beschriftung} disabled={raeumlich}
@@ -1528,7 +1490,46 @@
 						{/each}
 					</div>
 					{#if z.ausgabeBreite > 4096 || (raeumlich && z.bild3d.breite > 4096)}<p class="hinweis leise">{t().ausgeben.achtK}</p>{/if}
-					{#if raeumlich}<p class="hinweis leise">{t().ausgeben.bild3dHinweis}</p>{/if}
+					{#if raeumlich}
+						<!--
+							Der Bildrahmen: Format, Breite und Grund des 3D-Bilds, und ob der
+							Ausschnitt in der Ansicht zu sehen ist. Hier bei der Ausgabe statt in
+							der Leiste (Volker, 04.11.2026), getrennt von Karte und Textur.
+						-->
+						<span class="feld">{t().sicht.bildrahmen}</span>
+						<div class="bildrahmen">
+						<div class="wahl schmal">
+							<button type="button" class:an={z.bild3d.rahmen} onclick={() => (z.bild3d.rahmen = true)}>{t().sicht.kantenAn}</button>
+							<button type="button" class:an={!z.bild3d.rahmen} onclick={() => (z.bild3d.rahmen = false)}>{t().sicht.kantenAus}</button>
+						</div>
+						<span class="feld">{t().sicht.format}</span>
+						<div class="wahl formate">
+							{#each BILDFORMATE as f}
+								<button type="button" class:an={z.bild3d.format === f.name}
+									onclick={() => (z.bild3d.format = f.name)}>{f.name === 'ansicht' ? t().sicht.formatAnsicht : f.name}</button>
+							{/each}
+						</div>
+						<span class="feld">{t().sicht.bildbreite}</span>
+						<div class="wahl formate">
+							{#each AUSGABEBREITEN as b}
+								<button type="button" class:an={z.bild3d.breite === b}
+									onclick={() => (z.bild3d.breite = b)}>{breiteName(b)}</button>
+							{/each}
+						</div>
+						<p class="leise">{bildMass[0]} × {bildMass[1]}</p>
+
+							<span class="feld">{t().sicht.hintergrund}</span>
+							<div class="grund">
+								<input type="color" aria-label={t().sicht.hintergrund} disabled={z.bild3d.transparent}
+									value={z.bild3d.hintergrund ?? (schema === 'dunkel' ? '#1c1c1c' : '#eaeae9')}
+									oninput={(e) => (z.bild3d.hintergrund = (e.currentTarget as HTMLInputElement).value)} />
+								<button type="button" class:an={z.bild3d.transparent}
+									onclick={() => (z.bild3d.transparent = !z.bild3d.transparent)}>{t().sicht.transparent}</button>
+								<button type="button" disabled={!z.bild3d.hintergrund && !z.bild3d.transparent}
+									onclick={() => { z.bild3d.hintergrund = null; z.bild3d.transparent = false; }}>{t().sicht.standard}</button>
+							</div>
+						</div>
+					{/if}
 					<p class="hinweis leise">
 						{t().darstellungen[darstellungJetzt.id].zweck}
 						{#if hoehenAbstand}
@@ -1727,10 +1728,7 @@
 	.sichtleiste .regler .wahl.schmal { margin: 0; }
 	.sichtleiste .regler .wahl.schmal button { flex: 1; padding: 4px 8px; }
 	.wahl.formate { flex-wrap: wrap; }
-	.sichtleiste .regler .wahl.formate { margin: 0; }
-	.sichtleiste .regler .wahl.formate button { padding: 4px 8px; border-radius: var(--rund); }
-	.sichtleiste .regler .feld { font-size: 11px; color: var(--tinte-3); }
-	.sichtleiste .regler p { margin: 0; font-size: 11px; }
+	.wahl.formate button { border-radius: var(--rund); }
 	.sichtleiste button:hover:not(:disabled) { color: var(--tinte); }
 	.sichtleiste button:disabled { opacity: 0.42; cursor: default; }
 	.sichtleiste button.an { background: var(--tinte); border-color: var(--tinte); color: var(--blatt); }
@@ -2006,4 +2004,17 @@
 	.sichtleiste .regler input { width: 100%; accent-color: var(--tinte); }
 	.sichtleiste .regler em { font-style: normal; font-size: 11px; text-align: right; color: var(--tinte); }
 	.sichtleiste .regler .zurueck { justify-self: end; border-radius: var(--rund); }
+	/* Bildrahmen in Schritt 3: dieselben Wahlknöpfe wie Karte und Textur, enger. */
+	.bildrahmen { display: grid; gap: 8px; margin-bottom: 14px; }
+	.bildrahmen .wahl { margin: 0; }
+	.bildrahmen .wahl.formate button { padding: 5px 8px; }
+	.bildrahmen p { margin: 0; font-size: 11px; color: var(--tinte-3); }
+	.bildrahmen .grund { display: flex; gap: 6px; align-items: center; }
+	.bildrahmen .grund input[type='color'] { width: 38px; height: 30px; padding: 0; border: 1px solid var(--linie); border-radius: var(--rund); background: none; cursor: pointer; }
+	.bildrahmen .grund button {
+		padding: 6px 10px; font-size: 12px; cursor: pointer;
+		background: var(--grund); color: var(--tinte-2); border: 1px solid var(--linie); border-radius: var(--rund);
+	}
+	.bildrahmen .grund button.an { background: var(--tinte); border-color: var(--tinte); color: var(--blatt); }
+	.bildrahmen .grund button:disabled { opacity: 0.42; cursor: default; }
 </style>

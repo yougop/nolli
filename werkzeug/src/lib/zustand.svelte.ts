@@ -96,7 +96,8 @@ class Zustand {
 	 * Das 3D-Bild, getrennt von der Karte (Volker, 04.11.2026): eigenes Format
 	 * und eigene Breite. `rahmen` zeigt den Ausschnitt in der Ansicht.
 	 */
-	bild3d = $state({ format: 'ansicht', breite: 4096, rahmen: false });
+	bild3d = $state<{ format: string; breite: number; rahmen: boolean; hintergrund: string | null; transparent: boolean }>(
+		{ format: 'ansicht', breite: 4096, rahmen: false, hintergrund: null, transparent: false });
 
 	/**
 	 * Gelände zuschaltbar, wie die Bäume.
@@ -675,7 +676,7 @@ class Zustand {
 		this.baeume = p.baeume ?? false;
 		this.karte = { ...NEUTRAL, ...(p.karte ?? {}) };
 		this.kanten = { ...KANTEN_VORGABE, ...(p.kanten ?? {}) };
-		this.bild3d = { ...{ format: 'ansicht', breite: 4096, rahmen: false }, ...(p.bild3d ?? {}) };
+		this.bild3d = { ...{ format: 'ansicht', breite: 4096, rahmen: false, hintergrund: null, transparent: false }, ...(p.bild3d ?? {}) };
 		this.baumpunkte = baeumeAus(this.rest);
 		this.ergaenzung = p.ergaenzung ?? null;
 		this.zweifel = p.zweifel ?? [];

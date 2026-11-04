@@ -1097,12 +1097,13 @@
 								<div class="regler" role="group" aria-label={t().sicht.karte}>
 									<label>
 										<span>{t().sicht.saettigung}</span>
-										<input type="range" min="0" max="1.5" step="0.01" bind:value={z.karte.saettigung} />
+										<!-- Bis 300 % (Volker, 04.11.2026): blasse Karten brauchen mehr als 150 %. -->
+										<input type="range" min="0" max="3" step="0.01" bind:value={z.karte.saettigung} />
 										<em class="mono">{Math.round(z.karte.saettigung * 100)} %</em>
 									</label>
 									<label>
 										<span>{t().sicht.kontrast}</span>
-										<input type="range" min="0.5" max="1.5" step="0.01" bind:value={z.karte.kontrast} />
+										<input type="range" min="0.5" max="3" step="0.01" bind:value={z.karte.kontrast} />
 										<em class="mono">{Math.round(z.karte.kontrast * 100)} %</em>
 									</label>
 									<label>

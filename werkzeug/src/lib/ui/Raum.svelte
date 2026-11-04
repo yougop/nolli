@@ -163,7 +163,12 @@
 		const c = document.createElement('canvas');
 		// 2048 waren bei eineinhalb Kilometer Rahmenbreite 0,72 Meter je Bildpunkt;
 		// eine zwei Meter breite Gasse bekam drei Punkte und franste aus.
-		const k = Math.min(3072, renderer?.capabilities.maxTextureSize ?? 3072);
+		//
+		// Seit 04.11.2026 so breit wie die gewählte Ausgabe, bis 8K (Volker: nah
+		// dran wirkte der Boden pixelig, obwohl Rhino schon 8K bekam). Die
+		// Ansicht zeigt damit dieselbe Schärfe wie `model_texture.png`. Begrenzt
+		// durch das, was die Grafikkarte als Textur annimmt.
+		const k = Math.min(z.ausgabeBreite, renderer?.capabilities.maxTextureSize ?? 4096);
 		c.width = k; c.height = Math.round((k * r.hoeheM) / r.breiteM);
 		const tex = new Rahmen({
 			lon0: r.gitter.lon0, bbox: [r.x0, r.y0, r.x1, r.y1],
@@ -460,7 +465,16 @@
 		const aspekt = s.b / s.h;
 		kamera.aspect = aspekt;
 		const g = grundstellung(r, aspekt);
-		const blick = g.blick.clone().add(new THREE.Vector3(s.vx, 0, s.vz));
+		/**
+		 * Der Blickpunkt der Grundstellung liegt neben der Bodenmitte, damit das
+		 * ganze Modell mittig im Bild steht — auch unter null. Beim Heranzoomen
+		 * wandert er deshalb im Verhältnis auf den Boden. Sonst sank die Kamera
+		 * mit kleinem Abstand unter die Bodenplatte, und die Ansicht war leer
+		 * (gefunden am 04.11.2026, in der Live-Fassung schon ab 20 m Maßstab).
+		 */
+		const boden = ziel(r, 0, 0);
+		const blick = g.blick.clone().sub(boden).multiplyScalar(Math.min(1, s.a))
+			.add(boden).add(new THREE.Vector3(s.vx, 0, s.vz));
 		const d = g.d * s.a;
 		kamera.position.set(
 			blick.x + d * Math.cos(s.n) * Math.sin(s.w),
@@ -469,8 +483,10 @@
 		);
 		kamera.lookAt(blick);
 		// Enger Tiefenbereich, sonst verliert die Verdeckungsberechnung Auflösung
-		kamera.near = Math.max(1, d / 400);
-		kamera.far = d * 6;
+		// Nah dran darf die Ferne nicht abgeschnitten werden: Der Rahmen muss
+		// ganz in den Tiefenbereich passen, auch wenn die Kamera im Modell steht.
+		kamera.near = Math.max(0.5, d / 400);
+		kamera.far = Math.max(d * 6, Math.hypot(r.breiteM, r.hoeheM) * 2 + modellHoehe());
 		kamera.updateProjectionMatrix();
 		kamera.updateMatrixWorld();
 
@@ -604,7 +620,7 @@
 	});
 	$effect(() => {
 		z.objekte; z.sichtbar; z.bereinigt; z.plangebiet; z.kasten; z.baeume; z.baumpunkte; feld;
-		z.kanten.an;
+		z.kanten.an; z.ausgabeBreite;
 		if (!renderer) return;
 		bauen(); anfordern();
 	});
@@ -679,7 +695,12 @@
 		const px = e.clientX - k.left, py = e.clientY - k.top;
 
 		const vorher = bodenpunkt(px, py, k.width, k.height);
-		const neu = Math.max(0.1, Math.min(3, abstand * (e.deltaY < 0 ? 1 / 1.15 : 1.15)));
+		// Untergrenze in Metern statt als Anteil: Bei einem Rahmen von vier
+		// Kilometern hörte das Heranzoomen sonst bei sechshundert Metern auf.
+		// Rund 25 m vor dem Blickpunkt reichen für ein einzelnes Haus.
+		const r = z.rahmen;
+		const ganz = r ? grundstellung(r, k.width / k.height).d : 1;
+		const neu = Math.max(Math.min(0.1, 25 / ganz), Math.min(3, abstand * (e.deltaY < 0 ? 1 / 1.15 : 1.15)));
 		if (!vorher) { abstand = neu; return; }
 
 		kameraStellen({ ...stand, a: neu, b: k.width, h: k.height });

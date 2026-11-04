@@ -138,7 +138,7 @@
 	}
 
 	/** Ein Stoff für alle Kanten; Breite und Auflösung setzt `zeichne`. */
-	const kantenStoff = new LineMaterial({ color: 0x3a3a37, linewidth: 1.5, worldUnits: false });
+	const kantenStoff = new LineMaterial({ color: 0x3a3a37, linewidth: 0.75, worldUnits: false });
 
 	/**
 	 * Sättigung, Kontrast und Helligkeit des Bodens als Shaderwerte. Ein Zug am

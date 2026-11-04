@@ -31,6 +31,10 @@ export type Kasten = { x0: number; y0: number; x1: number; y1: number; lon0: num
  */
 const atmen = () => new Promise<void>((f) => requestAnimationFrame(() => setTimeout(f, 0)));
 
+
+/** Die Kanten im 3D-Modell, wie sie ab Werk stehen (Volker, 04.11.2026): fein und leise. */
+export const KANTEN_VORGABE = { an: true, dicke: 0.75, deckkraft: 0.75 };
+
 class Zustand {
 	schritt = $state<1 | 2 | 3>(1);
 	ort = $state<Ort | null>(null);
@@ -87,7 +91,7 @@ class Zustand {
 	/** Sättigung und Kontrast des Bodenbilds im 3D-Modell und in `model_texture.png`. */
 	karte = $state<Anpassung>({ ...NEUTRAL });
 	/** Die Kanten im 3D-Modell: an oder aus, Stärke in Bildschirmpunkten, Deckkraft 0 bis 1. */
-	kanten = $state({ an: true, dicke: 1.5, deckkraft: 1 });
+	kanten = $state({ ...KANTEN_VORGABE });
 
 	/**
 	 * Gelände zuschaltbar, wie die Bäume.
@@ -664,7 +668,7 @@ class Zustand {
 		this.rest = p.rest ?? [];
 		this.baeume = p.baeume ?? false;
 		this.karte = { ...NEUTRAL, ...(p.karte ?? {}) };
-		this.kanten = { ...{ an: true, dicke: 1.5, deckkraft: 1 }, ...(p.kanten ?? {}) };
+		this.kanten = { ...KANTEN_VORGABE, ...(p.kanten ?? {}) };
 		this.baumpunkte = baeumeAus(this.rest);
 		this.ergaenzung = p.ergaenzung ?? null;
 		this.zweifel = p.zweifel ?? [];

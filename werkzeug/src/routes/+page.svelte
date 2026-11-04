@@ -2,7 +2,7 @@
 	import Karte from '$lib/ui/Karte.svelte';
 	import Blatt from '$lib/ui/Blatt.svelte';
 	import Raum from '$lib/ui/Raum.svelte';
-	import { z, VERHAELTNISSE, AUSGABEBREITEN } from '$lib/zustand.svelte';
+	import { z, VERHAELTNISSE, AUSGABEBREITEN, KANTEN_VORGABE } from '$lib/zustand.svelte';
 	import { breiteName } from '$lib/geo/rahmen';
 	import { STIFTE, FAHRBAHN } from '$lib/stifte';
 	import { ebenenZaehlen } from '$lib/zeichnen';
@@ -1025,7 +1025,7 @@
 						-->
 						<div class="klapp" bind:this={kantenKlapp}>
 							<button type="button" class="einzeln" class:an={kantenRegler && raeumlich}
-								class:veraendert={!z.kanten.an || z.kanten.dicke !== 1.5 || z.kanten.deckkraft !== 1}
+								class:veraendert={!z.kanten.an || z.kanten.dicke !== KANTEN_VORGABE.dicke || z.kanten.deckkraft !== KANTEN_VORGABE.deckkraft}
 								disabled={!raeumlich} aria-expanded={kantenRegler && raeumlich}
 								onclick={() => (kantenRegler = !kantenRegler)}
 								title={t().sicht.kantenTitel}

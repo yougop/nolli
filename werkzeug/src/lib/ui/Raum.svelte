@@ -39,6 +39,14 @@
 			float t = float( i ) * 2.399963229728653 + phi;
 			return vec2( cos( t ), sin( t ) ) * r;
 		}
+		// Ein Vergleich mit Zwischenwert aus den vier Nachbarpunkten der Karte.
+		// Ohne ihn zeigt jeder Rand die Treppe der Kartenpunkte (Volker, 04.11.2026).
+		float pcssVergleich( sampler2D karte, vec2 groesse, vec2 uv, float z ) {
+			vec2 t = uv * groesse - 0.5, f = fract( t ), b = ( floor( t ) + 0.5 ) / groesse, e = 1.0 / groesse;
+			float a = step( z, texture2D( karte, b ).r ), c = step( z, texture2D( karte, b + vec2( e.x, 0.0 ) ).r );
+			float d = step( z, texture2D( karte, b + vec2( 0.0, e.y ) ).r ), g = step( z, texture2D( karte, b + e ).r );
+			return mix( mix( a, c, f.x ), mix( d, g, f.x ), f.y );
+		}
 		float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowIntensity, float shadowBias, float shadowRadius, vec4 shadowCoord ) {
 			shadowCoord.xyz /= shadowCoord.w;
 			shadowCoord.z += shadowBias;
@@ -52,12 +60,12 @@
 				if ( d < shadowCoord.z ) { summe += d; n += 1.0; }
 			}
 			if ( n == 0.0 ) return 1.0;
-			float breite = clamp( ( shadowCoord.z - summe / n ) * shadowRadius, 1.2 * texel, suche );
+			float breite = clamp( ( shadowCoord.z - summe / n ) * shadowRadius, 1.0 * texel, suche );
 			float licht = 0.0;
-			for ( int i = 0; i < 24; i ++ ) {
-				licht += step( shadowCoord.z, texture2D( shadowMap, shadowCoord.xy + pcssScheibe( i, 24, phi + 1.7 ) * breite ).r );
+			for ( int i = 0; i < 16; i ++ ) {
+				licht += pcssVergleich( shadowMap, shadowMapSize, shadowCoord.xy + pcssScheibe( i, 16, phi + 1.7 ) * breite, shadowCoord.z );
 			}
-			return mix( 1.0, licht / 24.0, shadowIntensity );
+			return mix( 1.0, licht / 16.0, shadowIntensity );
 		}
 	`;
 	{
@@ -190,8 +198,7 @@
 		const sonne = new THREE.DirectionalLight(0xfffaf0, 2.2);
 		sonne.castShadow = true;
 		sonne.shadow.mapSize.set(4096, 4096);
-		sonne.shadow.bias = -0.0006;
-		sonne.shadow.normalBias = 0.3;
+		// Versatz und Normalversatz setzt `schattenEinpassen()` nach der Punktgröße.
 		sonne.shadow.radius = 2;
 		const gegenlicht = new THREE.DirectionalLight(0xdfe8f2, 0.38);
 		szene.add(himmel, grundlicht, sonne, sonne.target, gegenlicht, gegenlicht.target);
@@ -487,7 +494,7 @@
 		// (Volker, 04.11.2026), die neutrale Kurve hält den Farbton. Ihr fehlt
 		// die eingebaute Anhebung von ACES, das gleicht der Faktor aus.
 		renderer.toneMapping = real ? THREE.LinearToneMapping : THREE.NeutralToneMapping;
-		renderer.toneMappingExposure = (z.sonne.helligkeit ?? 1) * (real ? 1 : 1.1);
+		renderer.toneMappingExposure = (z.sonne.helligkeit ?? 1) * (real ? 1 : 1.3);
 		// Realistisch: Der Himmel leuchtet als Umgebung, mit Glanz zur Sonne hin.
 		// Er ersetzt das Himmelslicht; das bleibt nur als Rückfall ohne Umgebung.
 		if (real && pmrem) {
@@ -499,11 +506,13 @@
 		} else szene.environment = null;
 		himmel.intensity = real && !szene.environment ? 2.8 : 0;
 		grundlicht.intensity = real ? 0 : an ? 0.62 : 1.25;
+		// Konzept einen Hauch kühl: neutral weiß wirkte neben Realistisch gelb.
+		grundlicht.color.set(0xf2f5fa);
 		gegenlicht.intensity = real ? 0 : 0.38;
 		const hell = Math.min(3, Math.max(0.6, s49 / Math.sin(hw)));
 		sonne.intensity = an ? (real ? 2.2 : 2.0) * hell : 0;
 		// Konzept neutral weiß, Realistisch ein Hauch warm wie Tageslicht.
-		sonne.color.set(real ? 0xfffaf0 : 0xffffff);
+		sonne.color.set(real ? 0xfffaf0 : 0xfafcff);
 		gegenlicht.color.set(real ? 0xdfe8f2 : 0xeef1f4);
 		(sonne as THREE.DirectionalLight).shadow.intensity = real ? 1 : 0.62;
 		if (ao) ao.configuration.intensity = real ? 4 : 3;
@@ -520,15 +529,64 @@
 		s.position.copy(sl.position);
 		s.lookAt(mitte);
 		s.updateMatrixWorld();
+		schattenEinpassen();
+	}
+
+	/**
+	 * Die Schattenkarte auf das legen, was die Kamera sieht.
+	 *
+	 * Bis 04.11.2026 deckte sie immer den ganzen Rahmen ab. Nah dran kamen
+	 * so auf ein Haus nur wenige Kartenpunkte, und die Schatten zeigten
+	 * Treppen (Volker). Jetzt werden Strahlen durch ein Raster der Ansicht
+	 * auf den Boden geschossen, im Rahmen gehalten, und die Karte umfasst
+	 * diese Punkte am Boden und auf größter Höhe. In der Tiefe bleibt sie
+	 * über den ganzen Rahmen, damit ein Haus außerhalb der Sicht seinen
+	 * Schatten trotzdem hineinwirft.
+	 *
+	 * Versatz und Normalversatz folgen der Punktgröße: ein fester Versatz
+	 * war in der Nahsicht über einen Meter und löste die Schatten vom Haus.
+	 */
+	function schattenEinpassen() {
+		const r = z.rahmen;
+		if (!szene || !r || !kamera) return;
+		const sl = (szene.userData.licht as Record<string, THREE.Light>).sonne as THREE.DirectionalLight;
+		const s = sl.shadow.camera as THREE.OrthographicCamera;
 		const inv = s.matrixWorldInverse, hMax = modellHoehe();
-		const min = new THREE.Vector3(Infinity, Infinity, Infinity), max = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
-		const p = new THREE.Vector3();
+		const p = new THREE.Vector3(), q = new THREE.Vector3(), strahl = new THREE.Vector3();
+		const tmin = new THREE.Vector3(Infinity, Infinity, Infinity), tmax = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
 		for (const x of [0, r.breiteM]) for (const y of [-20, hMax]) for (const zz of [0, -r.hoeheM]) {
-			p.set(x, y, zz).applyMatrix4(inv); min.min(p); max.max(p);
+			p.set(x, y, zz).applyMatrix4(inv); tmin.min(p); tmax.max(p);
 		}
-		s.left = min.x - 5; s.right = max.x + 5; s.bottom = min.y - 5; s.top = max.y + 5;
-		s.near = Math.max(0.5, -max.z - 10); s.far = -min.z + 10;
+		const min = new THREE.Vector2(Infinity, Infinity), max = new THREE.Vector2(-Infinity, -Infinity);
+		let ganz = false;
+		kamera.updateMatrixWorld();
+		const N = 6;
+		for (let i = 0; i <= N && !ganz; i++) for (let j = 0; j <= N; j++) {
+			strahl.set((i / N) * 2 - 1, (j / N) * 2 - 1, 0.5).unproject(kamera).sub(kamera.position);
+			// Strahl über dem Horizont: dann eben der ganze Rahmen.
+			if (strahl.y >= -1e-4) { ganz = true; break; }
+			// Wo der Strahl den Boden und die größte Höhe trifft, im Rahmen gehalten.
+			for (const y of [0, hMax]) {
+				const t = Math.max(0, (y - kamera.position.y) / strahl.y);
+				q.copy(kamera.position).addScaledVector(strahl, t);
+				q.x = Math.min(r.breiteM, Math.max(0, q.x));
+				q.z = Math.min(0, Math.max(-r.hoeheM, q.z));
+				for (const yy of [0, hMax]) {
+					p.set(q.x, yy, q.z).applyMatrix4(inv);
+					min.x = Math.min(min.x, p.x); min.y = Math.min(min.y, p.y);
+					max.x = Math.max(max.x, p.x); max.y = Math.max(max.y, p.y);
+				}
+			}
+		}
+		if (ganz || !isFinite(min.x)) { min.set(tmin.x, tmin.y); max.set(tmax.x, tmax.y); }
+		const rand = Math.max(5, (max.x - min.x) * 0.03);
+		s.left = Math.max(tmin.x, min.x) - rand; s.right = Math.min(tmax.x, max.x) + rand;
+		s.bottom = Math.max(tmin.y, min.y) - rand; s.top = Math.min(tmax.y, max.y) + rand;
+		s.near = Math.max(0.5, -tmax.z - 10); s.far = -tmin.z + 10;
 		s.updateProjectionMatrix();
+		const punkt = Math.max(s.right - s.left, s.top - s.bottom) / sl.shadow.mapSize.x;
+		sl.shadow.bias = -(1.5 * punkt) / (s.far - s.near);
+		sl.shadow.normalBias = punkt;
 		// Für die Kontaktschatten: Tiefe der Karte in Meter, Meter in Kartenbreite.
 		sl.shadow.radius = (HALBSCHATTEN * (s.far - s.near)) / (s.right - s.left);
 	}
@@ -788,9 +846,9 @@
 			zuletzt = { b, h };
 		}
 		kameraStellen(stand);
-		if (ausgabe) {
-			kamera.setViewOffset(stand.b, stand.h, ausgabe.aus.x, ausgabe.aus.y, ausgabe.aus.w, ausgabe.aus.h);
-		} else kamera.clearViewOffset();
+		if (ausgabe) kamera.setViewOffset(stand.b, stand.h, ausgabe.aus.x, ausgabe.aus.y, ausgabe.aus.w, ausgabe.aus.h);
+		else kamera.clearViewOffset();
+		schattenEinpassen();
 		// Die Stärke gilt für die Ansicht. Ein Bild in voller Ausgabegröße
 		// bekommt sie im Verhältnis mit, sonst würden die Kanten im 8K-Bild
 		// zu Haaren.

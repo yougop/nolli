@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { zahl } from '$lib/sprache.svelte';
 	import { z } from '$lib/zustand.svelte';
 	import { Rahmen } from '$lib/geo/rahmen';
@@ -59,21 +60,42 @@
 		z.objekte; z.sichtbar; z.hervorgehoben; z.ausgewaehlt; z.darstellung;
 		z.bereinigt; z.plangebiet; z.beschriftung; z.fanglinie; z.zoom; z.mitte; flott; z.baeume;
 		const dpr = Math.min(devicePixelRatio || 1, 2);
-		c.width = Math.round(r.pixelBreite * dpr);
-		c.height = Math.round(r.pixelHoehe * dpr);
-		c.style.width = `${anzeige.w}px`;
-		c.style.height = `${anzeige.h}px`;
-		const ctx = c.getContext('2d')!;
-		ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-		zeichneBlatt(ctx, z.objekte, r, {
+		const wunsch = {
 			darstellung: z.darstellung, bereinigt: z.bereinigt,
 			beschriftung: z.beschriftung, plangebiet: z.plangebiet, rahmenZeigen: true,
 			sichtbar: z.sichtbar, hervorgehoben: z.hervorgehoben,
 			ausgewaehlt: z.ausgewaehlt, fanglinie: z.fanglinie, ohneSchatten: flott,
 			baeume: z.baeume ? z.baumpunkte : undefined,
 			kanten: { ...z.kanten },
-			blattrand: z.kasten ? [z.kasten.x0, z.kasten.y0, z.kasten.x1, z.kasten.y1] : null
+			blattrand: (z.kasten ? [z.kasten.x0, z.kasten.y0, z.kasten.x1, z.kasten.y1] : null) as [number, number, number, number] | null
+		};
+		/**
+		 * Gezeichnet wird höchstens einmal je Bildtakt, mit dem letzten Stand.
+		 * Ein Regler meldet dutzendfach je Sekunde; bisher zeichnete jede
+		 * Meldung das ganze Blatt, und die Ansicht lief der Hand hinterher.
+		 */
+		geplant = { r, c, dpr, wunsch };
+		if (!takt) takt = requestAnimationFrame(() => {
+			takt = 0;
+			const g = geplant; if (!g) return;
+			const w = Math.round(g.r.pixelBreite * g.dpr), h = Math.round(g.r.pixelHoehe * g.dpr);
+			if (g.c.width !== w) g.c.width = w;
+			if (g.c.height !== h) g.c.height = h;
+			g.c.style.width = `${anzeige.w}px`;
+			g.c.style.height = `${anzeige.h}px`;
+			const ctx = g.c.getContext('2d')!;
+			ctx.setTransform(g.dpr, 0, 0, g.dpr, 0, 0);
+			zeichneBlatt(ctx, z.objekte, g.r, g.wunsch);
 		});
+	});
+	let geplant: { r: Rahmen; c: HTMLCanvasElement; dpr: number; wunsch: Parameters<typeof zeichneBlatt>[3] } | null = null;
+	let takt = 0;
+
+	// Während ein Regler der Karte oder der Kanten bewegt wird: ohne Schatten,
+	// wie beim Zoomen. Das fertige Bild kommt, wenn er ruht.
+	$effect(() => {
+		z.kanten.dicke; z.kanten.deckkraft; z.kanten.karteDicke; z.kanten.karteDeckkraft; z.kanten.an;
+		untrack(() => bewegtSich());
 	});
 
 	/** Ein Lauf des Plotters: der einzige gestaltete Bewegungsmoment. */

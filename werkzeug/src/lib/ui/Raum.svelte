@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { t } from '$lib/sprache.svelte';
 	import * as THREE from 'three';
 	import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
@@ -341,6 +342,7 @@
 			platte,
 			bodenStoff(bodenbild(r))
 		);
+		bodenNetz = boden;
 		boden.rotation.x = -Math.PI / 2;
 		boden.position.set(r.breiteM / 2, 0, -r.hoeheM / 2);
 		boden.receiveShadow = true;
@@ -679,11 +681,19 @@
 		const el = huelle;
 		if (!el) return;
 		messen();
-		aufbauen(el, Math.max(200, el.clientWidth), Math.max(150, el.clientHeight));
-		// Wird der Zeichner neu aufgebaut — beim Wechsel des Schemas etwa —,
-		// ist die Szene danach leer. Der Aufbau muss sich selbst genuegen und
-		// darf nicht darauf warten, dass sich zufaellig die Daten aendern.
-		bauen();
+		/**
+		 * Ohne Mitlesen. Dieser Effekt gehört der Leinwand: Läse er, was `bauen`
+		 * nebenbei liest, verwürfe jeder Zug an einem Regler den ganzen
+		 * Zeichner samt Shadern und legte ihn neu an (04.11.2026, gemessen:
+		 * 4,4 s je Reglerschritt, fast alles Shaderübersetzung).
+		 */
+		untrack(() => {
+			aufbauen(el, Math.max(200, el.clientWidth), Math.max(150, el.clientHeight));
+			// Wird der Zeichner neu aufgebaut — beim Wechsel des Schemas etwa —,
+			// ist die Szene danach leer. Der Aufbau muss sich selbst genuegen und
+			// darf nicht darauf warten, dass sich zufaellig die Daten aendern.
+			bauen();
+		});
 		anfordern();
 		const beob = new ResizeObserver(() => { messen(); anfordern(); });
 		beob.observe(el);
@@ -700,9 +710,32 @@
 	});
 	$effect(() => {
 		z.objekte; z.sichtbar; z.bereinigt; z.plangebiet; z.kasten; z.baeume; z.baumpunkte; feld;
-		z.kanten.an; z.ausgabeBreite; z.kanten.karteDicke; z.kanten.karteDeckkraft;
+		z.kanten.an; z.ausgabeBreite; z.rahmen; z.gelaendeJetzt; schema;
 		if (!renderer) return;
-		bauen(); anfordern();
+		// Nur auf die Werte oben hin neu bauen. `bauen` liest nebenbei mehr —
+		// etwa alle Kanteneinstellungen fürs Bodenbild —, und jeder Zug an
+		// einem Regler baute sonst die ganze Szene neu: 4,6 s je Schritt.
+		untrack(() => bauen()); anfordern();
+	});
+	/**
+	 * Die Linien der Karte ändern nur das Bodenbild. Statt die ganze Szene neu
+	 * zu bauen, wird allein die Textur neu gezeichnet, und erst, wenn der
+	 * Regler eine Zehntelsekunde ruht: Ein 8K-Bodenbild dauert länger als ein
+	 * Bildtakt, und jeder Zwischenwert wäre verlorene Arbeit.
+	 */
+	let bodenNetz: THREE.Mesh | null = null;
+	let linienTakt: ReturnType<typeof setTimeout> | undefined;
+	$effect(() => {
+		z.kanten.karteDicke; z.kanten.karteDeckkraft;
+		clearTimeout(linienTakt);
+		linienTakt = setTimeout(() => {
+			const r = z.rahmen, m = bodenNetz?.material as THREE.MeshLambertMaterial | undefined;
+			if (!r || !m) return;
+			const alt = m.map;
+			m.map = bodenbild(r);
+			alt?.dispose();
+			anfordern();
+		}, 120);
 	});
 	// Die Kantenstärke: nur neu zeichnen.
 	$effect(() => { z.kanten.dicke; z.kanten.deckkraft; anfordern(); });

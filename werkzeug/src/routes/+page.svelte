@@ -1025,7 +1025,7 @@
 						-->
 						<div class="klapp" bind:this={kantenKlapp}>
 							<button type="button" class="einzeln" class:an={kantenRegler && raeumlich}
-								class:veraendert={!z.kanten.an || z.kanten.dicke !== 1.5}
+								class:veraendert={!z.kanten.an || z.kanten.dicke !== 1.5 || z.kanten.deckkraft !== 1}
 								disabled={!raeumlich} aria-expanded={kantenRegler && raeumlich}
 								onclick={() => (kantenRegler = !kantenRegler)}
 								title={t().sicht.kantenTitel}
@@ -1040,6 +1040,11 @@
 										<span>{t().sicht.kantenDicke}</span>
 										<input type="range" min="0.5" max="4" step="0.25" disabled={!z.kanten.an} bind:value={z.kanten.dicke} />
 										<em class="mono">{zahl(z.kanten.dicke, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} px</em>
+									</label>
+									<label>
+										<span>{t().sicht.kantenDeckkraft}</span>
+										<input type="range" min="0.1" max="1" step="0.01" disabled={!z.kanten.an} bind:value={z.kanten.deckkraft} />
+										<em class="mono">{Math.round(z.kanten.deckkraft * 100)} %</em>
 									</label>
 								</div>
 							{/if}

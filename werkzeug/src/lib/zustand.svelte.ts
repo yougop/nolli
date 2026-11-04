@@ -86,8 +86,8 @@ class Zustand {
 	bereinigt = $state(false);
 	/** Sättigung und Kontrast des Bodenbilds im 3D-Modell und in `model_texture.png`. */
 	karte = $state<Anpassung>({ ...NEUTRAL });
-	/** Die Kanten im 3D-Modell: an oder aus, Stärke in Bildschirmpunkten. */
-	kanten = $state({ an: true, dicke: 1.5 });
+	/** Die Kanten im 3D-Modell: an oder aus, Stärke in Bildschirmpunkten, Deckkraft 0 bis 1. */
+	kanten = $state({ an: true, dicke: 1.5, deckkraft: 1 });
 
 	/**
 	 * Gelände zuschaltbar, wie die Bäume.
@@ -664,7 +664,7 @@ class Zustand {
 		this.rest = p.rest ?? [];
 		this.baeume = p.baeume ?? false;
 		this.karte = { ...NEUTRAL, ...(p.karte ?? {}) };
-		this.kanten = { ...{ an: true, dicke: 1.5 }, ...(p.kanten ?? {}) };
+		this.kanten = { ...{ an: true, dicke: 1.5, deckkraft: 1 }, ...(p.kanten ?? {}) };
 		this.baumpunkte = baeumeAus(this.rest);
 		this.ergaenzung = p.ergaenzung ?? null;
 		this.zweifel = p.zweifel ?? [];

@@ -17,7 +17,7 @@
 	import { feldImRahmen, tiefsteUnter, hoeheBei } from '$lib/geo/gelaende';
 	import { BAUM } from '$lib/analysedaten';
 	import type { StiftId } from '$lib/stifte';
-	import { KARTE_GLSL } from '$lib/anpassen';
+	import { KARTE_GLSL, mitte } from '$lib/anpassen';
 
 	let huelle = $state<HTMLDivElement | null>(null);
 	let breite = $state(900), hoehe = $state(600);
@@ -175,13 +175,13 @@
 	 * Die Rechnung steht in `anpassen.ts` und gilt dort auch für die Datei.
 	 */
 	const karteWerte = {
-		uSaettigung: { value: 1 }, uKontrast: { value: 1 }, uHelligkeit: { value: 1 }
+		uSaettigung: { value: 1 }, uKontrast: { value: 1 }, uHelligkeit: { value: 1 }, uMitte: { value: 0.5 }
 	};
 	function bodenStoff(map: THREE.Texture) {
 		const m = new THREE.MeshLambertMaterial({ map });
 		m.onBeforeCompile = (sh) => {
 			Object.assign(sh.uniforms, karteWerte);
-			sh.fragmentShader = 'uniform float uSaettigung;\nuniform float uKontrast;\nuniform float uHelligkeit;\n'
+			sh.fragmentShader = 'uniform float uSaettigung;\nuniform float uKontrast;\nuniform float uHelligkeit;\nuniform float uMitte;\n'
 				+ sh.fragmentShader.replace('#include <map_fragment>', '#include <map_fragment>\n' + KARTE_GLSL);
 		};
 		return m;
@@ -212,6 +212,8 @@
 			plangebiet: z.plangebiet, rahmenZeigen: false,
 			sichtbar: ohneBauten, hervorgehoben: null
 		});
+		// Die Mitte, um die der Kontrast spreizt, aus genau diesem Bodenbild.
+		karteWerte.uMitte.value = mitte(c);
 		const t = new THREE.CanvasTexture(c);
 		t.colorSpace = THREE.SRGBColorSpace;
 		t.anisotropy = renderer?.capabilities.getMaxAnisotropy() ?? 1;

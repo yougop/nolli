@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
+	import { mitte, filterWerte, istNeutral } from '$lib/anpassen';
 	import { zahl } from '$lib/sprache.svelte';
 	import { z } from '$lib/zustand.svelte';
 	import { Rahmen } from '$lib/geo/rahmen';
@@ -86,10 +87,14 @@
 			const ctx = g.c.getContext('2d')!;
 			ctx.setTransform(g.dpr, 0, 0, g.dpr, 0, 0);
 			zeichneBlatt(ctx, z.objekte, g.r, g.wunsch);
+			// Die Mitte für den Kontrast vom ganzen Blatt, also nur ungezoomt;
+			// beim Hineinzoomen bleibt sie stehen, wie in der Datei.
+			if (z.zoom === 1) blattMitte = mitte(g.c);
 		});
 	});
 	let geplant: { r: Rahmen; c: HTMLCanvasElement; dpr: number; wunsch: Parameters<typeof zeichneBlatt>[3] } | null = null;
 	let takt = 0;
+	let blattMitte = $state(0.5);
 
 	// Während ein Regler der Karte oder der Kanten bewegt wird: ohne Schatten,
 	// wie beim Zoomen. Das fertige Bild kommt, wenn er ruht.
@@ -229,11 +234,22 @@
 
 <div class="huelle" bind:this={huelle}>
 	{#if schirmRahmen}
-		<!-- Karte anpassen als CSS-Filter: dieselbe Rechnung wie `anpassen.ts`
-		     (Sättigung nach Rec. 709, Kontrast um die Mitte, Helligkeit als
-		     Faktor, in dieser Reihenfolge), ohne das Blatt neu zu zeichnen. -->
+		<!-- Karte anpassen als SVG-Filter: dieselbe Rechnung wie `anpassen.ts`
+		     (Sättigung nach Rec. 709, Kontrast um die mittlere Helligkeit des
+		     Blattes, Helligkeit als Faktor), ohne das Blatt neu zu zeichnen.
+		     Ein CSS-Filter ginge nicht: `contrast()` spreizt fest um 50 %. -->
+		<svg class="filterhalter" aria-hidden="true">
+			<filter id="nolli-karte" color-interpolation-filters="sRGB">
+				<feColorMatrix type="matrix" values={filterWerte(z.karte, blattMitte).matrix} />
+				<feComponentTransfer>
+					<feFuncR type="linear" slope={filterWerte(z.karte, blattMitte).steigung} intercept={filterWerte(z.karte, blattMitte).achse} />
+					<feFuncG type="linear" slope={filterWerte(z.karte, blattMitte).steigung} intercept={filterWerte(z.karte, blattMitte).achse} />
+					<feFuncB type="linear" slope={filterWerte(z.karte, blattMitte).steigung} intercept={filterWerte(z.karte, blattMitte).achse} />
+				</feComponentTransfer>
+			</filter>
+		</svg>
 		<canvas
-			style:filter={`saturate(${z.karte.saettigung}) contrast(${z.karte.kontrast}) brightness(${z.karte.helligkeit ?? 1})`}
+			style:filter={istNeutral(z.karte) ? null : 'url(#nolli-karte)'}
 			bind:this={leinwand}
 			class:plottet
 			class:waehlbar
@@ -276,4 +292,5 @@
 		background: var(--blatt); border: 1px solid var(--linie);
 		padding: 3px 7px; border-radius: 2px; pointer-events: none;
 	}
+	.filterhalter { position: absolute; width: 0; height: 0; overflow: hidden; }
 </style>

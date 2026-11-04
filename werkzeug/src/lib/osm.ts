@@ -299,7 +299,10 @@ export function lesen(roh: { elements: RohElement[] }, gitter: Gitter, kasten?: 
 			if (dach && h.geschaetzt) h.m = (h.geschosse ? h.geschosse * 3.2 : Math.max(6, h.unter ?? 0)) + dach.hoeheM;
 			const art = t.building && t.building !== 'yes' ? t.building : (t['building:use'] ?? t.amenity ?? '');
 			aus.push({ id, ebene: 'gebaeude', art: 'flaeche', ringe: flaechen, loecher, tiefe,
-				teil: !t.building && !!t['building:part'],
+				// `building:part` gewinnt, auch wenn `building` mitgetaggt ist. An
+				// 1 New York Plaza trägt der Sockel beides; als Gebäude gelesen galt
+				// er als durch seine Teile ersetzt und verschwand (Volker, 04.11.2026).
+				teil: !!t['building:part'] && t['building:part'] !== 'no',
 				hoeheM: h.m, geschosse: h.geschosse, hoeheGeschaetzt: h.geschaetzt,
 				...(h.unter ? { unterM: h.unter } : {}),
 				...(dach ? { dachform: dach.form, dachHoeheM: dach.hoeheM,

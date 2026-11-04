@@ -206,6 +206,7 @@
 			[...z.sichtbar].filter((s) => s !== 'gebaeude' && s !== 'erhalt' && s !== 'overture')
 		);
 		zeichneBlatt(c.getContext('2d')!, z.objekte, tex, {
+			kanten: { ...z.kanten },
 			darstellung: 'modell3d', bereinigt: z.bereinigt, beschriftung: false,
 			plangebiet: z.plangebiet, rahmenZeigen: false,
 			sichtbar: ohneBauten, hervorgehoben: null
@@ -699,7 +700,7 @@
 	});
 	$effect(() => {
 		z.objekte; z.sichtbar; z.bereinigt; z.plangebiet; z.kasten; z.baeume; z.baumpunkte; feld;
-		z.kanten.an; z.ausgabeBreite;
+		z.kanten.an; z.ausgabeBreite; z.kanten.karteDicke; z.kanten.karteDeckkraft;
 		if (!renderer) return;
 		bauen(); anfordern();
 	});

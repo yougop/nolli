@@ -19,7 +19,7 @@ export type Zeichenwunsch = {
 	 * gemeint und wächst mit dem Blatt mit, damit ein 8K-Bild dieselbe
 	 * Zeichnung zeigt wie der Bildschirm.
 	 */
-	kanten?: { an: boolean; dicke: number; deckkraft: number };
+	kanten?: { an: boolean; dicke: number; deckkraft: number; karteDicke?: number; karteDeckkraft?: number };
 	hervorgehoben?: StiftId | null;
 	ausgewaehlt?: Set<string>;
 	fanglinie?: [number, number][] | null;   // Polygon im Entstehen
@@ -240,20 +240,35 @@ export function zeichneBlatt(
 	};
 	const farbeVon = (o: Objekt, wenn: string) => (d.nachTiefe ? nachTiefe(o) : wenn);
 
-	const flaeche = (o: Objekt, f: string, kante?: string, breite?: number) => {
+	/**
+	 * Die Linien der Karte, einstellbar unter „Kanten" (Volker, 04.11.2026):
+	 * ein Faktor auf die Strichstärke und eine Deckkraft. Gilt für Umrisse von
+	 * Grün und Wasser, Straßensäume, die Linien im Linienplan, Bahn und
+	 * Baustellen — nicht für Straßenflächen, deren Breite in Metern gezeichnet
+	 * ist, und nicht für Gebäude.
+	 */
+	const kf = w.kanten?.karteDicke ?? 1, ka = w.kanten?.karteDeckkraft ?? 1;
+	const linieKarte = (strich: () => void) => {
+		if (ka === 1) { strich(); return; }
+		ctx.save(); ctx.globalAlpha *= ka; strich(); ctx.restore();
+	};
+
+	const flaeche = (o: Objekt, f: string, kante?: string, breite?: number, karte = false) => {
 		pfad(o, true);
+		const m = karte ? kf : 1;
+		const zug = () => karte ? linieKarte(() => ctx.stroke()) : ctx.stroke();
 		if (nurLinie) {
 			ctx.fillStyle = d.grund; ctx.fill('evenodd');
-			ctx.strokeStyle = kante ?? f; ctx.lineWidth = breite ?? r.strich(0.18); ctx.stroke();
+			ctx.strokeStyle = kante ?? f; ctx.lineWidth = (breite ?? r.strich(0.18)) * m; zug();
 		} else {
 			ctx.fillStyle = f; ctx.fill('evenodd');
-			if (kante) { ctx.strokeStyle = kante; ctx.lineWidth = breite ?? r.strich(0.13); ctx.stroke(); }
+			if (kante) { ctx.strokeStyle = kante; ctx.lineWidth = (breite ?? r.strich(0.13)) * m; zug(); }
 		}
 	};
 
 	// 1 Flaechen von hinten nach vorn
 	for (const id of ['gruen', 'wasser'] as StiftId[])
-		for (const o of nach(id)) flaeche(o, farbeVon(o, farbe(id)));
+		for (const o of nach(id)) flaeche(o, farbeVon(o, farbe(id)), undefined, undefined, true);
 	/**
 	 * 2 Strassen als Netz mit Rangfolge, dann Bahn.
 	 *
@@ -273,28 +288,30 @@ export function zeichneBlatt(
 	 */
 	const strassen = [...nach('strasse')].sort((a, b) => (b.rang ?? 9) - (a.rang ?? 9));
 	const fahrbahn = (o: Objekt) =>
-		nurLinie ? dick('strasse') : Math.max(dick('strasse'), (o.breiteM ?? 6) / r.mpp);
+		nurLinie ? dick('strasse') * kf : Math.max(dick('strasse'), (o.breiteM ?? 6) / r.mpp);
 	const saum = d.kante?.strasse;
 	ctx.save();
 	ctx.lineCap = 'round'; ctx.lineJoin = 'round';
 	if (saum && !nurLinie) {
 		ctx.save();
-		ctx.strokeStyle = saum; ctx.globalAlpha = 0.45;
-		ctx.lineWidth = r.strich(0.22);
+		ctx.strokeStyle = saum; ctx.globalAlpha = 0.45 * ka;
+		ctx.lineWidth = r.strich(0.22) * kf;
 		for (const o of strassen) { if ((o.rang ?? 9) >= 9) { pfad(o, false); ctx.stroke(); } }
 		ctx.restore();
 		ctx.strokeStyle = saum;
 		for (const o of strassen) {
 			if ((o.rang ?? 9) > 6) continue;
-			ctx.lineWidth = fahrbahn(o) + r.strich(0.45);
-			pfad(o, false); ctx.stroke();
+			ctx.lineWidth = fahrbahn(o) + r.strich(0.45) * kf;
+			pfad(o, false); linieKarte(() => ctx.stroke());
 		}
 	}
 	for (const o of strassen) {
 		if (saum && !nurLinie && (o.rang ?? 9) >= 9) continue;
 		ctx.strokeStyle = farbeVon(o, farbe('strasse'));
 		ctx.lineWidth = fahrbahn(o);
-		pfad(o, false); ctx.stroke();
+		pfad(o, false);
+		// Im Linienplan ist die Straße eine Linie der Karte, sonst eine Fläche.
+		if (nurLinie) linieKarte(() => ctx.stroke()); else ctx.stroke();
 	}
 	ctx.restore();
 
@@ -304,8 +321,8 @@ export function zeichneBlatt(
 	ctx.setLineDash([r.strich(2), r.strich(1.4)]);
 	for (const o of nach('bahn')) {
 		const neben = (o.rang ?? 4) >= 9;
-		ctx.globalAlpha = neben ? 0.42 : 1;
-		ctx.lineWidth = dick('bahn') * (neben ? 0.6 : 1);
+		ctx.globalAlpha = (neben ? 0.42 : 1) * ka;
+		ctx.lineWidth = dick('bahn') * (neben ? 0.6 : 1) * kf;
 		pfad(o, false); ctx.stroke();
 	}
 	ctx.restore();
@@ -316,7 +333,7 @@ export function zeichneBlatt(
 		pfad(o, true);
 		if (nurLinie) { ctx.fillStyle = d.grund; ctx.fill('evenodd'); }
 		else { ctx.save(); ctx.globalAlpha = 0.5; ctx.fillStyle = farbe('bau'); ctx.fill('evenodd'); ctx.restore(); }
-		ctx.strokeStyle = farbe('bau'); ctx.lineWidth = dick('bau'); ctx.stroke();
+		ctx.strokeStyle = farbe('bau'); ctx.lineWidth = dick('bau') * kf; linieKarte(() => ctx.stroke());
 	}
 	ctx.setLineDash([]);
 

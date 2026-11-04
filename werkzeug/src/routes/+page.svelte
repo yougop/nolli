@@ -301,7 +301,7 @@
 				modellKronen ? z.baumpunkte : []) },
 			{ name: 'model.mtl', inhalt: alsMtl(textur) },
 			{ name: textur, inhalt: await bild(bestand, rr, 'modellaufsicht', z.bereinigt, z.beschriftung,
-				z.plangebiet, z.sichtbar, true, 'image/png', undefined, z.karte) }
+				z.plangebiet, z.sichtbar, true, 'image/png', undefined, z.karte, z.kanten) }
 		];
 		if (mitRand)
 			teile.push({ name: 'model_outside.obj', inhalt: obj(bestand, rr, z.gelaendeJetzt, 'model.mtl', 'aussen') });
@@ -355,7 +355,7 @@
 				 * die als Grund taugt.
 				 */
 				const g = await bild(bestand, rr, d.id, z.bereinigt, z.beschriftung, z.plangebiet, z.sichtbar,
-					true, WEBP, undefined, z.karte);
+					true, WEBP, undefined, z.karte, z.kanten);
 				teile.push({ name: pfadV2(`bilder/${d.id}_grund.webp`), inhalt: g });
 				bilder.push({ datei: `bilder/${d.id}_grund.webp`, darstellung: d.id,
 					was: 'The same extent without buildings and without trees, as a ground texture under a model of your own',
@@ -1012,7 +1012,7 @@
 						-->
 						<div class="klapp" bind:this={kartenKlapp}>
 							<button type="button" class="einzeln" class:an={kartenRegler}
-								class:veraendert={!istNeutral(z.karte)}
+								class:veraendert={!istNeutral(z.karte) || z.kanten.karteDicke !== 1 || z.kanten.karteDeckkraft !== 1}
 								aria-expanded={kartenRegler}
 								onclick={() => (kartenRegler = !kartenRegler)}
 								title={t().sicht.karteTitel}
@@ -1034,8 +1034,20 @@
 										<input type="range" min="0.5" max="1.5" step="0.01" bind:value={z.karte.helligkeit} />
 										<em class="mono">{Math.round(z.karte.helligkeit * 100)} %</em>
 									</label>
-									<button type="button" class="zurueck" disabled={istNeutral(z.karte)}
-										onclick={() => (z.karte = { ...NEUTRAL })}>{t().sicht.karteZurueck}</button>
+									<!-- Die Linien der Karte: Umrisse, Säume, Linienplan, Bahn (Volker, 04.11.2026: hierher statt unter Kanten). -->
+									<span class="unter">{t().sicht.linien}</span>
+									<label>
+										<span>{t().sicht.kantenDicke}</span>
+										<input type="range" min="0.25" max="3" step="0.05" bind:value={z.kanten.karteDicke} />
+										<em class="mono">{Math.round(z.kanten.karteDicke * 100)} %</em>
+									</label>
+									<label>
+										<span>{t().sicht.kantenDeckkraft}</span>
+										<input type="range" min="0" max="1" step="0.01" bind:value={z.kanten.karteDeckkraft} />
+										<em class="mono">{Math.round(z.kanten.karteDeckkraft * 100)} %</em>
+									</label>
+									<button type="button" class="zurueck" disabled={istNeutral(z.karte) && z.kanten.karteDicke === 1 && z.kanten.karteDeckkraft === 1}
+										onclick={() => { z.karte = { ...NEUTRAL }; z.kanten.karteDicke = 1; z.kanten.karteDeckkraft = 1; }}>{t().sicht.karteZurueck}</button>
 								</div>
 							{/if}
 						</div>
@@ -1736,6 +1748,7 @@
 	.sichtleiste .gruppe > .klapp:first-child > button.an { border-left-color: var(--tinte); }
 	.sichtleiste .regler .wahl.schmal { margin: 0; }
 	.sichtleiste .regler .wahl.schmal button { flex: 1; padding: 4px 8px; }
+	.sichtleiste .regler .unter { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--tinte-3); }
 	.wahl.formate { flex-wrap: wrap; }
 	.wahl.formate button { border-radius: var(--rund); }
 	.sichtleiste button:hover:not(:disabled) { color: var(--tinte); }

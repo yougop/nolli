@@ -2076,8 +2076,9 @@
 	/* Bildrahmen in Schritt 3: dieselben Wahlknöpfe wie Karte und Textur, enger. */
 	.bildrahmen { display: grid; gap: 8px; margin-bottom: 14px; }
 	.bildrahmen .wahl { margin: 0; }
-	/* Neun Formate in drei gleichen Reihen: quer, quadratisch bis hoch. */
-	.bildrahmen .wahl.formate:not(.breiten3d) { display: grid; grid-template-columns: repeat(3, 1fr); }
+	/* Acht Formate in zwei gleichen Reihen: oben quer, unten quadratisch bis hoch. */
+	.bildrahmen .wahl.formate:not(.breiten3d) { display: grid; grid-template-columns: repeat(4, 1fr); }
+	.bildrahmen .wahl.formate:not(.breiten3d) button { padding: 4px 4px; font-size: 11px; }
 	.bildrahmen .wahl.formate.breiten3d { display: grid; grid-template-columns: repeat(4, 1fr); }
 	.bildrahmen .wahl.formate button { padding: 5px 8px; }
 	.bildrahmen p { margin: 0; font-size: 11px; color: var(--tinte-3); }

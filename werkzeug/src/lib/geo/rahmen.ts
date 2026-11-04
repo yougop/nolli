@@ -35,7 +35,7 @@ export const BILDFORMATE: { name: string; wert: number | null }[] = [
 	{ name: 'ansicht', wert: null },
 	{ name: '16:9', wert: 16 / 9 }, { name: '3:2', wert: 3 / 2 }, { name: '4:3', wert: 4 / 3 },
 	{ name: '1:1', wert: 1 },
-	{ name: '4:5', wert: 4 / 5 }, { name: '3:4', wert: 3 / 4 }, { name: '2:3', wert: 2 / 3 }, { name: '9:16', wert: 9 / 16 }
+	{ name: '3:4', wert: 3 / 4 }, { name: '2:3', wert: 2 / 3 }, { name: '9:16', wert: 9 / 16 }
 ];
 /**
  * Die Ausgabebreiten. 8K seit 03.11.2026 (Volker), für Texturen in Rhino und

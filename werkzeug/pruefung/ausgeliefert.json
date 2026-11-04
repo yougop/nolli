@@ -1,54 +1,54 @@
 {
- "wann": "2026-11-04 11:05",
- "gesamt": "2ff8663d0f39",
+ "wann": "2026-11-04 12:13",
+ "gesamt": "97bfa9f5272a",
  "dateien": {
   "200.html": {
-   "bytes": 3173,
-   "hash": "acac650c3eeb"
+   "bytes": 3174,
+   "hash": "807083d80f2c"
   },
   "_app/immutable/assets/0.ECumOKm-.css": {
    "bytes": 2774,
    "hash": "8aeba599f3ae"
   },
-  "_app/immutable/assets/2.jcSy2QVY.css": {
-   "bytes": 107896,
-   "hash": "e05b284fb7d0"
-  },
-  "_app/immutable/chunks/B6R_EarI.js": {
-   "bytes": 26650,
-   "hash": "9ee4f2985453"
+  "_app/immutable/assets/2.4qp0OaVy.css": {
+   "bytes": 109605,
+   "hash": "f9aad5c958b2"
   },
   "_app/immutable/chunks/Bjy-W4x2.js": {
    "bytes": 1365,
    "hash": "f07424758318"
   },
-  "_app/immutable/chunks/Daxu_tGQ.js": {
-   "bytes": 46951,
-   "hash": "f3e5c340a595"
+  "_app/immutable/chunks/CETCZZK0.js": {
+   "bytes": 47669,
+   "hash": "928cafc906f0"
+  },
+  "_app/immutable/chunks/Dc-GMOUi.js": {
+   "bytes": 26654,
+   "hash": "4f27b5c19cf8"
   },
   "_app/immutable/chunks/xihTtKlq.js": {
    "bytes": 65,
    "hash": "0214edcff772"
   },
-  "_app/immutable/entry/app.BfwWuy1s.js": {
+  "_app/immutable/entry/app.DluRJszX.js": {
    "bytes": 4025,
-   "hash": "252c5d778905"
+   "hash": "e366d929b3b2"
   },
-  "_app/immutable/entry/start.CaA0sdiC.js": {
+  "_app/immutable/entry/start.S67BKwvm.js": {
    "bytes": 77,
-   "hash": "ad2345d56ed4"
+   "hash": "54e4d4fd7745"
   },
-  "_app/immutable/nodes/0.CeEQNxST.js": {
+  "_app/immutable/nodes/0.DrTbpCUo.js": {
    "bytes": 238,
-   "hash": "abd98021ff04"
+   "hash": "32450e13341f"
   },
-  "_app/immutable/nodes/1.CtpTX0bA.js": {
+  "_app/immutable/nodes/1.dSgrw9gG.js": {
    "bytes": 576,
-   "hash": "aba55021d780"
+   "hash": "9b6a119391cc"
   },
-  "_app/immutable/nodes/2.CDR3hXsW.js": {
-   "bytes": 1961367,
-   "hash": "70dea7a128a6"
+  "_app/immutable/nodes/2.CehJ0cfE.js": {
+   "bytes": 1968118,
+   "hash": "f4a1ae0238c7"
   },
   "_app/immutable/workers/maplibre-gl-worker-B71oqUJw.js": {
    "bytes": 506998,
@@ -56,7 +56,7 @@
   },
   "_app/version.json": {
    "bytes": 27,
-   "hash": "3fbb06b8fe3a"
+   "hash": "0bedb71493c7"
   },
   "beispiele/hafencity.json": {
    "bytes": 3708497,
@@ -71,8 +71,8 @@
    "hash": "5032bcab02e3"
   },
   "index.html": {
-   "bytes": 3372,
-   "hash": "93874a9ceaa2"
+   "bytes": 3373,
+   "hash": "7b6c5ac4eda1"
   },
   "robots.txt": {
    "bytes": 63,

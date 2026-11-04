@@ -1165,7 +1165,7 @@
 					darüber gehört dem, was das Blatt zeigt, und bricht so nicht um.
 				-->
 				{#if z.schritt > 1}
-					<div class="ansicht" role="group" aria-label={t().sicht.ansicht}>
+					<div class="ansicht" class:raum={raeumlich} role="group" aria-label={t().sicht.ansicht}>
 						{#if raeumlich}
 							<button type="button" onclick={() => raum?.zuruecksetzen()}>{t().sicht.zuruecksetzen}</button>
 						{:else}
@@ -2112,9 +2112,14 @@
 		border-left: 3.5px solid transparent; border-right: 3.5px solid transparent;
 		border-top: 4px solid currentColor; transition: transform 120ms;
 	}
-	.sichtleiste .klappknopf.offen { color: var(--tinte); border-color: var(--linie-stark); background: var(--blatt); }
+	/* Offen: ein voller Ring innen, damit der Knopf auch neben dem Nachbarn ohne
+	   linke Kante rundum geschlossen wirkt (Volker: „wirkt links abgeschnitten"). */
+	.sichtleiste .klappknopf.offen {
+		position: relative; z-index: 1;
+		color: var(--tinte); background: var(--senke);
+		box-shadow: inset 0 0 0 1px var(--tinte-3);
+	}
 	.sichtleiste .klappknopf.offen::after { transform: rotate(180deg); }
-	.sichtleiste .gruppe > .klapp:first-child > .klappknopf.offen { border-left-color: var(--linie-stark); }
 
 	/* Die Bedienung der Ansicht, unten rechts auf der Bühne. */
 	.ansicht {
@@ -2132,4 +2137,6 @@
 	.ansicht button:hover:not(:disabled) { color: var(--tinte); }
 	.ansicht button:disabled { opacity: 0.42; cursor: default; }
 	.ansicht .zahl { font-size: 11px; }
+	/* Im 3D-Modell über dem Bedienhinweis, der in der Ecke steht (Volker, 04.11.2026). */
+	.ansicht.raum { bottom: 54px; }
 </style>

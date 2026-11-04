@@ -287,7 +287,7 @@
 		to { clip-path: inset(0 0 0 0); }
 	}
 	.zeiger {
-		position: absolute; right: 34px; bottom: 34px; margin: 0;
+		position: absolute; right: 66px; bottom: 18px; margin: 0;
 		font-size: 11px; color: var(--tinte-2);
 		background: var(--blatt); border: 1px solid var(--linie);
 		padding: 3px 7px; border-radius: 2px; pointer-events: none;

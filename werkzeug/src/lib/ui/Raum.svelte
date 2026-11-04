@@ -902,7 +902,7 @@
 	}
 	.raum:active { cursor: grabbing; }
 	.wink {
-		position: absolute; right: 18px; bottom: 18px; z-index: 2; margin: 0;
+		position: absolute; right: 18px; bottom: 64px; z-index: 2; margin: 0;
 		font-size: 11px; color: var(--tinte-2); pointer-events: none;
 		background: var(--blatt); border: 1px solid var(--linie);
 		padding: 3px 8px; border-radius: 2px;

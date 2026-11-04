@@ -1045,7 +1045,7 @@
 							daraus entsteht, auch in `model_texture.png`.
 						-->
 						<div class="klapp" bind:this={kartenKlapp}>
-							<button type="button" class="einzeln" class:an={kartenRegler}
+							<button type="button" class="einzeln klappknopf" class:offen={kartenRegler}
 								class:veraendert={!istNeutral(z.karte) || z.kanten.karteDicke !== 1 || z.kanten.karteDeckkraft !== 1}
 								aria-expanded={kartenRegler}
 								onclick={() => (kartenRegler = !kartenRegler)}
@@ -1090,7 +1090,7 @@
 							kräftig. Gilt für die Ansicht und das 3D-Bild, nicht fürs OBJ.
 						-->
 						<div class="klapp" bind:this={kantenKlapp}>
-							<button type="button" class="einzeln" class:an={kantenRegler}
+							<button type="button" class="einzeln klappknopf" class:offen={kantenRegler}
 								class:veraendert={!z.kanten.an || z.kanten.hell || z.kanten.flaeche != null || z.kanten.dicke !== KANTEN_VORGABE.dicke || z.kanten.deckkraft !== KANTEN_VORGABE.deckkraft}
 								aria-expanded={kantenRegler}
 								onclick={() => (kantenRegler = !kantenRegler)}
@@ -1156,22 +1156,27 @@
 								: t().sicht.keineBaeume}
 						>{t().sicht.baeume}</button>
 					</div>
-					{#if raeumlich}
-						<div class="gruppe rechts" role="group" aria-label={t().sicht.ansicht}>
-							<button type="button" onclick={() => raum?.zuruecksetzen()}>{t().sicht.zuruecksetzen}</button>
-						</div>
-					{:else}
-						<div class="gruppe rechts" role="group" aria-label={t().sicht.ansicht}>
-							<button type="button" onclick={() => z.zoomStufe(1 / 1.5)} disabled={z.zoom <= 1} aria-label={t().sicht.heraus}>−</button>
-							<button type="button" onclick={() => z.einpassen()} disabled={z.zoom === 1}>
-								{z.zoom === 1 ? t().sicht.ganz : zahl(z.zoom, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '×'}
-							</button>
-							<button type="button" onclick={() => z.zoomStufe(1.5)} disabled={z.zoom >= z.MAXZOOM} aria-label={t().sicht.hinein}>+</button>
-						</div>
-					{/if}
 				</div>
 			{/if}
 			<div class="buehne" class:karte={z.schritt === 1}>
+				<!--
+					Die Bedienung der Ansicht liegt bei der Ansicht, unten rechts wie
+					+ und − auf der Karte in Schritt 1 (Volker, 04.11.2026). Die Leiste
+					darüber gehört dem, was das Blatt zeigt, und bricht so nicht um.
+				-->
+				{#if z.schritt > 1}
+					<div class="ansicht" role="group" aria-label={t().sicht.ansicht}>
+						{#if raeumlich}
+							<button type="button" onclick={() => raum?.zuruecksetzen()}>{t().sicht.zuruecksetzen}</button>
+						{:else}
+							<button type="button" onclick={() => z.zoomStufe(1.5)} disabled={z.zoom >= z.MAXZOOM} aria-label={t().sicht.hinein}>+</button>
+							<button type="button" class="zahl" onclick={() => z.einpassen()} disabled={z.zoom === 1}>
+								{#if z.zoom === 1}{t().sicht.ganz}{:else}<span class="mono">{zahl(z.zoom, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}×</span>{/if}
+							</button>
+							<button type="button" onclick={() => z.zoomStufe(1 / 1.5)} disabled={z.zoom <= 1} aria-label={t().sicht.heraus}>−</button>
+						{/if}
+					</div>
+				{/if}
 				{#if z.schritt === 1}
 					<Karte bind:this={karte} {schema} />
 				{:else if raeumlich}
@@ -1768,9 +1773,8 @@
 		background: var(--blatt); border-bottom: 1px solid var(--linie);
 	}
 	.sichtleiste .gruppe { display: flex; }
-	.sichtleiste .gruppe.rechts { margin-left: auto; }
 	.sichtleiste button {
-		padding: 5px 10px; cursor: pointer;
+		padding: 5px 7px; cursor: pointer;
 		font-size: 12px; font-weight: 500;
 		background: var(--grund); color: var(--tinte-2);
 		border: 1px solid var(--linie);
@@ -1797,7 +1801,6 @@
 	.sichtleiste .gruppe > .klapp > button { border-left: 0; border-radius: 0 var(--rund) var(--rund) 0; }
 	.sichtleiste .gruppe > .klapp:not(:last-child) > button { border-radius: 0; }
 	.sichtleiste .gruppe > .klapp:first-child > button { border-left: 1px solid var(--linie); border-radius: var(--rund) 0 0 var(--rund); }
-	.sichtleiste .gruppe > .klapp:first-child > button.an { border-left-color: var(--tinte); }
 	.sichtleiste .regler .wahl.schmal { margin: 0; }
 	.sichtleiste .regler .wahl.schmal button { flex: 1; padding: 4px 8px; }
 	.sichtleiste .regler .unter { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--tinte-3); }
@@ -1806,7 +1809,6 @@
 	.sichtleiste button:hover:not(:disabled) { color: var(--tinte); }
 	.sichtleiste button:disabled { opacity: 0.42; cursor: default; }
 	.sichtleiste button.an { background: var(--tinte); border-color: var(--tinte); color: var(--blatt); }
-	.sichtleiste .gruppe.rechts button { min-width: 44px; font-family: var(--mono); }
 
 	.buehne { position: relative; background: var(--radial); overflow: hidden; }
 	.buehne.karte { background: var(--senke); }
@@ -2033,7 +2035,7 @@
 	@media (max-height: 900px) {
 		:root { --kopf: 50px; --fuss: 34px; }
 		.sichtleiste { padding: 5px 12px; }
-		.sichtleiste button { padding: 4px 9px; }
+		.sichtleiste button { padding: 4px 7px; }
 		.teil { padding: 11px 16px; }
 		.fuss { padding: 12px 16px; }
 		.feld { margin-bottom: 7px; }
@@ -2100,4 +2102,34 @@
 	.hinweis + .feldzeile { margin-top: 16px; }
 	.feldzeile em { font-style: normal; font-size: 11px; letter-spacing: 0; text-transform: none; color: var(--tinte); }
 	.bildrahmen .unter { font-size: 11px; color: var(--tinte-3); margin-top: 4px; }
+	/*
+	 * Aufklappknöpfe: offen heißt nicht gewählt. Schwarz gefüllt ist allein,
+	 * was gewählt oder eingeschaltet ist; ein offenes Feld zeigt sich an der
+	 * kräftigeren Kante und am gedrehten Pfeil.
+	 */
+	.sichtleiste .klappknopf::after {
+		content: ''; display: inline-block; width: 0; height: 0; margin-left: 5px; vertical-align: 2px;
+		border-left: 3.5px solid transparent; border-right: 3.5px solid transparent;
+		border-top: 4px solid currentColor; transition: transform 120ms;
+	}
+	.sichtleiste .klappknopf.offen { color: var(--tinte); border-color: var(--linie-stark); background: var(--blatt); }
+	.sichtleiste .klappknopf.offen::after { transform: rotate(180deg); }
+	.sichtleiste .gruppe > .klapp:first-child > .klappknopf.offen { border-left-color: var(--linie-stark); }
+
+	/* Die Bedienung der Ansicht, unten rechts auf der Bühne. */
+	.ansicht {
+		position: absolute; right: 18px; bottom: 18px; z-index: 3;
+		display: flex; flex-direction: column;
+		background: var(--blatt); border: 1px solid var(--linie); border-radius: var(--rund);
+		box-shadow: var(--heben-klein);
+	}
+	.ansicht button {
+		min-width: 32px; min-height: 30px; padding: 4px 10px; cursor: pointer;
+		font-size: 12px; font-weight: 500; color: var(--tinte-2);
+		background: none; border: 0;
+	}
+	.ansicht button + button { border-top: 1px solid var(--linie); }
+	.ansicht button:hover:not(:disabled) { color: var(--tinte); }
+	.ansicht button:disabled { opacity: 0.42; cursor: default; }
+	.ansicht .zahl { font-size: 11px; }
 </style>

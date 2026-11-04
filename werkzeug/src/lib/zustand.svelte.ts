@@ -45,10 +45,11 @@ const atmen = () => new Promise<void>((f) => requestAnimationFrame(() => setTime
  * Richtung und Winkel einstellbar). Den Sonnenstand eines Tages rechnet Umbra.
  *
  * `an: false` ist bedeckter Himmel, ohne Schlagschatten, auch im
- * Weißmodell; `helligkeit` belichtet das 3D-Modell.
+ * Weißmodell; `helligkeit` belichtet das 3D-Modell, `waerme` färbt sein
+ * Licht von kühl (−1) über neutral (0) bis warm (1).
  */
-export const SONNE_VORGABE: { azimut: number; hoehe: number; an: boolean; helligkeit: number } =
-	{ azimut: 315, hoehe: 49, an: true, helligkeit: 1 };
+export const SONNE_VORGABE: { azimut: number; hoehe: number; an: boolean; helligkeit: number; waerme: number } =
+	{ azimut: 315, hoehe: 49, an: true, helligkeit: 1, waerme: 0 };
 
 export const KANTEN_VORGABE: { an: boolean; dicke: number; deckkraft: number; karteDicke: number; karteDeckkraft: number; hell: boolean; flaeche: number | null } =
 	{ an: true, dicke: 0.75, deckkraft: 0.75, karteDicke: 1, karteDeckkraft: 1, hell: false, flaeche: null };

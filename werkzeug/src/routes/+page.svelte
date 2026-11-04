@@ -1186,8 +1186,14 @@
 								<div class="regler" role="group" aria-label={t().sicht.licht}>
 									<label>
 										<span>{t().sicht.helligkeit}</span>
-										<input type="range" min="0.5" max="1.6" step="0.01" disabled={!raeumlich} bind:value={z.sonne.helligkeit} />
+										<!-- Bis 250 %: Ohne Sonne bleibt nur der Himmel, und das Bild braucht mehr (Volker, 04.11.2026). -->
+										<input type="range" min="0.5" max="2.5" step="0.01" disabled={!raeumlich} bind:value={z.sonne.helligkeit} />
 										<em class="mono">{Math.round(z.sonne.helligkeit * 100)} %</em>
+									</label>
+									<label>
+										<span>{t().sicht.lichtfarbe}</span>
+										<input type="range" min="-1" max="1" step="0.05" disabled={!raeumlich} bind:value={z.sonne.waerme} />
+										<em class="mono">{Math.abs(z.sonne.waerme) < 0.025 ? t().sicht.neutral : `${z.sonne.waerme > 0 ? t().sicht.warm : t().sicht.kuehl} ${Math.round(Math.abs(z.sonne.waerme) * 100)} %`}</em>
 									</label>
 									<span class="unter">{t().sicht.sonne}</span>
 									<div class="wahl schmal">

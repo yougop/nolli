@@ -452,7 +452,14 @@
 		renderer.toneMapping = THREE.LinearToneMapping;
 		renderer.toneMappingExposure = z.sonne.helligkeit ?? 1;
 		himmel.intensity = an ? UMBRA_HIMMEL : 2.4;
-		himmel.color.set(an ? 0xe0e8f2 : 0xe8e9eb);
+		// Lichtfarbe: Sonne und Himmel zugleich, damit Licht und Schatten
+		// zusammen kippen. Warm wie später Nachmittag, kühl wie Nordlicht.
+		const k = Math.max(-1, Math.min(1, z.sonne.waerme ?? 0));
+		const toenen = (c: THREE.Color, neutral: number, warm: number, kalt: number) =>
+			c.set(neutral).lerp(new THREE.Color(k >= 0 ? warm : kalt), Math.abs(k));
+		toenen(himmel.color, an ? 0xe0e8f2 : 0xe8e9eb, 0xece8e0, 0xccd9ef);
+		toenen(himmel.groundColor, 0xfbf8ef, 0xfdf3e4, 0xeef2f7);
+		toenen(sonne.color, 0xfffaf0, 0xffe2bc, 0xdce7ff);
 		sonne.intensity = an ? Math.min(13, (2.78 - UMBRA_HIMMEL) / Math.max(0.02, Math.sin(hw))) : 0;
 
 		const sl = sonne;
@@ -528,7 +535,7 @@
 		sl.shadow.radius = (HALBSCHATTEN * (s.far - s.near)) / (s.right - s.left);
 	}
 	// Sonne oder Rezept verstellt: nur stellen und neu zeichnen, die Szene bleibt.
-	$effect(() => { z.sonne.azimut; z.sonne.hoehe; z.sonne.an; z.sonne.helligkeit; untrack(lichtSetzen); anfordern(); });
+	$effect(() => { z.sonne.azimut; z.sonne.hoehe; z.sonne.an; z.sonne.helligkeit; z.sonne.waerme; untrack(lichtSetzen); anfordern(); });
 
 	let zuletzt = { b: 0, h: 0 };
 

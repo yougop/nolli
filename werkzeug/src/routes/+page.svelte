@@ -314,12 +314,19 @@
 	 * Paket, als `model_outside.obj` — wer das Modell für Rhino holt,
 	 * braucht den Rand nicht.
 	 */
+	/** Das Bodenbild des Modells, ohne Bauten: für OBJ und 3DM dasselbe. */
+	const bodenTextur = (rr: Rahmen) => bild(bestand, rr, 'modellaufsicht', z.bereinigt, z.beschriftung,
+		z.plangebiet, z.sichtbar, true, 'image/png', undefined, z.karte, z.kanten);
+
 	/** `model.3dm`: Körper als Extrusionen, Kurven, Ebenen, Attribute (`export/rhino.ts`). */
-	async function rhinoDatei(rr: Rahmen) {
+	async function rhinoDatei(rr: Rahmen, textur?: Blob) {
 		const { als3dm } = await import('$lib/export/rhino');
+		// Die Karte kommt eingebettet mit, also dieselbe Textur wie im OBJ.
+		const t = textur ?? await bodenTextur(rr);
 		const v = rr.vertrag({}) as Record<string, any>;
 		return als3dm({
 			objekte: bestand, r: rr, gelaende: z.gelaendeJetzt, baeume: modellKronen ? z.baumpunkte : [],
+			textur: new Uint8Array(await t.arrayBuffer()), kantenHell: z.kanten.hell,
 			kopf: {
 				contract: VERTRAG_NAME, contract_version: VERTRAG_VERSION,
 				grid: { proj4: v.gitter.proj4, central_meridian: v.gitter.mittelmeridian }, bbox_grid: v.bbox_gitter, units: 'metres, Z up, Y north, origin at the lower-left frame corner',
@@ -331,17 +338,17 @@
 
 	async function modellTeile(rr: Rahmen, mitRand: boolean) {
 		const textur = 'model_texture.png';
+		const bodenbild = await bodenTextur(rr);
 		const teile: { name: string; inhalt: Blob | string }[] = [
 			{ name: pfadV2('modell.obj'), inhalt: obj(bestand, rr, z.gelaendeJetzt, 'model.mtl', 'innen',
 				modellKronen ? z.baumpunkte : []) },
 			{ name: 'model.mtl', inhalt: alsMtl(textur) },
-			{ name: textur, inhalt: await bild(bestand, rr, 'modellaufsicht', z.bereinigt, z.beschriftung,
-				z.plangebiet, z.sichtbar, true, 'image/png', undefined, z.karte, z.kanten) }
+			{ name: textur, inhalt: bodenbild }
 		];
 		if (mitRand)
 			teile.push({ name: 'model_outside.obj', inhalt: obj(bestand, rr, z.gelaendeJetzt, 'model.mtl', 'aussen') });
 		// Dasselbe Modell als Rhino-Datei, mit Ebenen, Kurven und Attributen.
-		teile.push({ name: 'model.3dm', inhalt: new Blob([await rhinoDatei(rr) as BlobPart]) });
+		teile.push({ name: 'model.3dm', inhalt: new Blob([await rhinoDatei(rr, bodenbild) as BlobPart]) });
 		// Mit Gelände der Plan auf dem Netz, damit er in Rhino ohne `_Pull` auf
 		// dem Modell liegt. Gehört deshalb zum Modell, nicht nur ins Paket.
 		if (z.gelaendeJetzt)

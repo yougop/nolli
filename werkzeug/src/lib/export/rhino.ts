@@ -64,6 +64,10 @@ export type Rhino3dmEingabe = {
 	baeume: { x: number; y: number; krone: number; gemessen: boolean }[];
 	/** Kopfdaten für die Datei: Vertrag in Kurzform, Herkunft, Georeferenz. */
 	kopf: Record<string, unknown>;
+	/** Das Bodenbild als PNG, wird in die Datei eingebettet und aufs Gelände gelegt. */
+	textur?: Uint8Array;
+	/** Kantenfarbe aus „Gebäude": die Farbe der Gebäudeebenen, mit der Rhino Kanten zeichnet. */
+	kantenHell?: boolean;
 };
 
 export async function als3dm(e: Rhino3dmEingabe): Promise<Uint8Array> {
@@ -99,6 +103,12 @@ export async function als3dm(e: Rhino3dmEingabe): Promise<Uint8Array> {
 		return i;
 	};
 	const BAU = dxfEbene('N_GEBAEUDE');
+	/**
+	 * Die Gebäudeebenen tragen die Kantenfarbe aus „Gebäude", nicht die
+	 * Flächenfarbe: Rhino zeichnet Kanten und Drahtmodell in der Ebenenfarbe,
+	 * die Fläche zeigt das Material (Volker, 04.11.2026).
+	 */
+	const KANTE = e.kantenHell ? '#F4F4F2' : '#2B2B29';
 	const DRAUSSEN = 'N_OUTSIDE';
 
 	// ---- Körper -------------------------------------------------------------
@@ -171,8 +181,8 @@ export async function als3dm(e: Rhino3dmEingabe): Promise<Uint8Array> {
 		const linnen = lzer.filter((t) => t.innen.length >= 3).map((t) => cw(ring(t.innen))).filter((a) => a.length >= 3);
 		const mat = materialFuer(o);
 		const klasseEbene = o.herkunft === 'overture'
-			? ebene('overture', { eltern: BAU, farbe: '#D2D2D2', material: mat })
-			: ebene(mat, { eltern: BAU, farbe: MATERIALIEN.find((m) => m.id === mat)?.color, material: mat });
+			? ebene('overture', { eltern: BAU, farbe: KANTE, material: mat })
+			: ebene(mat, { eltern: BAU, farbe: KANTE, material: mat });
 		const marke = o.hoeheGeschaetzt ? '_hoehe_geschaetzt' : '';
 		koerperSchreiben(o, innen, linnen, fuss, h, klasseEbene, objName(`${o.ebene}_${o.id}${marke}`));
 		const draussen = zer.flatMap((t) => t.aussen).map((a) => ccw(ring(a))).filter((a) => a.length >= 3);
@@ -183,21 +193,49 @@ export async function als3dm(e: Rhino3dmEingabe): Promise<Uint8Array> {
 		}
 	}
 
-	// ---- Gelände ------------------------------------------------------------
-	if (gelaende) {
-		const g = feldImRahmen(gelaende, r);
-		const m = new rh.Mesh();
-		for (let j = 0; j < g.ny; j++) for (let i = 0; i < g.nx; i++) m.vertices().add(i * g.dx, j * g.dy, g.z[j * g.nx + i]);
-		const ecke = (i: number, j: number) => j * g.nx + i;
-		for (let j = 0; j < g.ny - 1; j++) for (let i = 0; i < g.nx - 1; i++) {
-			m.faces().addTriFace(ecke(i, j), ecke(i + 1, j), ecke(i + 1, j + 1));
-			m.faces().addTriFace(ecke(i, j), ecke(i + 1, j + 1), ecke(i, j + 1));
+	// ---- Gelände, oder eine ebene Platte, mit dem Bodenbild darauf ----------
+	/**
+	 * Das Bodenbild steckt in der Datei selbst (eingebettet als
+	 * `model_texture.png`), damit die Karte mitkommt, auch wenn die 3DM allein
+	 * weitergegeben wird. Ohne Gelände trägt eine ebene Platte auf null es,
+	 * wie im OBJ.
+	 */
+	let bodenStoff: number | undefined;
+	if (e.textur) {
+		const ef = rh.EmbeddedFile.fromByteArray(e.textur);
+		ef.fileName = 'model_texture.png';
+		f.embeddedFiles().add(ef);
+		const mm = new rh.Material();
+		mm.name = 'ground_map';
+		mm.diffuseColor = farbe('#FFFFFF');
+		mm.setBitmapTextureFilename('model_texture.png');
+		f.materials().add(mm);
+		bodenStoff = f.materials().count - 1;
+	}
+	{
+		const g = gelaende ? feldImRahmen(gelaende, r)
+			: { nx: 2, ny: 2, dx: r.x1 - r.x0, dy: r.y1 - r.y0, z: new Float32Array(4) };
+		if (gelaende || e.textur) {
+			const m = new rh.Mesh();
+			for (let j = 0; j < g.ny; j++) for (let i = 0; i < g.nx; i++) {
+				m.vertices().add(i * g.dx, j * g.dy, g.z[j * g.nx + i]);
+				m.textureCoordinates().add(i / (g.nx - 1), j / (g.ny - 1));
+			}
+			const ecke = (i: number, j: number) => j * g.nx + i;
+			for (let j = 0; j < g.ny - 1; j++) for (let i = 0; i < g.nx - 1; i++) {
+				m.faces().addTriFace(ecke(i, j), ecke(i + 1, j), ecke(i + 1, j + 1));
+				m.faces().addTriFace(ecke(i, j), ecke(i + 1, j + 1), ecke(i, j + 1));
+			}
+			m.normals().computeNormals();
+			const a = new rh.ObjectAttributes();
+			a.layerIndex = ebene('terrain', { farbe: '#BDBDBD', material: 'ground' });
+			a.name = 'terrain';
+			if (bodenStoff !== undefined) {
+				a.materialSource = rh.ObjectMaterialSource.MaterialFromObject;
+				a.materialIndex = bodenStoff;
+			}
+			f.objects().addMesh(m, a);
 		}
-		m.normals().computeNormals();
-		const a = new rh.ObjectAttributes();
-		a.layerIndex = ebene('terrain', { farbe: '#F4F4F4', material: 'ground' });
-		a.name = 'terrain';
-		f.objects().addMesh(m, a);
 	}
 
 	// ---- Bäume: Kronen als ein Netz, wie `trees` im OBJ ------------------
@@ -231,11 +269,15 @@ export async function als3dm(e: Rhino3dmEingabe): Promise<Uint8Array> {
 		f.objects().addCurve(new rh.PolylineCurve(pk), a);
 	}
 	if (texte.length) {
-		const li = ebene(dxfEbene('N_BESCHRIFTUNG'), { farbe: '#6A6A6A' });
+		// Ausgeblendet und klein: Im 3D-Raum stehen Hunderte Namen sonst
+		// übereinander und verdecken das Modell (Volker, 04.11.2026).
+		const li = ebene(dxfEbene('N_BESCHRIFTUNG'), { farbe: '#6A6A6A', sichtbar: false });
 		for (const t of texte) {
 			const a = new rh.ObjectAttributes();
 			a.layerIndex = li;
-			f.objects().addTextDot(t.text, [t.x, t.y, t.z], a);
+			const dot = new rh.TextDot(t.text, [t.x, t.y, t.z]);
+			dot.fontHeight = 9;
+			f.objects().add(dot, a);
 		}
 	}
 

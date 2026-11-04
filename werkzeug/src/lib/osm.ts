@@ -396,8 +396,12 @@ export const unterkante = (o: Objekt) => Math.max(0, Math.min(o.unterM ?? 0, (o.
  * hoch: Der Umriss stand als Klotz um die Teile, und beim London Eye wurde
  * aus Rad und Kapseln eine gestreifte Wand (Volker, Bild aus London).
  *
- * Ersetzt ist ein Umriss, in dem der Mittelpunkt mindestens eines Teils
- * liegt. So halten es auch die gängigen 3D-Darsteller; eine Relation
+ * Ersetzt ist ein Umriss, wenn die Teile, deren Mittelpunkt in ihm liegt,
+ * zusammen mindestens 60 % seiner Fläche decken. Anfangs genügte ein
+ * einziger Teil; dann verschwand am Fähranleger in Manhattan ein ganzes
+ * Haus, weil nur ein Vordach als Teil erfasst war (Volker, 04.11.2026).
+ * Übereinander gestapelte Teile zählen doppelt, das ist hingenommen: Wer
+ * stapelt, hat meist auch den Sockel als Teil. Eine Relation
  * `type=building` liefert Overpass hier nicht mit. In der Aufsicht bleibt
  * der Umriss, wie er ist: Dort ist er der Grundriss des Hauses.
  *
@@ -420,15 +424,21 @@ export function umrisseMitTeilen(objekte: Objekt[]): Set<string> {
 				(raster.get(k) ?? raster.set(k, []).get(k)!).push(o);
 			}
 	}
+	const flaecheVon = (o: Objekt) =>
+		Math.max(0, o.ringe.reduce((s, r) => s + Math.abs(ringflaeche(r)), 0) - (o.loecher ?? []).reduce((s, r) => s + Math.abs(ringflaeche(r)), 0));
+	const gedeckt = new Map<string, number>();
 	for (const t of teile) {
 		const ring = t.ringe[0];
 		let x = 0, y = 0;
 		for (const [px, py] of ring) { x += px; y += py; }
 		x /= ring.length; y /= ring.length;
 		for (const o of raster.get(`${Math.floor(x / ZELLE)}|${Math.floor(y / ZELLE)}`) ?? []) {
-			if (aus.has(o.id)) continue;
-			if (o.ringe.some((r) => punktIn(x, y, r))) aus.add(o.id);
+			if (o.ringe.some((r) => punktIn(x, y, r))) { gedeckt.set(o.id, (gedeckt.get(o.id) ?? 0) + flaecheVon(t)); break; }
 		}
+	}
+	for (const o of koerper) {
+		const g = gedeckt.get(o.id);
+		if (g !== undefined && g >= 0.6 * flaecheVon(o)) aus.add(o.id);
 	}
 	return aus;
 }

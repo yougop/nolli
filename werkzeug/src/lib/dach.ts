@@ -315,15 +315,23 @@ export function dachKoerper(o: Objekt, teile: P[][], boden: number, unter: numbe
 			continue;
 		}
 
-		// Dachflächen: der Grundriss je Feld geschnitten, darin eben.
-		for (const f of felder) {
-			const stueck = schneiden(teil, f);
-			if (stueck.length < 3 || Math.abs(flaeche2(stueck)) < 1e-4) continue;
-			const idx = earcut(stueck.flat());
-			for (let k = 0; k < idx.length; k += 3) {
-				let A = stueck[idx[k]], B = stueck[idx[k + 1]], C = stueck[idx[k + 2]];
-				if (flaeche2([A, B, C]) < 0) [B, C] = [C, B];
-				tri([A[0], A[1], z(A)], [B[0], B[1], z(B)], [C[0], C[1], z(C)]);
+		// Dachflächen: erst der Grundriss in Dreiecke, dann jedes Dreieck je Feld
+		// geschnitten, darin eben. Andersherum — der verwinkelte Grundriss direkt
+		// gegen das Feld — ließ der Schnitt bei L-, U- und T-Formen Stücke weg
+		// (Volker, Rothenburg; im Test 192 von 1.200 Fällen). Dreieck gegen
+		// konvexes Feld ist exakt.
+		const idx = earcut(teil.flat());
+		for (let k = 0; k < idx.length; k += 3) {
+			const grund = ccw([teil[idx[k]], teil[idx[k + 1]], teil[idx[k + 2]]]);
+			for (const f of felder) {
+				const stueck = schneiden(grund, f);
+				if (stueck.length < 3 || Math.abs(flaeche2(stueck)) < 1e-6) continue;
+				// konvex: als Fächer
+				for (let j = 1; j + 1 < stueck.length; j++) {
+					const A = stueck[0], B = stueck[j], C = stueck[j + 1];
+					if (Math.abs(flaeche2([A, B, C])) < 1e-9) continue;
+					tri([A[0], A[1], z(A)], [B[0], B[1], z(B)], [C[0], C[1], z(C)]);
+				}
 			}
 		}
 		// First und Grate, soweit sie über dem Grundriss liegen.

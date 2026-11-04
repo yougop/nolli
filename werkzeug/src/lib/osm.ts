@@ -42,6 +42,14 @@ export type Objekt = {
 	 */
 	teil?: boolean;
 	/**
+	 * Unterkante in Metern über dem Boden, aus `min_height` oder
+	 * `building:min_level` (04.11.2026). Ein Bauteil beginnt dort, nicht am
+	 * Boden: Brücken zwischen Häusern, Auskragungen, Vordächer, das Rad des
+	 * London Eye. `hoeheM` bleibt die Oberkante über dem Boden, wie OSM sie
+	 * führt (Simple 3D Buildings). Ohne Angabe fehlt das Feld.
+	 */
+	unterM?: number;
+	/**
 	 * Nicht aus OpenStreetMap, sondern aus Overture ergänzt (`overture.ts`).
 	 * `quelleGeometrie` nennt, woher der Umriss stammt, etwa „Microsoft ML
 	 * Buildings“ — für die Namensnennung und für den Vertrag.
@@ -231,13 +239,18 @@ function denkmal(t: Record<string, string>): string | undefined {
  * sind im Datenvertrag als `gemessen`, `geschosse` und `annahme` unterschieden,
  * weil der Unterschied zwischen ihnen groesser ist als die Streuung innerhalb.
  */
-function hoehe(t: Record<string, string>): { m: number; geschosse?: number; geschaetzt: boolean } {
+function hoehe(t: Record<string, string>): { m: number; geschosse?: number; geschaetzt: boolean; unter?: number } {
 	const g = parseFloat(t['building:levels'] ?? '');
 	const geschosse = Number.isFinite(g) && g > 0 ? g : undefined;
+	// Unterkante: gemessen vor Geschossen, wie bei der Oberkante. Ein
+	// übersprungenes Geschoss zählt 3,2 m, dieselbe Geschosshöhe wie oben.
+	const mh = parseFloat(t.min_height ?? t['building:min_height'] ?? '');
+	const ml = parseFloat(t['building:min_level'] ?? t.min_level ?? '');
+	const unter = Number.isFinite(mh) && mh > 0 ? mh : Number.isFinite(ml) && ml > 0 ? ml * 3.2 : undefined;
 	const h = parseFloat(t.height ?? t['building:height'] ?? '');
-	if (Number.isFinite(h) && h > 0) return { m: h, geschosse, geschaetzt: false };
-	if (geschosse) return { m: geschosse * 3.2 + 1, geschosse, geschaetzt: true };
-	return { m: 8, geschaetzt: true };
+	if (Number.isFinite(h) && h > 0) return { m: h, geschosse, geschaetzt: false, unter };
+	if (geschosse) return { m: geschosse * 3.2 + 1, geschosse, geschaetzt: true, unter };
+	return { m: Math.max(8, (unter ?? 0) + 3.2), geschaetzt: true, unter };
 }
 
 /**
@@ -275,6 +288,7 @@ export function lesen(roh: { elements: RohElement[] }, gitter: Gitter, kasten?: 
 			aus.push({ id, ebene: 'gebaeude', art: 'flaeche', ringe: flaechen, loecher, tiefe,
 				teil: !t.building && !!t['building:part'],
 				hoeheM: h.m, geschosse: h.geschosse, hoeheGeschaetzt: h.geschaetzt,
+				...(h.unter ? { unterM: h.unter } : {}),
 				name: t.name, nutzung: t.building, denkmal: denkmal(t), adresse: adresse(t),
 				klasse: KLASSEN[art] ?? 'unbestimmt', zustand: 'normal' });
 		} else if (t.natural === 'water' || t.waterway === 'riverbank' || t.landuse === 'reservoir') {
@@ -354,6 +368,64 @@ export function ringflaeche(ring: [number, number][]) {
  */
 export const istTeil = (o: Objekt) =>
 	o.teil ?? (o.ebene === 'gebaeude' && !o.nutzung);
+
+/** Unterkante eines Körpers, so begrenzt, dass mindestens ein halber Meter Körper bleibt. */
+export const unterkante = (o: Objekt) => Math.max(0, Math.min(o.unterM ?? 0, (o.hoeheM ?? 8) - 0.5));
+
+/**
+ * Umrisse, die durch ihre Teile ersetzt sind (04.11.2026).
+ *
+ * Nach Simple 3D Buildings beschreibt ein Gebäude mit `building:part` sich
+ * selbst durch die Teile; der Umriss trägt dann meist nur die Höhe des
+ * höchsten Teils und wird im Raum nicht gezeigt. Nolli zog bis dahin beide
+ * hoch: Der Umriss stand als Klotz um die Teile, und beim London Eye wurde
+ * aus Rad und Kapseln eine gestreifte Wand (Volker, Bild aus London).
+ *
+ * Ersetzt ist ein Umriss, in dem der Mittelpunkt mindestens eines Teils
+ * liegt. So halten es auch die gängigen 3D-Darsteller; eine Relation
+ * `type=building` liefert Overpass hier nicht mit. In der Aufsicht bleibt
+ * der Umriss, wie er ist: Dort ist er der Grundriss des Hauses.
+ *
+ * Gesucht über ein grobes Raster der Umrisse, sonst wären es in einer
+ * Großstadt Teile mal Gebäude Prüfungen.
+ */
+export function umrisseMitTeilen(objekte: Objekt[]): Set<string> {
+	const aus = new Set<string>();
+	const koerper = objekte.filter((o) => (o.ebene === 'gebaeude' || o.ebene === 'erhalt') && o.zustand !== 'gestrichen' && o.ringe.length);
+	const teile = koerper.filter(istTeil);
+	if (!teile.length) return aus;
+	const ZELLE = 100;
+	const raster = new Map<string, Objekt[]>();
+	for (const o of koerper) {
+		if (istTeil(o)) continue;
+		const [x0, y0, x1, y1] = huelle(o);
+		for (let i = Math.floor(x0 / ZELLE); i <= Math.floor(x1 / ZELLE); i++)
+			for (let j = Math.floor(y0 / ZELLE); j <= Math.floor(y1 / ZELLE); j++) {
+				const k = `${i}|${j}`;
+				(raster.get(k) ?? raster.set(k, []).get(k)!).push(o);
+			}
+	}
+	for (const t of teile) {
+		const ring = t.ringe[0];
+		let x = 0, y = 0;
+		for (const [px, py] of ring) { x += px; y += py; }
+		x /= ring.length; y /= ring.length;
+		for (const o of raster.get(`${Math.floor(x / ZELLE)}|${Math.floor(y / ZELLE)}`) ?? []) {
+			if (aus.has(o.id)) continue;
+			if (o.ringe.some((r) => punktIn(x, y, r))) aus.add(o.id);
+		}
+	}
+	return aus;
+}
+
+function punktIn(x: number, y: number, ring: [number, number][]) {
+	let drin = false;
+	for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+		const [xi, yi] = ring[i], [xj, yj] = ring[j];
+		if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) drin = !drin;
+	}
+	return drin;
+}
 
 export function hoehenDeckung(objekte: Objekt[], ohneTeile = false) {
 	const g = objekte.filter(

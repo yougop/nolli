@@ -1,6 +1,6 @@
 import earcut from 'earcut';
 import { drin, amRahmen } from './schneiden';
-import type { Objekt } from './osm';
+import { unterkante, type Objekt } from './osm';
 import type { Rahmen } from './geo/rahmen';
 
 /**
@@ -66,8 +66,10 @@ export function baukoerper(objekte: Objekt[], r: Rahmen, fuss: (o: Objekt) => nu
 
 	for (const o of objekte) {
 		if (!o.ringe.length) continue;
-		f = fuss(o);
-		const h = f + (o.hoeheM ?? 8);
+		const u = unterkante(o);
+		const h = fuss(o) + (o.hoeheM ?? 8);
+		// Ein schwebender Teil beginnt an seiner Unterkante und bekommt einen Boden.
+		f = fuss(o) + u;
 
 		/**
 		 * Jeder Aussenteil wird ein eigener Koerper, die Loecher werden dem
@@ -126,6 +128,8 @@ export function baukoerper(objekte: Objekt[], r: Rahmen, fuss: (o: Objekt) => nu
 				const a = alle[idx[k]], b = alle[idx[k + 1]], c = alle[idx[k + 2]];
 				if (!a || !b || !c) continue;
 				punkte.push(a[0], h, a[1], c[0], h, c[1], b[0], h, b[1]);
+				// Der Boden, nach unten gewendet.
+				if (u > 0) punkte.push(a[0], f, a[1], b[0], f, b[1], c[0], f, c[1]);
 			}
 		}
 	}
@@ -163,8 +167,8 @@ export function baukanten(objekte: Objekt[], r: Rahmen, fuss: (o: Objekt) => num
 	};
 	for (const o of objekte) {
 		if (!o.ringe.length) continue;
-		const f = fuss(o);
-		const h = f + (o.hoeheM ?? 8);
+		const h = fuss(o) + (o.hoeheM ?? 8);
+		const f = fuss(o) + unterkante(o);
 		const ringe = [...o.ringe, ...(o.loecher ?? [])]
 			.flatMap(innen)
 			.map((a) => ring(a, r))

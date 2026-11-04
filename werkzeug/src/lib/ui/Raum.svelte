@@ -6,7 +6,7 @@
 	import { N8AOPass } from 'n8ao';
 	import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 	import { z } from '$lib/zustand.svelte';
-	import { sichtEbene } from '$lib/osm';
+	import { sichtEbene, umrisseMitTeilen } from '$lib/osm';
 	import { Rahmen, BILDFORMATE } from '$lib/geo/rahmen';
 	import { zeichneBlatt } from '$lib/zeichnen';
 	import { baukoerper, baukanten, hoechstes } from '$lib/raum';
@@ -371,8 +371,10 @@
 
 		const sichtbar = (o: (typeof z.objekte)[number]) =>
 			z.sichtbar.has(sichtEbene(o)) && o.zustand !== 'gestrichen';
-		const bauten = z.objekte.filter((o) => o.ebene === 'gebaeude' && sichtbar(o));
-		const bleibt = z.objekte.filter((o) => o.ebene === 'erhalt' && sichtbar(o));
+		// Umrisse, die ihre Teile ersetzen, stehen im Raum nicht mit (`umrisseMitTeilen`).
+		const ersetzt = umrisseMitTeilen(z.objekte);
+		const bauten = z.objekte.filter((o) => o.ebene === 'gebaeude' && sichtbar(o) && !ersetzt.has(o.id));
+		const bleibt = z.objekte.filter((o) => o.ebene === 'erhalt' && sichtbar(o) && !ersetzt.has(o.id));
 
 		const koerper = (liste: typeof bauten, farbe: number) => {
 			const geo = new THREE.BufferGeometry();

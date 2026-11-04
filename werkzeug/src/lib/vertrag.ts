@@ -127,6 +127,8 @@ export const FELDER: Record<string, string> = {
 	typ: 'type',
 	krone_m: 'crown_m',
 	fuss_m: 'base_m',
+	unterkante_m: 'min_height_m',
+	durch_teile_ersetzt: 'replaced_by_parts',
 	// Gelände
 	modelle: 'models',
 	kachel_m_pro_px: 'tile_m_per_px',

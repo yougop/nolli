@@ -2,7 +2,7 @@ import { objName } from '../vertrag';
 import { type Gelaende, tiefsteUnter, feldImRahmen } from '../geo/gelaende';
 import earcut from 'earcut';
 import { kronenKoerper } from './baeume';
-import type { Objekt } from '../osm';
+import { unterkante, umrisseMitTeilen, type Objekt } from '../osm';
 import type { Rahmen } from '../geo/rahmen';
 import { drin, amRahmen } from '../schneiden';
 import { MATERIALIEN, materialFuer, kd } from '../material';
@@ -71,10 +71,15 @@ export function alsObj(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | null =
 	let normalen = 1;
 	let texturpunkte = 0;
 	let basis = 0;
+	// Umrisse, die ihre Teile ersetzen, kommen nicht ins Modell: Sonst stünde
+	// der Umriss als Klotz um seine Teile, und Umbra rechnete beide als Werfer.
+	// In `data/bodies.json` stehen sie mit `replaced_by_parts`.
+	const ersetzt = umrisseMitTeilen(objekte);
 
 	for (const o of objekte) {
 		if (o.ebene !== 'gebaeude' && o.ebene !== 'erhalt') continue;
 		if (o.zustand === 'gestrichen') continue;
+		if (ersetzt.has(o.id)) continue;
 		if (!o.ringe.length) continue;
 
 		const zerlegt = o.ringe.map((a) => amRahmen(a, r.x0, r.y0, r.x1, r.y1));
@@ -94,8 +99,11 @@ export function alsObj(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | null =
 			.filter((l) => l.length >= 3)
 			.map((l) => (flaeche(l) > 0 ? l.slice().reverse() : l));   // mit dem Uhrzeigersinn
 
-		const h = o.hoeheM ?? 8;
-		const fuss = gelaende ? tiefsteUnter(gelaende, o.ringe) : 0;
+		// Ein schwebender Teil beginnt an seiner Unterkante; `h` ist dann nur
+		// noch seine eigene Höhe, und er bekommt einen Boden.
+		const u = unterkante(o);
+		const h = (o.hoeheM ?? 8) - u;
+		const fuss = (gelaende ? tiefsteUnter(gelaende, o.ringe) : 0) + u;
 
 		/** Einen Satz Aussenringe mit ihren Loechern als ein Objekt schreiben. */
 		const schreiben = (name: string, teile: [number, number][][], loch: [number, number][][]) => {
@@ -146,6 +154,12 @@ export function alsObj(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | null =
 				const idx = earcut(flach, grenzen);
 				for (let k = 0; k < idx.length; k += 3)
 					zeilen.push(`f ${oben(idx[k])}//1 ${oben(idx[k + 1])}//1 ${oben(idx[k + 2])}//1`);
+				if (u > 0) {
+					zeilen.push('vn 0 0 -1');
+					const nb = ++normalen;
+					for (let k = 0; k < idx.length; k += 3)
+						zeilen.push(`f ${unten(idx[k])}//${nb} ${unten(idx[k + 2])}//${nb} ${unten(idx[k + 1])}//${nb}`);
+				}
 
 				basis += n * 2;
 			}

@@ -6,7 +6,7 @@
 	import { breiteName, BILDFORMATE, gedreht } from '$lib/geo/rahmen';
 	import { STIFTE, FAHRBAHN } from '$lib/stifte';
 	import { ebenenZaehlen } from '$lib/zeichnen';
-	import { hoehenDeckung, ringflaeche, istTeil, gebaeudeLuecke, sichtEbene, ZWEIFEL_ENTHAELT } from '$lib/osm';
+	import { hoehenDeckung, ringflaeche, istTeil, gebaeudeLuecke, sichtEbene, ZWEIFEL_ENTHAELT, unterkante, umrisseMitTeilen } from '$lib/osm';
 	import { PLACES_ZUVERSICHT } from '$lib/overture';
 	import { amRahmen } from '$lib/schneiden';
 	import { MATERIALIEN, materialFuer, materialDatei } from '$lib/material';
@@ -532,6 +532,7 @@
 	/** Die Baukörper mit allem, was an ihnen hängt. */
 	function koerperliste() {
 		const rr = r!;
+		const ersetzt = umrisseMitTeilen(bestand);
 		return bestand
 			.filter((o) => (o.ebene === 'gebaeude' || o.ebene === 'erhalt') && o.zustand !== 'gestrichen')
 			.map((o) => ({
@@ -567,6 +568,19 @@
 					(ring) => amRahmen(ring, rr.x0, rr.y0, rr.x1, rr.y1).aussen.length > 0
 				),
 				hoehe_m: Math.round((o.hoeheM ?? 8) * 10) / 10,
+				/**
+				 * Unterkante über dem Boden, wenn der Körper nicht am Boden beginnt
+				 * (`min_height`, `building:min_level`). `height_m` bleibt die
+				 * Oberkante über dem Boden; der Körper reicht von der einen zur
+				 * anderen.
+				 */
+				...(unterkante(o) > 0 ? { unterkante_m: Math.round(unterkante(o) * 10) / 10 } : {}),
+				/**
+				 * Ein Umriss, den seine Teile ersetzen (Simple 3D Buildings). Er
+				 * steht nicht in `model.obj`, weil er sonst als Klotz um die Teile
+				 * stünde; in `model.3dm` liegt er auf einer ausgeblendeten Ebene.
+				 */
+				...(ersetzt.has(o.id) ? { durch_teile_ersetzt: true } : {}),
 				/**
 				 * Mit Gelände: die Höhe über dem Meer, auf der der Körper steht — die
 				 * tiefste Geländehöhe unter seinem Grundriss. Ohne Gelände fehlt das Feld,

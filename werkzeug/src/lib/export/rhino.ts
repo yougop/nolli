@@ -23,7 +23,7 @@
  */
 import wasmUrl from 'rhino3dm/rhino3dm.wasm?url';
 import earcut from 'earcut';
-import type { Objekt } from '../osm';
+import { unterkante, umrisseMitTeilen, type Objekt } from '../osm';
 import type { Rahmen } from '../geo/rahmen';
 import { type Gelaende, tiefsteUnter, feldImRahmen, hoeheBei } from '../geo/gelaende';
 import { amRahmen, drin } from '../schneiden';
@@ -197,7 +197,9 @@ export async function als3dm(e: Rhino3dmEingabe): Promise<Uint8Array> {
 			if (o.geschosse) a.setUserString('storeys', String(o.geschosse));
 			if (o.klasse) a.setUserString('use_class', WERTE.klasse[o.klasse] ?? o.klasse);
 			a.setUserString('material', materialFuer(o));
-			if (gelaende) a.setUserString('base_m', fuss.toFixed(2));
+			// `base_m` wie in `data/bodies.json`: das Gelände unter dem Körper, nicht seine Unterkante.
+			if (gelaende) a.setUserString('base_m', (fuss - unterkante(o)).toFixed(2));
+			if (unterkante(o) > 0) a.setUserString('min_height_m', unterkante(o).toFixed(2));
 			if (loecher.length) {
 				f.objects().addMesh(netzMitHoefen(aussen, loecher, fuss, h), a);
 			} else {
@@ -208,11 +210,17 @@ export async function als3dm(e: Rhino3dmEingabe): Promise<Uint8Array> {
 			}
 		}
 	};
+	// Umrisse, die ihre Teile ersetzen: in Rhino auf eine eigene, ausgeblendete
+	// Ebene, statt sie wegzulassen. Die Daten sind maßgeblich; wer den Umriss
+	// als Hülle braucht, schaltet sie ein.
+	const ersetzt = umrisseMitTeilen(objekte);
 	for (const o of objekte) {
 		if (o.ebene !== 'gebaeude' && o.ebene !== 'erhalt') continue;
 		if (o.zustand === 'gestrichen' || !o.ringe.length) continue;
-		const h = o.hoeheM ?? 8;
-		const fuss = gelaende ? tiefsteUnter(gelaende, o.ringe) : 0;
+		// Schwebende Teile beginnen an ihrer Unterkante; die Extrusion ist geschlossen.
+		const u = unterkante(o);
+		const h = (o.hoeheM ?? 8) - u;
+		const fuss = (gelaende ? tiefsteUnter(gelaende, o.ringe) : 0) + u;
 		const zer = o.ringe.map((x) => amRahmen(x, r.x0, r.y0, r.x1, r.y1));
 		const lzer = (o.loecher ?? []).map((x) => amRahmen(x, r.x0, r.y0, r.x1, r.y1));
 		const ccw = (a: P[]) => (flaeche(a) < 0 ? a.slice().reverse() : a);
@@ -220,7 +228,9 @@ export async function als3dm(e: Rhino3dmEingabe): Promise<Uint8Array> {
 		const innen = zer.filter((t) => t.innen.length >= 3).map((t) => ccw(ring(t.innen))).filter((a) => a.length >= 3);
 		const linnen = lzer.filter((t) => t.innen.length >= 3).map((t) => cw(ring(t.innen))).filter((a) => a.length >= 3);
 		const mat = materialFuer(o);
-		const klasseEbene = o.herkunft === 'overture'
+		const klasseEbene = ersetzt.has(o.id)
+			? ebene('outlines_with_parts', { eltern: BAU, farbe: '#6E6E6B', sichtbar: false })
+			: o.herkunft === 'overture'
 			? ebene('overture', { eltern: BAU, farbe: KANTE, material: mat })
 			: ebene(mat, { eltern: BAU, farbe: KANTE, material: mat });
 		const marke = o.hoeheGeschaetzt ? '_hoehe_geschaetzt' : '';

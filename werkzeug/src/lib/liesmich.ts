@@ -40,8 +40,8 @@ UCX (Urban Context Exchange) ist das Austauschformat der Urban Pipeline. Erzeugt
 | Datei | Inhalt |
 |---|---|
 | \`frame.json\` | Der Datenvertrag: Rahmen, Projektion, Maßstab, Herkunft, Inhaltsverzeichnis. **Maßgeblich.** |
-| \`model.obj\` | Baukörper, extrudiert. Meter, Z nach oben, Y nach Norden. Grund mit Textur, bei eingeschalteten Bäumen die Kronen als Körper \`trees\`. Materialien in \`model.mtl\` |
-| \`model.3dm\` | Dasselbe Modell für Rhino: Gebäude als Extrusionen auf Ebenen nach Klasse, die Kurven der Zeichnung, je Körper UserText mit \`body_id\`, Höhe und Herkunft |
+| \`model.obj\` | Baukörper, extrudiert, Bauteile mit Unterkante schwebend (\`min_height_m\` in \`data/bodies.json\`). Umrisse, die ihre Teile ersetzen, fehlen hier (\`replaced_by_parts\`). Meter, Z nach oben, Y nach Norden. Grund mit Textur, bei eingeschalteten Bäumen die Kronen als Körper \`trees\`. Materialien in \`model.mtl\` |
+| \`model.3dm\` | Dasselbe Modell für Rhino: Gebäude als Extrusionen auf Ebenen nach Klasse, die Kurven der Zeichnung, je Körper UserText mit \`body_id\`, Höhe und Herkunft. Umrisse, die ihre Teile ersetzen, liegen auf der ausgeblendeten Ebene \`outlines_with_parts\` |
 | \`drawing.dxf\` | Zeichnung mit getrennten Ebenen (\`N_BUILDINGS\`, \`N_STREETS\`, …), Meter |
 ${ter ? '| \`drawing_terrain.dxf\` | Dieselbe Zeichnung aufs Geländenetz von \`model.obj\` gelegt, als 3D-Polylinien. Gebäudeumrisse auf der Fußhöhe ihres Körpers |\n' : ''}| \`images/\` | Jede Darstellung, dazu je eine Fassung \`_bare\` ohne Baukörper und Bäume |
 | \`data/\` | Alle Daten als JSON, Feldnamen siehe unten. **Maßgeblich:** \`body_id\`, Material und Herkunft stehen hier; OBJ, 3DM und Zeichnungen sind daraus abgeleitet |
@@ -119,8 +119,8 @@ UCX (Urban Context Exchange) is the exchange format of the Urban Pipeline. It wa
 | File | Contents |
 |---|---|
 | \`frame.json\` | The data contract: frame, projection, scale, provenance, table of contents. **Authoritative.** |
-| \`model.obj\` | Extruded building bodies. Metres, Z up, Y north. Textured ground; with trees switched on, the crowns as one object \`trees\`. Materials in \`model.mtl\` |
-| \`model.3dm\` | The same model for Rhino: buildings as extrusions on layers by class, the drawing’s curves, UserText with \`body_id\`, height and origin on every body |
+| \`model.obj\` | Extruded building bodies, parts with a lower edge floating (\`min_height_m\` in \`data/bodies.json\`). Outlines replaced by their parts are left out here (\`replaced_by_parts\`). Metres, Z up, Y north. Textured ground; with trees switched on, the crowns as one object \`trees\`. Materials in \`model.mtl\` |
+| \`model.3dm\` | The same model for Rhino: buildings as extrusions on layers by class, the drawing’s curves, UserText with \`body_id\`, height and origin on every body. Outlines replaced by their parts sit on the hidden layer \`outlines_with_parts\` |
 | \`drawing.dxf\` | Drawing with separate layers (\`N_BUILDINGS\`, \`N_STREETS\`, …), metres |
 ${ter ? '| \`drawing_terrain.dxf\` | The same drawing laid onto the terrain mesh of \`model.obj\`, as 3D polylines. Building outlines at the base height of their body |\n' : ''}| \`images/\` | Every style, plus a \`_bare\` version without buildings and trees |
 | \`data/\` | All data as JSON, field names below. **Authoritative:** \`body_id\`, material and origin are defined here; OBJ, 3DM and drawings are derived from it |

@@ -1509,36 +1509,26 @@
 						<div><dt>{t().ausgeben.baeume}</dt><dd class="mono">{z.baeume ? t().ausgeben.jaN(imRahmenBaeume) : t().ausgeben.nein}</dd></div>
 						<div><dt>{t().gelaende.zeile}</dt><dd class="mono">{gelaendeFeld ? t().gelaende.spanne(f0(gelaendeFeld.min), f0(gelaendeFeld.max)) : t().gelaende.eben}</dd></div>
 						<div><dt>{t().ausgeben.groesse}</dt><dd class="mono">{bildMass[0]} × {bildMass[1]}</dd></div>
+						{#if raeumlich}<div><dt>{t().ausgeben.karteBreite}</dt><dd class="mono">{r?.pixelBreite} × {r?.pixelHoehe}</dd></div>{/if}
 					</dl>
 					<!--
 						Die Breite auch hier, wo sie wirkt: Sie bestimmt jedes Bild und die
 						Textur im Modell. Die Daten bleiben, nur gezeichnet wird neu.
 					-->
-					{#if raeumlich}
-						<!-- Das 3D-Bild hat eigene Breite und eigenes Format, unabhängig
-						     von der Karte. Dieselben Einstellungen wie unter „Bildrahmen". -->
-						<div class="wahl breiten">
-							{#each AUSGABEBREITEN as b}
-								<button type="button" class:an={z.bild3d.breite === b}
-									onclick={() => (z.bild3d.breite = b)}>{breiteName(b)}<em class="mono">{b}</em></button>
-							{/each}
-						</div>
-						<div class="wahl formate">
-							{#each BILDFORMATE as f}
-								<button type="button" class:an={z.bild3d.format === f.name}
-									onclick={() => (z.bild3d.format = f.name)}>{f.name === 'ansicht' ? t().sicht.formatAnsicht : f.name}</button>
-							{/each}
-						</div>
-						{#if z.bild3d.breite > 4096}<p class="hinweis leise">{t().ausgeben.achtK}</p>{/if}
-					{:else}
-						<div class="wahl breiten">
-							{#each AUSGABEBREITEN as b}
-								<button type="button" class:an={z.ausgabeBreite === b}
-									onclick={() => (z.ausgabeBreite = b)}>{breiteName(b)}<em class="mono">{b}</em></button>
-							{/each}
-						</div>
-						{#if z.ausgabeBreite > 4096}<p class="hinweis leise">{t().ausgeben.achtK}</p>{/if}
-					{/if}
+					<!--
+						Hier nur die Breite der Karte: Sie gilt für die Blätter und die
+						Textur im Modell. Format und Breite des 3D-Bilds stehen allein unter
+						„Bildrahmen" in der Leiste, nicht noch einmal hier (Volker, 04.11.2026).
+					-->
+					{#if raeumlich}<span class="feld">{t().ausgeben.karteBreite}</span>{/if}
+					<div class="wahl breiten">
+						{#each AUSGABEBREITEN as b}
+							<button type="button" class:an={z.ausgabeBreite === b}
+								onclick={() => (z.ausgabeBreite = b)}>{breiteName(b)}<em class="mono">{b}</em></button>
+						{/each}
+					</div>
+					{#if z.ausgabeBreite > 4096 || (raeumlich && z.bild3d.breite > 4096)}<p class="hinweis leise">{t().ausgeben.achtK}</p>{/if}
+					{#if raeumlich}<p class="hinweis leise">{t().ausgeben.bild3dHinweis}</p>{/if}
 					<p class="hinweis leise">
 						{t().darstellungen[darstellungJetzt.id].zweck}
 						{#if hoehenAbstand}

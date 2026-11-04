@@ -188,6 +188,8 @@ const de = {
 		weiter: 'Weiter zur Ausgabe'
 	},
 	ausgeben: {
+		karteBreite: 'Karte und Textur',
+		bild3dHinweis: 'Format und Breite des 3D-Bilds stellst du oben unter „Bildrahmen“ ein.',
 		achtK: '8K heißt rund 50 Millionen Bildpunkte je Bild. Das Paket dauert damit deutlich länger und wird um ein Mehrfaches größer; auf schwächeren Rechnern kann der Browser an seine Grenze kommen.',
 		bild: 'Bild',
 		darstellung: 'Darstellung',
@@ -476,6 +478,8 @@ const en: typeof de = {
 		weiter: 'Continue to export'
 	},
 	ausgeben: {
+		karteBreite: 'Map and texture',
+		bild3dHinweis: 'Set the format and width of the 3D image above under “Safe frame”.',
 		achtK: '8K means about 50 million pixels per image. The package takes much longer and grows several times larger; on weaker machines the browser may reach its limit.',
 		bild: 'Image',
 		darstellung: 'Style',

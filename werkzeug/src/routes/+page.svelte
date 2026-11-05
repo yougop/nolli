@@ -962,6 +962,10 @@
 	/** Maße des Druckmodells für die Anzeige, ohne es zu bauen. */
 	const druckJetzt = $derived(r ? druckMasse(bestand, r, z.druck) : null);
 	let druckOffen = $state(false);
+	// Fenster zu: auch Vorschau und Ausschnitt von der Bühne (Volker, 05.11.2026:
+	// man kam aus der Druckansicht nicht mehr heraus).
+	$effect(() => { if (!druckOffen) z.druckBuehne = null; });
+
 	/**
 	 * Das Druckmodell: je Kachel eine Datei, bei mehreren Kacheln zusammen im ZIP.
 	 * Die Bibliothek kommt erst beim ersten Druck, wie Rhino.
@@ -1108,7 +1112,7 @@
 					<div class="gruppe" role="group" aria-label={t().sicht.darstellung}>
 						{#each DARSTELLUNGEN.filter((d) => d.bauweise !== 'raum') as d}
 							<button type="button" class:an={z.darstellung === d.id} aria-pressed={z.darstellung === d.id}
-								onclick={() => (z.darstellung = d.id)} title={t().darstellungen[d.id].zweck}>{t().darstellungen[d.id].name}</button>
+								onclick={() => { z.darstellung = d.id; z.druckBuehne = null; }} title={t().darstellungen[d.id].zweck}>{t().darstellungen[d.id].name}</button>
 						{/each}
 					</div>
 					<!--
@@ -1119,7 +1123,7 @@
 					<div class="gruppe" role="group" aria-label={t().sicht.raum}>
 						{#each DARSTELLUNGEN.filter((d) => d.bauweise === 'raum') as d}
 							<button type="button" class:an={z.darstellung === d.id} aria-pressed={z.darstellung === d.id}
-								onclick={() => (z.darstellung = d.id)} title={t().darstellungen[d.id].zweck}>{t().darstellungen[d.id].name}</button>
+								onclick={() => { z.darstellung = d.id; z.druckBuehne = null; }} title={t().darstellungen[d.id].zweck}>{t().darstellungen[d.id].name}</button>
 						{/each}
 						<!--
 							Das Gelände ist nur im 3D-Modell zu sehen; die flachen Darstellungen

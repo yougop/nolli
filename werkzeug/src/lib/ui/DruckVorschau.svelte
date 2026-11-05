@@ -31,6 +31,7 @@
 	const gruppe = new THREE.Group();
 	szene.add(gruppe);
 	let winkel = -0.6, neigung = 0.75, abstand = 1, mitte = new THREE.Vector3(), weite = 200;
+	let eingepasst = '';
 
 	const FARBEN = { platte: 0xcfcdc7, haeuser: 0xf4f3ef, strassen: 0x5f5f5c, gruen: 0x8aa874, klein: 0xd2453a };
 
@@ -82,9 +83,18 @@
 				teil.position.set(k.i * (k.bMm + FUGE), k.j * (k.hMm + FUGE), 0);
 				gruppe.add(teil);
 			}
-			const box = new THREE.Box3().setFromObject(gruppe);
-			box.getCenter(mitte);
-			weite = Math.max(box.max.x - box.min.x, box.max.y - box.min.y);
+			// Neu einpassen nur, wenn sich zeigt, was zu sehen ist: Ausschnitt
+			// und Maßstab. Sonst sprang das Bild bei jeder Einstellung, etwa der
+			// Plattendicke, und Schieben und Zoomen gingen verloren (Volker, 05.11.2026).
+			const d = z.druck, schluessel = JSON.stringify([d.ausschnitt, d.groesse, d.massstab, d.bettMm, r.x0, r.y0, r.x1, r.y1]);
+			if (schluessel !== eingepasst) {
+				eingepasst = schluessel;
+				const box = new THREE.Box3().setFromObject(gruppe);
+				box.getCenter(mitte);
+				mitte.z = 0;
+				weite = Math.max(box.max.x - box.min.x, box.max.y - box.min.y);
+				abstand = 1;
+			}
 			zeichnen();
 		} finally {
 			rechnet = false;

@@ -171,6 +171,7 @@ export const WERTE: Record<string, Record<string, string>> = {
 	typ: { punkt: 'point', flaeche: 'area', linie: 'line' },
 	vorbehalte: {
 		daecher_flach: 'roofs_flat',
+		daecher_teilweise: 'roofs_partial',
 		gelaende_eben: 'terrain_flat',
 		gelaende_grob: 'terrain_coarse',
 		gebaeude_luftbild: 'buildings_from_imagery',

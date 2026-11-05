@@ -88,7 +88,7 @@ ${un.length ? `
 |---|---|---|---|
 ${unZeilen}
 ` : ''}
-\`roofs_flat\`: Jeder Baukörper hat eine Höhe und ein waagerechtes Dach. Höhen ohne Messung kommen aus der Geschosszahl oder sind mit 8 m angenommen; solche Körper tragen \`_height_estimated\` im Namen.
+\`roofs_flat\` oder \`roofs_partial\`: Ohne Dachangabe in OpenStreetMap hat ein Baukörper ein waagerechtes Dach; mit \`roof:shape\` seine Form (\`roof_shape\`, \`roof_height_m\` in \`data/bodies.json\`). Der First von Sattel- und Walmdach ist bei verwinkelten Grundrissen eine Annäherung. Höhen ohne Messung kommen aus der Geschosszahl oder sind mit 8 m angenommen; solche Körper tragen \`_height_estimated\` im Namen.
 
 ${pl ? `## Places
 
@@ -167,7 +167,7 @@ ${un.length ? `
 |---|---|---|---|
 ${unZeilen}
 ` : ''}
-\`roofs_flat\`: every body has one height and a flat roof. Heights that are not measured come from the number of storeys or are assumed at 8 m; such bodies carry \`_height_estimated\` in their name.
+\`roofs_flat\` or \`roofs_partial\`: without a roof tag in OpenStreetMap a body has a flat roof; with \`roof:shape\` it has that shape (\`roof_shape\`, \`roof_height_m\` in \`data/bodies.json\`). The ridge of gabled and hipped roofs is an approximation on irregular footprints. Heights that are not measured come from the number of storeys or are assumed at 8 m; such bodies carry \`_height_estimated\` in their name.
 
 ${pl ? `## Places
 

@@ -1,9 +1,9 @@
 # Nolli
 
 **Site context for urban design, straight from OpenStreetMap.** Pick a place,
-set a frame, clean up the existing fabric, and export figure-ground plans, a
-CAD drawing, a 3D context model with terrain, and a data contract that every
-later tool can rely on.
+set a frame, clean up the existing fabric, and take it out as figure-ground
+plans, a CAD drawing, a 3D context model for Rhino, a file for the 3D printer,
+and a data contract that every later tool can rely on.
 
 **▶ Open the app: [zinssmeister.info/app/nolli](https://zinssmeister.info/app/nolli/)**
 · Project page: [zinssmeister.info/nolli](https://zinssmeister.info/nolli)
@@ -16,62 +16,101 @@ key: the page talks directly to OpenStreetMap (Overpass), the place search
 (Photon), an open elevation model (AWS Terrain Tiles) and, on request,
 Overture Maps.
 
-![3D context model with terrain and trees, Prato (Tuscany)](docs/terrain-3d-light.png)
+![3D model of the South Bank, London: the London Eye built from its OpenStreetMap parts, standing free and casting its ring of shadow onto the Thames](docs/london-eye-3d.png)
 
 ## What you get
 
 | Output | Contents |
 |---|---|
-| **Images** | Figure-ground, inverted, line, use, top view, white model, data depth, 3D view — up to 8192 px (8K; the width can be switched in step 3 without fetching again), with a bare version (no buildings, no trees) of each to use as a ground texture |
-| **`drawing.dxf`** | Separate layers with pen widths (`N_BUILDINGS`, `N_STREETS`, `N_WATER`, …), labels, frame, and contour lines when terrain is on. Cut at the frame. Metres, origin at the lower-left frame corner. With terrain, also `drawing_terrain.dxf`: the same drawing on the terrain mesh |
-| **Model (ZIP)** | `model.obj`, `model.mtl`, `model_texture.png` and `model.3dm`, ready for Rhino: extruded buildings with hard edges, in greys by use class (one material per body, see `data/materials.json`), cut cleanly at the frame edge; the ground textured with the top view, on the terrain or flat; tree crowns as one object `trees`. It contains what the 3D view shows — switch terrain and trees there, and set saturation, contrast and brightness of the ground under **Adjust map** (a fully desaturated texture gives a grey plan in Rhino) |
-| **Package (ZIP)** | The UCX package (Urban Context Exchange), e.g. `UCX_Prato_2026-11-04.zip`: everything above plus `model_outside.obj`, the parts of buildings beyond the frame edge, which still cast shadows into it. Single files carry the same name stem |
-| **`frame.json`** | The data contract: frame, projection, scale, provenance, caveats, and a table of contents of the package |
-| **`data/materials.json`** | The material schema shared by the pipeline: an id, a grey (warm for design) and a mask index per class. Every body names its material in `data/bodies.json`, together with its `body_id` |
-| **`data/*.json`** | Everything OpenStreetMap knows inside the frame: buildings with height and origin of the height, street network as a graph, points of interest, stops and lines, land use, trees, terrain raster. If added: buildings from Overture (marked as such) and `data/places.json` |
-| **`README.md`** | Written into every package, in the interface language |
+| **Images** | Figure-ground, inverted, line, use, top view, white model, data depth, 3D model — up to 8192 px (8K), with a bare version of each (no buildings, no trees) to use as a ground texture. The 3D image has its own format, width and background, or a transparent one |
+| **Drawing** | `drawing.dxf`: separate layers with pen widths (`N_BUILDINGS`, `N_STREETS`, `N_WATER`, …), labels, frame, contour lines when terrain is on. Cut at the frame, metres, origin at the lower-left corner. With terrain also `drawing_terrain.dxf`: the same plan lying on the terrain |
+| **Model** | `model.3dm` for Rhino and `model.obj` with `model.mtl` and `model_texture.png`: buildings with their roofs, in greys by use class, cut cleanly at the frame; the ground textured with the top view, on the terrain or flat; tree crowns |
+| **3D print** | `.3mf` or `.stl` in millimetres: a closed base plate with the buildings, raised streets and green areas, as one object of four parts for a four-colour printer, or in one colour. Any part of the frame, at a scale or fitted to the bed, split into tiles if it is larger |
+| **UCX package** | Everything above in one ZIP, e.g. `UCX_Prato_2026-11-05.zip`, plus all data as JSON, the parts of buildings beyond the frame (`model_outside.obj`, they still cast shadows into it) and a README in the interface language |
+| **`frame.json`** | The data contract: frame, projection, scale, provenance, caveats, and the table of contents of the package |
 
 ## The three steps
 
 | | |
 |---|---|
-| **1 · Frame** | Search a place or drag a rectangle. The aspect ratio snaps; width, height, area and metres per pixel update live. Nolli checks whether a 12 m deep row of buildings is still at least 12 px wide at the chosen output size — below that, building edges merge. The status line names the place under the frame, and follows it when you move it. Fetching the data can be cancelled. |
-| **2 · Clean up** | Click objects or draw a polygon to remove them or keep them. Removed objects stay visible as ghosts and are listed by ID in the contract. Buildings that cannot be buildings — one containing ten or more others — are removed by Nolli itself, with a note and a button to keep them (see below). A site area clears everything inside and cuts streets at its boundary. If OpenStreetMap has streets but hardly any buildings, Nolli says so and offers to fill the gap from Overture. |
-| **3 · Export** | One image, the drawing, the model, the data contract, or the complete package. |
+| **1 · Frame** | Search a place or drag a rectangle. The aspect ratio snaps; width, height, area and metres per pixel update live. Nolli checks whether a 12 m deep row of buildings is still at least 12 px wide at the chosen output size — below that, building edges merge. Fetching can be cancelled. |
+| **2 · Clean up** | Click objects or draw a polygon to remove them or keep them. Removed objects stay visible as ghosts and are listed by ID in the contract. A site area clears everything inside and cuts streets at its boundary. Nolli removes buildings that cannot be buildings on its own, and offers to fill gaps from Overture (see below). |
+| **3 · Export** | One image, the drawing, the model, the 3D print, the data contract, or the complete package. |
 
 ![Step 1: frame, Prato (Tuscany)](docs/1-frame.png)
 ![Step 2: figure-ground with the clean-up tools](docs/2-figure-ground.png)
 
-## Terrain
+## The 3D model
+
+The model is what Nolli knows, built as plainly as possible: a working model,
+not a rendering.
+
+- **Buildings as OpenStreetMap describes them.** Heights from `height`, else
+  from the number of storeys, else 8 m — and every body says which. Parts with
+  a lower edge (`min_height`, `building:min_level`) float where they belong:
+  bridges between buildings, overhangs, the wheel of the London Eye. Where a
+  building is described by its parts, the outline gives way to them.
+- **Roofs from `roof:shape`:** gabled, hipped, skillion, pyramidal and dome,
+  with `roof:height`, `roof:direction` and `roof:orientation`. Without a tag
+  the roof is flat. The ridge follows the smallest rectangle around the
+  footprint, so an L-shaped house gets one ridge instead of two.
+- **Light like in Umbra.** Sky light cool from above and warm from the
+  ground, a sun with direction and elevation, contact shadows that are sharp
+  at the foot of a building and soften with distance, ambient occlusion
+  (N8AO). Sun off gives an overcast sky. Brightness and a warm–cool light
+  colour round it off. The sun also sets the shadows of the white model.
+- **Map on the ground.** The top view lies on the ground at up to 8K;
+  saturation, contrast and brightness, and the weight of the map's lines, are
+  set under **Map**. A grey, desaturated ground gives a plain context in Rhino.
+
+![3D model with terrain and trees, Prato (Tuscany)](docs/terrain-3d-light.png)
+
+### Terrain
 
 Switch on **Terrain** in the 3D model. Nolli fetches heights for the frame
-plus a 150 m margin from the [AWS Terrain Tiles](https://registry.opendata.aws/terrain-tiles/)
-(Terrarium format) and then:
-
-- puts every building on the lowest terrain height under its footprint, so it
-  sits into the slope instead of floating above it;
-- adds a terrain mesh (`terrain`, 10 m grid) to `model.obj`, heights in metres
-  above sea level, textured with the top view without buildings;
-- adds contour lines to `drawing.dxf` on `N_CONTOUR` and `N_CONTOUR_MAJOR`,
-  each at its height, with an interval chosen from the height range;
-- writes a second drawing, `drawing_terrain.dxf`, into the model ZIP and the
-  package: the same plan laid onto the terrain mesh of `model.obj` as 3D
-  polylines, exactly on its triangles; building outlines sit at the base
-  height of their body;
-- writes the raster to `data/terrain.json` and records the source models in
-  the contract.
+plus a 150 m margin from the
+[AWS Terrain Tiles](https://registry.opendata.aws/terrain-tiles/) and puts
+every building on the lowest terrain height under its footprint. The terrain
+mesh goes into the model, contour lines into the drawing, the raster into
+`data/terrain.json`. Water areas from OpenStreetMap are laid flat, at the
+lower fifth of the heights along their shore: over water the elevation models
+measure noise, not a surface.
 
 **Know the limits.** The tiles combine several elevation models; in Europe it
 is mostly EU-DEM at about 25 m, elsewhere mostly SRTM at about 30 m. Most of
-them measure the surface, not the bare ground, so dense buildings and forest
-raise it slightly. That is good for slope, valley form and river position at
-masterplan scale — not for embankments, quay walls or steps. For more
-accuracy, bring in an official terrain model (see below).
+them measure the surface, not the bare ground. That is good for slope, valley
+form and river position at masterplan scale — not for embankments, quay walls
+or steps. For more accuracy, bring in an official terrain model (see below).
+Terrain is off by default; then everything stands on z = 0.
 
-Terrain is off by default. Then everything stands on z = 0 and the contract
-says so (`terrain_flat`).
+## 3D print
 
-![3D model with trees, ground adjusted under Adjust map, HafenCity (Hamburg)](docs/hafencity-3d.png)
+**3D print** below **Export image** opens a panel on the left.
+
+- **Choose area** shows the frame as a plan with a rectangle: drag it, pull
+  its corners, zoom with the wheel. Next to it: fitted to the bed, or a scale
+  from 1:500 to 1:5,000, the bed size, and the rectangle in millimetres. If
+  the area is larger than the bed, Nolli splits it into tiles, one file each.
+- **Preview** shows the print on the stage, all tiles in place, before a file
+  is written.
+- **Multicolour** writes one object of four parts — base, buildings, streets,
+  green — so each part gets its own spool (made for the four slots of a Bambu
+  Lab AMS). **Single colour** writes one body; streets stand 0.4 mm proud of
+  the plate so they still read.
+- **Base thickness** below the lowest point of the area, **terrain
+  exaggeration** for flat places (only the ground, never the buildings),
+  floating parts **to the ground** or **left out**.
+- **Parts too small:** cut pieces at the edge, antennas and slender towers,
+  and buildings narrower than 0.8 mm are counted, shown in red in the
+  preview, and kept or left out.
+
+Every part is a closed solid in millimetres; buildings sit half a millimetre
+into the plate so they fuse with it. The file lies centred on the bed. Bambu
+Studio reports “invalid configuration, only geometry is loaded” for every
+3MF it did not write itself — that is expected; printer settings belong in the
+slicer.
+
+![3D print preview of the old town of Rothenburg ob der Tauber at 1:1,000, with the print panel on the left](docs/print-preview.png)
 
 ## Gaps in OpenStreetMap: Overture
 
@@ -80,42 +119,27 @@ In Upper Saddle River, New Jersey, it has 13 buildings along 16 km of
 residential streets. Nolli notices this — many street kilometres, few
 buildings — and offers to add buildings from
 [Overture Maps](https://overturemaps.org/), which merges OpenStreetMap with
-building footprints traced from aerial imagery by Microsoft, Google and
-others. In Upper Saddle River that turns 13 buildings into about 630.
+footprints traced from aerial imagery by Microsoft, Google and others. In
+Upper Saddle River that turns 13 buildings into about 630.
 
 - **Only what is missing.** Overture buildings that come from OpenStreetMap
-  are skipped, and so is every one whose centre lies inside an OSM building or
-  construction site. Fresh Overpass data always wins.
-- **Its own layer.** Added buildings sit on the layer `Overture` (DXF
-  `N_OVERTURE`) and can be switched off; then they are left out of every
-  output, images, drawing, model and contract alike. In the data depth view
-  they have their own colour.
-- **Marked in the contract.** Each body says `origin: "overture"` with its
-  `overture_id` and `geometry_source`; their heights count as
-  `from_imagery`, and the caveat `buildings_from_imagery` is set. The
-  `overture` block names the release and the attribution the sources require.
-- **Places (optional).** One more button fetches Overture places — shops,
-  restaurants, schools, services — into `data/places.json`, filtered to open
-  places with confidence ≥ 0.5. Phone numbers, e-mail addresses and social
-  media profiles are left out. They are not drawn in the plan; they are there
-  for site analysis further down the chain.
+  are skipped, and so is every one whose centre lies inside an OSM building.
+  Fresh Overpass data always wins.
+- **Its own layer.** Added buildings sit on the layer `Overture` and can be
+  switched off; then they are left out of every output.
+- **Marked in the contract** with `origin: "overture"`, `overture_id` and
+  `geometry_source`; their heights count as `from_imagery`.
+- **Places (optional):** shops, restaurants, schools and services into
+  `data/places.json`, open places with confidence ≥ 0.5, without phone
+  numbers, e-mail addresses or social media profiles.
 
-Overture is fetched only on request, tile by tile straight from its public
-PMTiles archive, with no server in between.
+**Implausible buildings.** Errors in OpenStreetMap can be large: in Mariental,
+Namibia, a residential area of 119 ha was once tagged as one building and
+covered 3,700 real houses. Nolli removes buildings that contain ten or more
+others, says so, links the object and offers to keep it. Every case is listed
+in `frame.json` under `implausible_buildings`.
 
-**Implausible buildings.** Errors in OpenStreetMap can be large. In
-Mariental, Namibia, a residential area of 119 ha was retagged as a single
-building in October 2026 and covered 3,700 real houses. After every fetch
-Nolli looks for buildings that contain ten or more other buildings, removes
-them for now and says so, with a link to the object and a button to keep it
-after all. Buildings over 20 ha that contain nothing are only flagged; the
-largest real halls come close to that.
-The package says so: every flagged building is listed in `frame.json` under
-`implausible_buildings` (ID, area, buildings inside, removed or kept, OSM link),
-with the caveat `buildings_implausible`, so a removal by Nolli can be told
-apart from one made by hand.
-
-![3D model of Lower Manhattan with trees, the ground set under Adjust map. Here OpenStreetMap is nearly complete: Overture adds 3 buildings to 908](docs/manhattan-3d.png)
+![3D model of Lower Manhattan with trees. Here OpenStreetMap is nearly complete: Overture adds 3 buildings to 908](docs/manhattan-3d.png)
 
 ## Using the package in Rhino or QGIS
 
@@ -123,64 +147,53 @@ The model uses a transverse Mercator projection centred on the site (scale 1,
 grid north = true north at the centre). The exact definition is in
 `frame.json` under `grid.proj4`.
 
-- **Rhino:** open `model.3dm`. Buildings come as Rhino extrusions (closed
-  solids, editable) on layers by use class (`N_BUILDINGS::residential` …),
-  the drawing's curves on their DXF layers, draped on the terrain when it is
-  on, and every body carries UserText: `body_id`, `osm_id`, height and its
-  source, use class, material. Parts beyond the frame edge sit on the hidden
-  layer `N_OUTSIDE`. The Rhino library (rhino3dm, about 2.7 MB) loads only
-  when you export.
-- **Rhino via OBJ:** unpack the model ZIP and import `model.obj` in metres; material
-  and texture come with it, nothing to map. `drawing.dxf` lines up with it.
-  The drawing stays flat on purpose, so its curves can still be hatched,
-  extruded and capped. With terrain on, `drawing_terrain.dxf` is the same
-  drawing already lying on the terrain mesh — no `_Pull` needed. Images fit exactly onto the frame from 0/0
-  to width/height.
+- **Rhino:** open `model.3dm`. Buildings with flat roofs come as extrusions,
+  those with roofs or courtyards as meshes, on layers by use class
+  (`N_BUILDINGS::residential` …). The drawing's curves sit on their DXF
+  layers, the map is embedded on the ground, and every body carries UserText:
+  `body_id`, `osm_id`, height and its source, use class, material, roof
+  shape. Outlines replaced by their parts and parts beyond the frame sit on
+  hidden layers.
+- **Rhino via OBJ:** import `model.obj` in metres; material and texture come
+  with it. `drawing.dxf` lines up with it and stays flat on purpose, so its
+  curves can still be hatched and extruded; `drawing_terrain.dxf` already lies
+  on the terrain.
+- **QGIS and other data:** create a custom coordinate system from
+  `grid.proj4`, reproject your data into it and move it by −`bbox_grid[0]`,
+  −`bbox_grid[1]`. The package README spells out the numbers. This is also how
+  to replace the terrain with an official model, for example regional LiDAR.
+  The frame corners are also given in UTM (`utm.epsg`, `utm.bbox`).
 
-- **Other data (QGIS):** create a custom coordinate system from `grid.proj4`,
-  reproject your data into it and move it by −`bbox_grid[0]`, −`bbox_grid[1]`.
-  The package README spells out the numbers. This is also how to replace the
-  terrain with an official model, for example regional LiDAR.
-- The frame corners are also given in UTM (`utm.epsg`, `utm.bbox`) for joining
-  official datasets.
+![The model imported into Rhino 8: textured ground, trees, nothing mapped by hand. HafenCity (Hamburg)](docs/rhino-import.png)
 
-![The model ZIP imported into Rhino 8: textured ground, trees, nothing mapped by hand. HafenCity (Hamburg)](docs/rhino-import.png)
+## Data contract: UCX
 
-## Data contract: UCX (v2)
+The package format is called UCX, Urban Context Exchange. Nolli writes it;
+other tools of the chain (Umbra, later Pons in Rhino) read it or carry it on.
+`frame.json` starts with `"contract": "ucx", "contract_version": 2`. Field,
+file, object and layer names are English; the mapping from the earlier German
+names lives in [`werkzeug/src/lib/vertrag.ts`](werkzeug/src/lib/vertrag.ts).
 
-The package format is called UCX, Urban Context Exchange: Nolli generates it, and other tools of the pipeline (Umbra, later Pons in Rhino) read it or carry it on. `frame.json` starts with `"contract": "ucx", "contract_version": 2` (packages before 4 November 2026 say `"nolli"`; readers accept both). Field,
-file, object and layer names are English. The mapping from the earlier German
-names (v1) lives in one place, [`werkzeug/src/lib/vertrag.ts`](werkzeug/src/lib/vertrag.ts),
-so tools can read both versions.
-
-Principles the contract follows:
-
-- **Every number carries its origin** — measured, computed or estimated.
-  Building heights say whether they come from a `height` tag, from the number
-  of storeys, from aerial imagery (Overture), or from the 8 m default.
-- **An empty caveat list is a statement.** `caveats` lists what the model
-  simplifies (`roofs_flat`, `terrain_flat` / `terrain_coarse`,
-  `buildings_from_imagery`, `buildings_implausible`); a missing list
-  means "assume the worst".
-- **Time is local.** `time_zone` names the IANA time zone at the frame
-  centre (e.g. `America/New_York`), looked up offline; `null` if unknown. No
-  fixed offset: daylight saving is for the reading tool to apply per date.
-- **The data is authoritative, the geometry is derived.** `body_id`, material
-  and origin are defined in `data/*.json`; `model.obj`, `model.3dm` and the
-  drawings are generated from it. When they disagree, the data wins.
-- **Every package knows where it comes from.** `provenance.generated` names the
-  tool, its build (git commit) and the time; every later change by another tool
-  is appended to `provenance.edits`.
-- **The contract never contradicts itself.** All dimensions derive from the
-  rounded frame corners; `width_m / pixel_width` equals `meters_per_pixel`
-  exactly.
+- **The data is authoritative, the geometry is derived.** `body_id`, height,
+  lower edge, roof, material and origin are defined in `data/bodies.json`;
+  `model.obj`, `model.3dm`, the drawings and the print are generated from it.
+- **Every number carries its origin** — measured, from storeys, from aerial
+  imagery, or the 8 m default.
+- **An empty caveat list is a statement.** `caveats` names what the model
+  simplifies (`roofs_flat` or `roofs_partial`, `terrain_flat` or
+  `terrain_coarse`, `buildings_from_imagery`, `buildings_implausible`); a
+  missing list means “assume the worst”.
+- **Every package knows where it comes from.** `provenance.generated` names
+  the tool, its build and the time; later tools append to `provenance.edits`.
+- **Time is local:** `time_zone` names the IANA zone at the frame centre.
+- **Additions only.** New fields such as `min_height_m`, `replaced_by_parts`,
+  `roof_shape` and `roof_height_m` are added without breaking older readers.
 
 ## Language
 
-The interface switches between German and English (top right). The choice is
-remembered; otherwise the browser language decides. Package contents are
-always in contract v2 English; only the package README follows the interface
-language.
+The interface switches between German and English (top right); the choice is
+remembered. Package contents are always in English; only the package README
+follows the interface language.
 
 ## Running it
 
@@ -191,7 +204,7 @@ npm run dev -- --open          # http://localhost:5173
 ```
 
 To publish, build a static site and put the contents of `werkzeug/build/` on
-any web server that can serve files and use `200.html` as fallback:
+any web server that serves files and uses `200.html` as fallback:
 
 ```bash
 cd werkzeug
@@ -199,53 +212,55 @@ npm run build
 ```
 
 No Node, no database and no environment variables are needed at runtime. Each
-visitor talks to Overpass from their own address, as Overpass's usage policy
-intends for occasional use. Overpass is a donated service: Nolli limits a
-frame to 40 km² and waits between requests.
+visitor talks to Overpass from their own address, as its usage policy intends
+for occasional use. Overpass is a donated service: Nolli limits a frame to
+40 km² and waits between requests.
 
 ## Checks
 
-Manual scripts in `werkzeug/pruefung/`, run against `vite preview` on port
-5185 (`npm run build && npx vite preview --port 5185`):
+Manual scripts in `werkzeug/pruefung/`, run against a preview on port 5185
+(`npm run build`, then `npx vite preview --port 5185` from `werkzeug/`):
 
 | Script | Checks |
 |---|---|
 | `npm run check` | Type checking (svelte-check) |
 | `pruefung/paket.mjs <dir>` | Builds the model ZIP and the complete package for the HafenCity example |
-| `pruefung/vertrag.mjs <v1> <v2> [umbra.html]` | Contract tables are reversible; a v2 package mapped back equals a v1 package; a downstream tool's copy of the table matches |
+| `pruefung/vertrag.mjs` | Contract name tables are reversible |
 | `pruefung/sprache.mjs <dir>` | Walks the English interface and reports German leftovers |
-| `pruefung/gelaende.mjs <dir> [place]` | Builds a package with terrain at a real place (default: Galceti, Prato). Uses live data |
+| `pruefung/gelaende.mjs <dir> [place]` | Builds a package with terrain at a real place. Uses live data |
 | `pruefung/leiste.mjs` | Lists the styles and switches the interface offers, read from the source |
-| `pruefung/stand.mjs live\|merken\|seither` | Compares the published app with the local build, records a delivery, lists what changed since |
+| `pruefung/stand.mjs live\|merken\|seither` | Compares the published app with the local build, records a delivery |
 
 ## Repository layout
 
 ```
-werkzeug/              the Nolli web app (SvelteKit, static build)
-  src/lib/geo/         projection, frame, terrain
-  src/lib/export/      DXF, OBJ and tree crown writers
-  src/lib/vertrag.ts   data contract v2 name tables
-  src/lib/sprache.svelte.ts   German and English interface texts
-  pruefung/            check scripts
-docs/                  screenshots for this README
-DESIGN.md              design rules of the interface (colours, type, layout)
+werkzeug/                   the Nolli web app (SvelteKit, static build)
+  src/lib/geo/              projection, frame, terrain, coast
+  src/lib/export/           DXF, OBJ, 3DM (rhino3dm) and 3D print (3MF, STL)
+  src/lib/dach.ts           roof shapes
+  src/lib/raum.ts           building bodies and edges for the 3D view
+  src/lib/vertrag.ts        data contract name tables
+  src/lib/sprache.svelte.ts German and English interface texts
+  pruefung/                 check scripts
+docs/                       screenshots for this README
+DESIGN.md                   design rules of the interface
 ```
 
-The code and comments are written in German; the interface and the package
-are bilingual.
+The code and its comments are written in German; the interface and the
+package are bilingual.
 
 ## License
 
 The code is licensed under the [GNU Affero General Public License v3.0](LICENSE)
 or later. You may use, change and pass it on; if you run a changed version as a
 website, you must offer its source code to its users. What Nolli produces —
-images, drawings, models, packages — is not covered by this license; it
+images, drawings, models, prints, packages — is not covered by this license; it
 carries the licenses of its data sources below.
 
 ## Data sources and attribution
 
 - **OpenStreetMap** via Overpass — © OpenStreetMap contributors, ODbL. The
-  attribution belongs with every output you pass on.
+  attribution belongs with every output you pass on, a printed model included.
 - **Terrain** — AWS Terrain Tiles (Tilezen). Attribution per source model:
   [tilezen/joerd attribution](https://github.com/tilezen/joerd/blob/master/docs/attribution.md).
   EU-DEM: produced using Copernicus data and information funded by the
@@ -255,3 +270,4 @@ carries the licenses of its data sources below.
   (CC BY 4.0). Places under CDLA Permissive 2.0, Foursquare data under
   Apache 2.0. The package names the sources actually used.
 - **Base map** — OpenFreeMap. **Place search** — Photon by Komoot.
+- **Libraries** — three.js, N8AO, rhino3dm, earcut, fflate, MapLibre GL.

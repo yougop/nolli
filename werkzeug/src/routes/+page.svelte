@@ -771,13 +771,14 @@
 			 * ein nachgelagertes Werkzeug muss vom Schlimmsten ausgehen. Deshalb
 			 * steht es auch dann da, wenn nichts drinsteht.
 			 *
-			 * `daecher_flach`: Jeder Baukörper bekommt eine Höhe und ein
-			 * waagerechtes Dach. Neigung, First und gestaffelte Traufhöhen kennt
-			 * das Modell nicht, weil OpenStreetMap den Umriss als eine Fläche
-			 * führt. Für eine Ertragsrechnung auf geneigten Dächern ist das die
-			 * Grenze dieses Modells.
+			 * `daecher_flach`: Jeder Baukörper hat ein waagerechtes Dach.
+			 * `daecher_teilweise` seit 05.11.2026: Wo OSM `roof:shape` führt, hat
+			 * der Körper seine Dachform (Sattel, Walm, Pult, Zelt, Kuppel), sonst
+			 * ist er flach. Der First von Sattel und Walm ist bei verwinkelten
+			 * Grundrissen eine Annäherung. Für eine Ertragsrechnung auf geneigten
+			 * Dächern ist das die Grenze dieses Modells.
 			 */
-			vorbehalte: ['daecher_flach', z.gelaendeJetzt ? 'gelaende_grob' : 'gelaende_eben',
+			vorbehalte: [bestand.some((o) => o.dachform) ? 'daecher_teilweise' : 'daecher_flach', z.gelaendeJetzt ? 'gelaende_grob' : 'gelaende_eben',
 				...(overtureAn ? ['gebaeude_luftbild'] : []),
 				...(z.zweifel.length ? ['gebaeude_unplausibel'] : [])],
 			/**

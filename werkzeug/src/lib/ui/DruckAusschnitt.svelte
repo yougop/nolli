@@ -161,7 +161,8 @@
 
 <style>
 	.buehne-druck { position: absolute; inset: 0; z-index: 1; background: var(--grund, #eaeae9); }
-	.platz { position: absolute; inset: 28px 290px 56px 28px; display: grid; place-items: center; }
+	/* Links Platz für das Druckfenster, rechts für die Tafel: Der Plan liegt dazwischen. */
+	.platz { position: absolute; inset: 28px 290px 56px 344px; display: grid; place-items: center; }
 	.flaeche { position: relative; touch-action: none; user-select: none; }
 	img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 	.schleier { position: absolute; inset: 0; background: rgb(0 0 0 / 0.08); pointer-events: none; }

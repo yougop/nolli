@@ -127,7 +127,7 @@ export function druckModell(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | n
 	const ersetzt = umrisseMitTeilen(objekte);
 	const g = druckBereich(r, w);
 	const kb = (g.x1 - g.x0) / m.nx, kh = (g.y1 - g.y0) / m.ny;
-	const kacheln: { name: string; platte: Netz; haeuser: Netz; strassen: Netz; gruen: Netz }[] = [];
+	const kacheln: { name: string; i: number; j: number; bMm: number; hMm: number; platte: Netz; haeuser: Netz; strassen: Netz; gruen: Netz }[] = [];
 	const flaeche = (xm: number, ym: number) => (feld ? plattenZ(netzHoehe(feld, xm - r.x0, ym - r.y0)) : plattenZ(0));
 
 	for (let j = 0; j < m.ny; j++)
@@ -178,7 +178,7 @@ export function druckModell(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | n
 			}
 			const strassen: Netz = w.strassen ? strassenStreifen(objekte, x0, y0, x1, y1, m.k, flaeche, feld ? feld.dx : Infinity) : [];
 			const gruen: Netz = w.gruen ? gruenFlaechen(objekte, x0, y0, x1, y1, m.k, flaeche, feld ? feld.dx : Infinity) : [];
-			kacheln.push({ name: m.nx * m.ny > 1 ? `kachel_${String.fromCharCode(65 + j)}${i + 1}` : 'modell', platte, haeuser, strassen, gruen });
+			kacheln.push({ name: m.nx * m.ny > 1 ? `kachel_${String.fromCharCode(65 + j)}${i + 1}` : 'modell', i, j, bMm: kb * m.k, hMm: kh * m.k, platte, haeuser, strassen, gruen });
 		}
 	return { kacheln, masse: m };
 }

@@ -42,9 +42,16 @@
 		beob.observe(el);
 		return () => beob.disconnect();
 	});
+	/**
+	 * Der Plan liegt über der ganzen Bühne und läuft beim Schieben unter das
+	 * Druckfenster und die Tafel (Volker, 05.11.2026). Eingepasst wird er
+	 * aber in den freien Platz dazwischen.
+	 */
+	const FREI = { links: 344, rechts: 290, oben: 28, unten: 56 };
 	const groesseFlaeche = $derived.by(() => {
 		const s = r.breiteM / r.hoeheM;
-		return pb / ph > s ? { b: ph * s, h: ph } : { b: pb, h: pb / s };
+		const fb = Math.max(100, pb - FREI.links - FREI.rechts), fh = Math.max(100, ph - FREI.oben - FREI.unten);
+		return fb / fh > s ? { b: fh * s, h: fh } : { b: fb, h: fb / s };
 	});
 	let zieht = $state.raw<null | { art: 'mitte' | 'nw' | 'ne' | 'sw' | 'se' | 'plan'; x: number; y: number; vorher: typeof a; tx: number; ty: number }>(null);
 
@@ -54,16 +61,17 @@
 	 * bleiben gleich groß.
 	 */
 	let zoom = $state(1), tx = $state(0), ty = $state(0);
-	const ox = $derived((pb - groesseFlaeche.b) / 2), oy = $derived((ph - groesseFlaeche.h) / 2);
+	const ox = $derived(FREI.links + (pb - FREI.links - FREI.rechts - groesseFlaeche.b) / 2);
+	const oy = $derived(FREI.oben + (ph - FREI.oben - FREI.unten - groesseFlaeche.h) / 2);
 	function rad(e: WheelEvent) {
 		if (!platz) return;
 		e.preventDefault();
 		const b = platz.getBoundingClientRect();
 		const cx = e.clientX - b.left, cy = e.clientY - b.top;
-		const neu = Math.min(6, Math.max(1, zoom * (e.deltaY > 0 ? 0.88 : 1.14)));
+		const neu = Math.min(6, Math.max(0.5, zoom * (e.deltaY > 0 ? 0.88 : 1.14)));
 		const ux = (cx - ox - tx) / zoom, uy = (cy - oy - ty) / zoom;
 		tx = cx - ox - ux * neu; ty = cy - oy - uy * neu; zoom = neu;
-		if (zoom === 1) { tx = 0; ty = 0; }
+
 	}
 	function planRunter(e: PointerEvent) {
 		if (e.button !== 0 && e.button !== 2) return;
@@ -206,7 +214,7 @@
 <style>
 	.buehne-druck { position: absolute; inset: 0; z-index: 1; background: var(--grund, #eaeae9); }
 	/* Links Platz für das Druckfenster, rechts für die Tafel: Der Plan liegt dazwischen. */
-	.platz { position: absolute; inset: 28px 290px 56px 344px; overflow: hidden; cursor: grab; }
+	.platz { position: absolute; inset: 0; overflow: hidden; cursor: grab; }
 	.platz.zieht { cursor: grabbing; }
 	.flaeche { position: absolute; left: 0; top: 0; transform-origin: 0 0; touch-action: none; user-select: none; }
 	img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }

@@ -7,8 +7,8 @@
 	import type { Objekt } from '$lib/osm';
 
 	/**
-	 * Die Vorschau des Druckmodells (Volker, 05.11.2026): die erste Kachel,
-	 * so wie sie in die Datei geht, in Millimetern, groß auf der Bühne statt
+	 * Die Vorschau des Druckmodells (Volker, 05.11.2026): alle Kacheln des
+	 * Ausschnitts, so wie sie in die Dateien gehen, in Millimetern, groß auf der Bühne statt
 	 * der Ansicht. Ziehen dreht, das Rad zoomt. Neu gerechnet wird erst, wenn die Einstellungen eine Viertel-
 	 * sekunde ruhen; ein großer Ausschnitt braucht dafür einen Moment.
 	 *
@@ -64,14 +64,22 @@
 		try {
 			const { druckModell } = await import('$lib/export/druck');
 			const { kacheln } = druckModell(objekte, r, z.gelaendeJetzt, $state.snapshot(z.druck));
-			const k = kacheln[0];
-			for (const m of gruppe.children as THREE.Mesh[]) { m.geometry.dispose(); (m.material as THREE.Material).dispose(); }
+			gruppe.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) { m.geometry.dispose(); (m.material as THREE.Material).dispose(); } });
 			gruppe.clear();
 			const ein = z.druck.farben === 'ein';
-			gruppe.add(netz(k.platte, ein ? FARBEN.haeuser : FARBEN.platte));
-			if (k.haeuser.length) gruppe.add(netz(k.haeuser, FARBEN.haeuser));
-			if (k.strassen.length) gruppe.add(netz(k.strassen, ein ? FARBEN.haeuser : FARBEN.strassen));
-			if (k.gruen.length) gruppe.add(netz(k.gruen, ein ? FARBEN.haeuser : FARBEN.gruen));
+			// Alle Kacheln an ihrer Stelle, mit einer Fuge von 3 mm: So zeigt die
+			// Vorschau den ganzen Ausschnitt und sieht man, wo geteilt wird. Bis
+			// 05.11.2026 zeigte sie nur die erste Kachel (Volker: passte nicht zum Ausschnitt).
+			const FUGE = kacheln.length > 1 ? 3 : 0;
+			for (const k of kacheln) {
+				const teil = new THREE.Group();
+				teil.add(netz(k.platte, ein ? FARBEN.haeuser : FARBEN.platte));
+				if (k.haeuser.length) teil.add(netz(k.haeuser, FARBEN.haeuser));
+				if (k.strassen.length) teil.add(netz(k.strassen, ein ? FARBEN.haeuser : FARBEN.strassen));
+				if (k.gruen.length) teil.add(netz(k.gruen, ein ? FARBEN.haeuser : FARBEN.gruen));
+				teil.position.set(k.i * (k.bMm + FUGE), k.j * (k.hMm + FUGE), 0);
+				gruppe.add(teil);
+			}
 			const box = new THREE.Box3().setFromObject(gruppe);
 			box.getCenter(mitte);
 			weite = Math.max(box.max.x - box.min.x, box.max.y - box.min.y);

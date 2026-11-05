@@ -39,18 +39,34 @@ export type Druckwahl = {
 	farben: 'ein' | 'mehr';
 	/** Straßen als flache Streifen über der Platte, damit man sie auch einfarbig erkennt. */
 	strassen: boolean;
+	/** Grünflächen als eigener Körper in der Platte, 0,2 mm erhaben. */
+	gruen: boolean;
+	/**
+	 * Was gedruckt wird, als Bruchteil des Rahmens (0 bis 1, y von Süden).
+	 * Ab Werk alles; ein Teil, wenn der ganze Rahmen nicht druckbar ist.
+	 */
+	ausschnitt: { x0: number; y0: number; x1: number; y1: number };
 };
 export const DRUCK_VORGABE: Druckwahl = {
 	groesse: 'bett', massstab: 1000, bettMm: 200, sockelMm: 3, ueberhoehung: 1, schwebend: 'durchziehen',
-	farben: 'mehr', strassen: true
+	farben: 'mehr', strassen: true, gruen: true, ausschnitt: { x0: 0, y0: 0, x1: 1, y1: 1 }
 };
+/** Die Bambu X1 Carbon mit AMS fasst vier Spulen: Platte, Häuser, Straßen, Grün. */
+export const DRUCK_FARBEN = 4;
+const GRUEN_MM = 0.2;
+
+/** Der Ausschnitt im Ortsgitter. */
+export function druckBereich(r: Rahmen, w: Druckwahl) {
+	const a = w.ausschnitt ?? DRUCK_VORGABE.ausschnitt, B = r.x1 - r.x0, H = r.y1 - r.y0;
+	return { x0: r.x0 + a.x0 * B, y0: r.y0 + a.y0 * H, x1: r.x0 + a.x1 * B, y1: r.y0 + a.y1 * H };
+}
 /** Wie hoch die Straßen über der Platte stehen, und wie schmal sie höchstens werden. */
 const STRASSE_MM = 0.4, STRASSE_MIN_MM = 0.6, STRASSE_WEG_MM = 0.4;
 /** Was ein Drucker mit 0,4-mm-Düse noch sauber legt. */
 export const MINDEST_MM = 0.8;
 const VERSENKT_MM = 0.5;
 
-type Netz = number[];
+type Netz = number[];   // x y z je Ecke, drei Ecken je Dreieck, außen gegen den Uhrzeigersinn
 
 /**
  * Ein Ring ohne doppelte Punkte. OSM schließt Ringe mit dem ersten Punkt,
@@ -65,11 +81,12 @@ function sauber(ring: [number, number][]): [number, number][] {
 	}
 	while (aus.length > 1 && Math.hypot(aus[0][0] - aus[aus.length - 1][0], aus[0][1] - aus[aus.length - 1][1]) <= 1e-3) aus.pop();
 	return aus;
-}   // x y z je Ecke, drei Ecken je Dreieck, außen gegen den Uhrzeigersinn
+}
 
 /** Maße vorab, für die Anzeige: Millimeter je Meter, Gesamtgröße, Kacheln, zu kleine Häuser. */
 export function druckMasse(objekte: Objekt[], r: Rahmen, w: Druckwahl) {
-	const B = r.x1 - r.x0, H = r.y1 - r.y0;
+	const g = druckBereich(r, w);
+	const B = g.x1 - g.x0, H = g.y1 - g.y0;
 	const k = w.groesse === 'bett' ? w.bettMm / Math.max(B, H) : 1000 / w.massstab;
 	const breiteMm = B * k, hoeheMm = H * k;
 	const nx = w.groesse === 'bett' ? 1 : Math.max(1, Math.ceil(breiteMm / w.bettMm - 1e-6));
@@ -79,6 +96,7 @@ export function druckMasse(objekte: Objekt[], r: Rahmen, w: Druckwahl) {
 		if ((o.ebene !== 'gebaeude' && o.ebene !== 'erhalt') || o.zustand === 'gestrichen' || !o.ringe.length) continue;
 		let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
 		for (const [x, y] of o.ringe[0]) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+		if (x1 < g.x0 || x0 > g.x1 || y1 < g.y0 || y0 > g.y1) continue;
 		if (Math.min(x1 - x0, y1 - y0) * k < MINDEST_MM) klein++;
 	}
 	return { k, breiteMm, hoeheMm, nx, ny, massstab: Math.round(1000 / k), klein };
@@ -93,14 +111,14 @@ export function druckModell(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | n
 	/** Geländehöhe in mm über der Plattenunterseite. */
 	const plattenZ = (zGelaende: number) => w.sockelMm + (zGelaende - zRef) * m.k * ue;
 	const ersetzt = umrisseMitTeilen(objekte);
-	const B = r.x1 - r.x0, H = r.y1 - r.y0;
-	const kb = B / m.nx, kh = H / m.ny;
-	const kacheln: { name: string; platte: Netz; haeuser: Netz; strassen: Netz }[] = [];
+	const g = druckBereich(r, w);
+	const kb = (g.x1 - g.x0) / m.nx, kh = (g.y1 - g.y0) / m.ny;
+	const kacheln: { name: string; platte: Netz; haeuser: Netz; strassen: Netz; gruen: Netz }[] = [];
 	const flaeche = (xm: number, ym: number) => (feld ? plattenZ(netzHoehe(feld, xm - r.x0, ym - r.y0)) : plattenZ(0));
 
 	for (let j = 0; j < m.ny; j++)
 		for (let i = 0; i < m.nx; i++) {
-			const x0 = r.x0 + i * kb, y0 = r.y0 + j * kh, x1 = x0 + kb, y1 = y0 + kh;
+			const x0 = g.x0 + i * kb, y0 = g.y0 + j * kh, x1 = x0 + kb, y1 = y0 + kh;
 			const mm = (x: number, y: number): [number, number] => [(x - x0) * m.k, (y - y0) * m.k];
 			const platte = grundplatte(feld, r, x0, y0, x1, y1, m.k, plattenZ);
 			const haeuser: Netz = [];
@@ -133,7 +151,8 @@ export function druckModell(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | n
 				}
 			}
 			const strassen: Netz = w.strassen ? strassenStreifen(objekte, x0, y0, x1, y1, m.k, flaeche, feld ? feld.dx : Infinity) : [];
-			kacheln.push({ name: m.nx * m.ny > 1 ? `kachel_${String.fromCharCode(65 + j)}${i + 1}` : 'modell', platte, haeuser, strassen });
+			const gruen: Netz = w.gruen ? gruenFlaechen(objekte, x0, y0, x1, y1, m.k, flaeche, feld ? feld.dx : Infinity) : [];
+			kacheln.push({ name: m.nx * m.ny > 1 ? `kachel_${String.fromCharCode(65 + j)}${i + 1}` : 'modell', platte, haeuser, strassen, gruen });
 		}
 	return { kacheln, masse: m };
 }
@@ -199,6 +218,72 @@ function strassenStreifen(objekte: Objekt[], x0: number, y0: number, x1: number,
 					prisma(acht);
 				}
 			}
+		}
+	}
+	return aus;
+}
+
+/**
+ * Grünflächen als eigener Körper: oben `GRUEN_MM` über der Platte, unten
+ * 0,6 mm in ihr, damit sie im Mehrfarbdruck als eigene Farbe oben liegen.
+ *
+ * Mit Gelände folgt die Fläche der Platte. Dazu wird die Zerlegung jeder
+ * Fläche gleichmäßig verfeinert, bis keine Kante länger als ein Rasterschritt
+ * ist (höchstens dreimal geviertelt). Die Wände entstehen aus den Rändern der
+ * verfeinerten Zerlegung, so passen sie Ecke an Ecke, und der Körper ist
+ * geschlossen.
+ */
+function gruenFlaechen(objekte: Objekt[], x0: number, y0: number, x1: number, y1: number, k: number,
+	flaeche: (x: number, y: number) => number, schritt: number): Netz {
+	const aus: Netz = [];
+	for (const o of objekte) {
+		if (o.ebene !== 'gruen' || o.art !== 'flaeche' || o.zustand === 'gestrichen') continue;
+		const hoefe = (o.loecher ?? []).map((l) => sauber(amRahmen(l, x0, y0, x1, y1).innen)).filter((l) => l.length >= 3);
+		for (const roh of o.ringe) {
+			const aussen = sauber(amRahmen(roh, x0, y0, x1, y1).innen);
+			if (aussen.length < 3) continue;
+			const ringe = [aussen, ...hoefe];
+			const flach: number[] = [], grenzen: number[] = [];
+			for (const [x, y] of aussen) flach.push(x, y);
+			for (const l of hoefe) { grenzen.push(flach.length / 2); for (const [x, y] of l) flach.push(x, y); }
+			const alle = ringe.flat();
+			const idx = earcut(flach, grenzen);
+			if (!idx.length) continue;
+			let dreiecke: [number, number][][] = [];
+			let laengste = 0;
+			for (let n = 0; n < idx.length; n += 3) {
+				let t = [alle[idx[n]], alle[idx[n + 1]], alle[idx[n + 2]]];
+				if ((t[1][0] - t[0][0]) * (t[2][1] - t[0][1]) - (t[1][1] - t[0][1]) * (t[2][0] - t[0][0]) < 0) t = [t[0], t[2], t[1]];
+				dreiecke.push(t);
+				for (let e = 0; e < 3; e++) laengste = Math.max(laengste, Math.hypot(t[e][0] - t[(e + 1) % 3][0], t[e][1] - t[(e + 1) % 3][1]));
+			}
+			const stufen = Number.isFinite(schritt) ? Math.min(3, Math.max(0, Math.ceil(Math.log2(laengste / schritt)))) : 0;
+			for (let s = 0; s < stufen; s++) {
+				const neu: [number, number][][] = [];
+				const m = (a: [number, number], b: [number, number]): [number, number] => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+				for (const [a, b, c] of dreiecke) {
+					const ab = m(a, b), bc = m(b, c), ca = m(c, a);
+					neu.push([a, ab, ca], [ab, b, bc], [ca, bc, c], [ab, bc, ca]);
+				}
+				dreiecke = neu;
+			}
+			const p = (q: [number, number], z: number) => [(q[0] - x0) * k, (q[1] - y0) * k, z];
+			const oben = (q: [number, number]) => p(q, flaeche(q[0], q[1]) + GRUEN_MM);
+			const unten = (q: [number, number]) => p(q, flaeche(q[0], q[1]) - 0.6);
+			const kante = new Map<string, number>();
+			const sch = (q: [number, number]) => `${q[0].toFixed(4)},${q[1].toFixed(4)}`;
+			for (const t of dreiecke) {
+				aus.push(...oben(t[0]), ...oben(t[1]), ...oben(t[2]));
+				aus.push(...unten(t[0]), ...unten(t[2]), ...unten(t[1]));
+				for (let e = 0; e < 3; e++) { const key = `${sch(t[e])}>${sch(t[(e + 1) % 3])}`; kante.set(key, (kante.get(key) ?? 0) + 1); }
+			}
+			// Wände an den Kanten, die nur ein Dreieck hat: dort ist der Rand.
+			for (const t of dreiecke)
+				for (let e = 0; e < 3; e++) {
+					const a = t[e], b = t[(e + 1) % 3];
+					if (kante.has(`${sch(b)}>${sch(a)}`)) continue;
+					aus.push(...unten(a), ...unten(b), ...oben(b), ...unten(a), ...oben(b), ...oben(a));
+				}
 		}
 	}
 	return aus;

@@ -3,6 +3,7 @@
 	import Blatt from '$lib/ui/Blatt.svelte';
 	import Raum from '$lib/ui/Raum.svelte';
 	import DruckVorschau from '$lib/ui/DruckVorschau.svelte';
+	import DruckAusschnitt from '$lib/ui/DruckAusschnitt.svelte';
 	import { DACH_NAME } from '$lib/dach';
 	import { druckMasse } from '$lib/export/druck';
 	import { z, VERHAELTNISSE, AUSGABEBREITEN, KANTEN_VORGABE, SONNE_VORGABE } from '$lib/zustand.svelte';
@@ -198,7 +199,10 @@
 		+ 9    // Modell, Teile vor der Kante, Materialien, Textur, Zeichnung, Vertrag, Liesmich, Materialschema, 3DM
 	);
 	let raum = $state<Raum | null>(null);
-	const raumSichtbar = $derived(z.schritt > 1 && raeumlich);
+	/** Die Druckvorschau oder der Druckausschnitt statt der Ansicht, nur in Schritt 3. */
+	const druckAuf = $derived(z.schritt === 3 && !!z.druckBuehne && !!r);
+	$effect(() => { if (z.schritt !== 3 && z.druckBuehne) z.druckBuehne = null; });
+	const raumSichtbar = $derived(z.schritt > 1 && raeumlich && !druckAuf);
 	let raumGeoeffnet = $state(false);
 	$effect(() => { if (raumSichtbar) raumGeoeffnet = true; });
 	let kartenRegler = $state(false);
@@ -965,12 +969,13 @@
 		const { kacheln } = druckModell(bestand, rr, z.gelaendeJetzt, $state.snapshot(z.druck));
 		const mehr = z.druck.farben === 'mehr';
 		/**
-		 * Einfarbig ein Objekt. Mehrfarbig im 3MF drei Objekte, je eines für
-		 * Platte, Häuser und Straßen; STL kennt keine Objekte, dort werden es
-		 * drei Dateien, die man im Slicer als Teile eines Modells lädt.
+		 * Einfarbig ein Objekt. Mehrfarbig im 3MF bis zu vier Objekte, je eines
+		 * für Platte, Häuser, Straßen und Grün — so viele Spulen fasst das AMS
+		 * der Bambu X1 Carbon; STL kennt keine Objekte, dort werden es
+		 * einzelne Dateien, die man im Slicer als Teile eines Modells lädt.
 		 */
 		const dateien = (k: (typeof kacheln)[number], vor: string): Record<string, Uint8Array> => {
-			const teile = [{ name: 'base', netz: k.platte }, { name: 'buildings', netz: k.haeuser }, { name: 'streets', netz: k.strassen }]
+			const teile = [{ name: 'base', netz: k.platte }, { name: 'buildings', netz: k.haeuser }, { name: 'streets', netz: k.strassen }, { name: 'green', netz: k.gruen }]
 				.filter((x) => x.netz.length);
 			if (art === '3mf') return { [`${vor}.3mf`]: als3mf(mehr ? teile : [{ name: 'model', netz: teile.flatMap((x) => x.netz) }]) };
 			if (!mehr) return { [`${vor}.stl`]: alsStl(teile.map((x) => x.netz), `Nolli ${basis} ${k.name}, mm`) };
@@ -1310,7 +1315,7 @@
 					+ und − auf der Karte in Schritt 1 (Volker, 04.11.2026). Die Leiste
 					darüber gehört dem, was das Blatt zeigt, und bricht so nicht um.
 				-->
-				{#if z.schritt > 1}
+				{#if z.schritt > 1 && !druckAuf}
 					<div class="ansicht" class:raum={raeumlich} role="group" aria-label={t().sicht.ansicht}>
 						{#if raeumlich}
 							<button type="button" onclick={() => raum?.zuruecksetzen()}>{t().sicht.zuruecksetzen}</button>
@@ -1325,6 +1330,8 @@
 				{/if}
 				{#if z.schritt === 1}
 					<Karte bind:this={karte} {schema} />
+				{:else if druckAuf && r}
+					{#if z.druckBuehne === 'vorschau'}<DruckVorschau objekte={bestand} {r} />{:else}<DruckAusschnitt objekte={bestand} {r} />{/if}
 				{:else if !raeumlich}
 					<Blatt waehlbar={z.schritt === 2} />
 				{/if}
@@ -1778,11 +1785,27 @@
 					<div class="teil">
 						<span class="feld feldzeile">{t().ausgeben.druck}<em class="mono">{t().ausgeben.druckMass(druckJetzt.breiteMm, druckJetzt.hoeheMm, druckJetzt.massstab)}</em></span>
 						<div class="bildrahmen">
-							<DruckVorschau objekte={bestand} r={r!} />
+							<!-- Vorschau und Ausschnitt auf der Bühne, statt der Ansicht (Volker, 05.11.2026). -->
+							<div class="wahl schmal" role="group" aria-label={t().ausgeben.druckBuehne}>
+								<button type="button" class:an={z.druckBuehne === 'vorschau'} aria-pressed={z.druckBuehne === 'vorschau'}
+									onclick={() => (z.druckBuehne = z.druckBuehne === 'vorschau' ? null : 'vorschau')}>{t().ausgeben.druckVorschauKnopf}</button>
+								<button type="button" class:an={z.druckBuehne === 'ausschnitt'} aria-pressed={z.druckBuehne === 'ausschnitt'}
+									onclick={() => (z.druckBuehne = z.druckBuehne === 'ausschnitt' ? null : 'ausschnitt')}>{t().ausgeben.druckAusschnitt}</button>
+							</div>
+							{#if z.druck.ausschnitt.x0 > 0 || z.druck.ausschnitt.y0 > 0 || z.druck.ausschnitt.x1 < 1 || z.druck.ausschnitt.y1 < 1}
+								<div class="wahl schmal">
+									<button type="button" onclick={() => (z.druck.ausschnitt = { x0: 0, y0: 0, x1: 1, y1: 1 })}>{t().ausgeben.druckGanz}</button>
+								</div>
+							{/if}
 							<span class="unter">{t().ausgeben.druckFarben}</span>
 							<div class="wahl schmal" role="group" aria-label={t().ausgeben.druckFarben}>
 								<button type="button" class:an={z.druck.farben === 'ein'} aria-pressed={z.druck.farben === 'ein'} onclick={() => (z.druck.farben = 'ein')}>{t().ausgeben.druckEin}</button>
 								<button type="button" class:an={z.druck.farben === 'mehr'} aria-pressed={z.druck.farben === 'mehr'} onclick={() => (z.druck.farben = 'mehr')}>{t().ausgeben.druckMehr}</button>
+							</div>
+							<span class="unter">{t().ausgeben.druckGruen}</span>
+							<div class="wahl schmal" role="group" aria-label={t().ausgeben.druckGruen}>
+								<button type="button" class:an={z.druck.gruen} aria-pressed={z.druck.gruen} onclick={() => (z.druck.gruen = true)}>{t().sicht.kantenAn}</button>
+								<button type="button" class:an={!z.druck.gruen} aria-pressed={!z.druck.gruen} onclick={() => (z.druck.gruen = false)}>{t().sicht.kantenAus}</button>
 							</div>
 							<span class="unter">{t().ausgeben.druckStrassen}</span>
 							<div class="wahl schmal" role="group" aria-label={t().ausgeben.druckStrassen}>

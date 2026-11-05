@@ -115,6 +115,8 @@ class Zustand {
 	sonne = $state({ ...SONNE_VORGABE });
 	/** Einstellungen für den 3D-Druck (`export/druck.ts`). */
 	druck = $state({ ...DRUCK_VORGABE });
+	/** Was die Bühne in Schritt 3 statt der Ansicht zeigt: die Druckvorschau oder den Druckausschnitt. Nicht gespeichert. */
+	druckBuehne = $state<null | 'vorschau' | 'ausschnitt'>(null);
 	/**
 	 * Das 3D-Bild, getrennt von der Karte (Volker, 04.11.2026): eigenes Format
 	 * und eigene Breite. `rahmen` zeigt den Ausschnitt in der Ansicht.
@@ -725,7 +727,7 @@ class Zustand {
 		this.karte = { ...NEUTRAL, ...(p.karte ?? {}) };
 		this.kanten = { ...KANTEN_VORGABE, ...(p.kanten ?? {}) };
 		this.sonne = { ...SONNE_VORGABE, ...(p.sonne ?? {}) };
-		this.druck = { ...DRUCK_VORGABE, ...(p.druck ?? {}) };
+		this.druck = { ...DRUCK_VORGABE, ...(p.druck ?? {}), ausschnitt: { ...DRUCK_VORGABE.ausschnitt, ...(p.druck?.ausschnitt ?? {}) } };
 		this.bild3d = { ...{ format: 'ansicht', breite: 4096, rahmen: false, hintergrund: null, transparent: false }, ...(p.bild3d ?? {}) };
 		this.baumpunkte = baeumeAus(this.rest);
 		this.ergaenzung = p.ergaenzung ?? null;

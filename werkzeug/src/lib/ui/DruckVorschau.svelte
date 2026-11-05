@@ -8,12 +8,13 @@
 
 	/**
 	 * Die Vorschau des Druckmodells (Volker, 05.11.2026): die erste Kachel,
-	 * so wie sie in die Datei geht, in Millimetern. Ziehen dreht, das Rad
-	 * zoomt. Neu gerechnet wird erst, wenn die Einstellungen eine Viertel-
+	 * so wie sie in die Datei geht, in Millimetern, groß auf der Bühne statt
+	 * der Ansicht. Ziehen dreht, das Rad zoomt. Neu gerechnet wird erst, wenn die Einstellungen eine Viertel-
 	 * sekunde ruhen; ein großer Ausschnitt braucht dafür einen Moment.
 	 *
-	 * Mehrfarbig zeigt Platte, Häuser und Straßen in drei Tönen, einfarbig
-	 * alles in einem: so, wie es aus dem Drucker käme.
+	 * Mehrfarbig zeigt Platte, Häuser, Straßen und Grün in vier Tönen — so
+	 * viele Spulen fasst das AMS der Bambu X1 Carbon —, einfarbig alles in
+	 * einem: so, wie es aus dem Drucker käme.
 	 */
 	let { objekte, r }: { objekte: Objekt[]; r: Rahmen } = $props();
 
@@ -31,7 +32,7 @@
 	szene.add(gruppe);
 	let winkel = -0.6, neigung = 0.75, abstand = 1, mitte = new THREE.Vector3(), weite = 200;
 
-	const FARBEN = { platte: 0xcfcdc7, haeuser: 0xf4f3ef, strassen: 0x5f5f5c };
+	const FARBEN = { platte: 0xcfcdc7, haeuser: 0xf4f3ef, strassen: 0x5f5f5c, gruen: 0x8aa874 };
 
 	function netz(q: number[], farbe: number) {
 		const g = new THREE.BufferGeometry();
@@ -70,6 +71,7 @@
 			gruppe.add(netz(k.platte, ein ? FARBEN.haeuser : FARBEN.platte));
 			if (k.haeuser.length) gruppe.add(netz(k.haeuser, FARBEN.haeuser));
 			if (k.strassen.length) gruppe.add(netz(k.strassen, ein ? FARBEN.haeuser : FARBEN.strassen));
+			if (k.gruen.length) gruppe.add(netz(k.gruen, ein ? FARBEN.haeuser : FARBEN.gruen));
 			const box = new THREE.Box3().setFromObject(gruppe);
 			box.getCenter(mitte);
 			weite = Math.max(box.max.x - box.min.x, box.max.y - box.min.y);
@@ -117,14 +119,11 @@
 </div>
 
 <style>
-	.vorschau { position: relative; }
-	canvas {
-		display: block; width: 100%; aspect-ratio: 3 / 2; cursor: grab; touch-action: none;
-		background: var(--grund, #eaeae9); border: 1px solid var(--linie); border-radius: var(--rund);
-	}
+	.vorschau { position: absolute; inset: 0; z-index: 1; background: var(--grund, #eaeae9); }
+	canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
 	canvas:active { cursor: grabbing; }
 	span {
-		position: absolute; left: 8px; bottom: 8px; font-size: 10.5px; color: var(--tinte-2);
+		position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 10.5px; color: var(--tinte-2);
 		background: var(--blatt); padding: 2px 6px; border-radius: 2px;
 	}
 </style>

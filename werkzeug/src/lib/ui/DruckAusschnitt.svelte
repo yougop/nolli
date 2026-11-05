@@ -118,6 +118,19 @@
 		z.druck.ausschnitt = { x0, y0, x1: x0 + w, y1: y0 + h };
 	}
 	const ganz = $derived(a.x0 <= 0 && a.y0 <= 0 && a.x1 >= 1 && a.y1 >= 1);
+
+	/**
+	 * Maßstab wechseln: Die Druckgröße bleibt, das Rechteck auf dem Plan
+	 * ändert sich (Volker, 05.11.2026). 150 × 150 mm sind bei 1:5.000 ein
+	 * größeres Stück Stadt als bei 1:2.000. Vorher blieb das Rechteck und die
+	 * Druckgröße sprang.
+	 */
+	function massstabSetzen(m: number) {
+		const b = masse.breiteMm, h = masse.hoeheMm;
+		z.druck.groesse = 'massstab';
+		z.druck.massstab = m;
+		groesse(b, h);
+	}
 </script>
 
 <!-- Am Fenster, nicht am Griff: Mit Pointer Capture riss das Ziehen nach
@@ -129,7 +142,12 @@
 	<div class="flaeche" bind:this={flaeche} style:width="{groesseFlaeche.b}px" style:height="{groesseFlaeche.h}px"
 		style:transform="translate({ox + tx}px, {oy + ty}px) scale({zoom})" style:--z={zoom} role="presentation">
 		{#if bild}<img src={bild} alt="" />{/if}
-		<div class="schleier"></div>
+		<!-- Abgedunkelt wird nur der Plan außerhalb des Rechtecks, in vier Streifen.
+		     Ein großer Schatten färbte die ganze Bühne mit (zwei Rahmen, Volker). -->
+		<div class="maske" style:left="0" style:top="0" style:width="100%" style:height="{(1 - a.y1) * 100}%"></div>
+		<div class="maske" style:left="0" style:top="{(1 - a.y0) * 100}%" style:width="100%" style:height="{a.y0 * 100}%"></div>
+		<div class="maske" style:left="0" style:top="{(1 - a.y1) * 100}%" style:width="{a.x0 * 100}%" style:height="{(a.y1 - a.y0) * 100}%"></div>
+		<div class="maske" style:left="{a.x1 * 100}%" style:top="{(1 - a.y1) * 100}%" style:width="{(1 - a.x1) * 100}%" style:height="{(a.y1 - a.y0) * 100}%"></div>
 		<div class="auswahl" role="presentation"
 			style:left="{a.x0 * 100}%" style:width="{(a.x1 - a.x0) * 100}%"
 			style:top="{(1 - a.y1) * 100}%" style:height="{(a.y1 - a.y0) * 100}%"
@@ -146,13 +164,13 @@
 		<span class="unter">{t().ausgeben.druckGroesse}</span>
 		<div class="wahl" role="group" aria-label={t().ausgeben.druckGroesse}>
 			<button type="button" class:an={z.druck.groesse === 'bett'} aria-pressed={z.druck.groesse === 'bett'} onclick={() => (z.druck.groesse = 'bett')}>{t().ausgeben.druckBett}</button>
-			<button type="button" class:an={z.druck.groesse === 'massstab'} aria-pressed={z.druck.groesse === 'massstab'} onclick={() => (z.druck.groesse = 'massstab')}>{t().ausgeben.druckMassstab}</button>
+			<button type="button" class:an={z.druck.groesse === 'massstab'} aria-pressed={z.druck.groesse === 'massstab'} onclick={() => massstabSetzen(z.druck.massstab)}>{t().ausgeben.druckMassstab}</button>
 		</div>
 		{#if z.druck.groesse === 'massstab'}
 			<div class="wahl" role="group" aria-label={t().ausgeben.druckMassstab}>
 				{#each [500, 1000, 2000, 5000] as m}
 					<button type="button" class:an={z.druck.massstab === m} aria-pressed={z.druck.massstab === m}
-						onclick={() => (z.druck.massstab = m)}>1:{zahl(m)}</button>
+						onclick={() => massstabSetzen(m)}>1:{zahl(m)}</button>
 				{/each}
 			</div>
 		{/if}
@@ -192,14 +210,15 @@
 	.platz.zieht { cursor: grabbing; }
 	.flaeche { position: absolute; left: 0; top: 0; transform-origin: 0 0; touch-action: none; user-select: none; }
 	img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-	.schleier { position: absolute; inset: 0; background: rgb(0 0 0 / 0.08); pointer-events: none; }
+	.maske { position: absolute; background: rgb(255 255 255 / 0.6); pointer-events: none; }
+	:global([data-schema='dunkel']) .maske { background: rgb(0 0 0 / 0.5); }
 	.auswahl {
 		position: absolute; border: calc(2px / var(--z)) solid var(--akzent); cursor: move;
-		box-shadow: 0 0 0 9999px rgb(255 255 255 / 0.55);
 	}
 	.mass {
-		transform: scale(calc(1 / var(--z))); transform-origin: 0 0;
-		position: absolute; left: 6px; top: 6px; font-size: 11px; padding: 2px 6px; white-space: nowrap;
+		/* Über dem Rechteck, damit sie auch bei kleinen Ausschnitten zu lesen ist. */
+		transform: translateY(-100%) scale(calc(1 / var(--z))); transform-origin: 0 100%;
+		position: absolute; left: -2px; top: -6px; font-size: 11px; padding: 2px 6px; white-space: nowrap;
 		background: var(--blatt); color: var(--tinte); border-radius: 2px; pointer-events: none;
 	}
 	.griff {

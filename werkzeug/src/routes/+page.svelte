@@ -2354,10 +2354,11 @@
 	.fuss .zweit.an em { color: var(--blatt); }
 	.flaeche { position: relative; }
 	.druckfenster {
-		/* Links bündig an der Bühne (Volker, 05.11.2026). */
-		position: absolute; left: 16px; bottom: 16px; z-index: 5;
-		width: 312px; max-height: calc(100% - 32px); overflow-y: auto; padding: 14px 16px;
-		background: var(--blatt); border: 1px solid var(--linie); border-radius: var(--rund); box-shadow: var(--heben);
+		/* Schwebend, links bündig, oben, unten und links derselbe Abstand (Volker, 05.11.2026). */
+		position: absolute; left: 16px; top: 16px; bottom: 16px; z-index: 5;
+		width: 312px; overflow-y: auto; padding: 14px 16px;
+		background: var(--blatt); border: 1px solid var(--linie); border-radius: var(--rund);
+		box-shadow: 0 6px 24px rgb(0 0 0 / 0.14), 0 1px 3px rgb(0 0 0 / 0.08);
 	}
 	.druckkopf { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
 	.druckkopf .feld { margin: 0; }

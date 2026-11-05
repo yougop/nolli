@@ -34,7 +34,7 @@
 	let winkel = -0.6, neigung = 0.75, abstand = 1, mitte = new THREE.Vector3(), weite = 200;
 	let eingepasst = '';
 
-	const FARBEN = { platte: 0xcfcdc7, haeuser: 0xf4f3ef, strassen: 0x5f5f5c, gruen: 0x8aa874, klein: 0xd2453a };
+	const FARBEN = { platte: 0xcfcdc7, haeuser: 0xf4f3ef, strassen: 0x5f5f5c, gruen: 0x8aa874, klein: 0xd2453a, wasser: 0x8a9ba8 };
 
 	function netz(q: number[], farbe: number) {
 		const g = new THREE.BufferGeometry();
@@ -76,6 +76,15 @@
 			for (const k of kacheln) {
 				const teil = new THREE.Group();
 				teil.add(netz(k.platte, ein ? FARBEN.haeuser : FARBEN.platte));
+				// Mehrfarbig ist das Wasser ein eigener Körper. Einfarbig ist es Teil der
+				// Platte, nur tiefer; die Senke allein sieht man aus der Ferne nicht, also getönt.
+				const wasser = k.see.length ? k.see : k.wasser;
+				if (wasser.length) {
+					const see = netz(wasser, ein ? 0xd9dfe3 : FARBEN.wasser);
+					const st = see.material as THREE.MeshLambertMaterial;
+					st.polygonOffset = true; st.polygonOffsetFactor = -1; st.polygonOffsetUnits = -1;
+					teil.add(see);
+				}
 				if (k.haeuser.length) teil.add(netz(k.haeuser, FARBEN.haeuser));
 				// Zu kleine Teile rot, damit man sieht, was nicht sauber druckt.
 				if (k.kleine.length) teil.add(netz(k.kleine, FARBEN.klein));

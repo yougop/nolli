@@ -25,7 +25,7 @@ Overture Maps.
 | **Images** | Figure-ground, inverted, line, use, top view, white model, data depth, 3D model — up to 8192 px (8K), with a bare version of each (no buildings, no trees) to use as a ground texture. The 3D image has its own format, width and background, or a transparent one |
 | **Drawing** | `drawing.dxf`: separate layers with pen widths (`N_BUILDINGS`, `N_STREETS`, `N_WATER`, …), labels, frame, contour lines when terrain is on. Cut at the frame, metres, origin at the lower-left corner. With terrain also `drawing_terrain.dxf`: the same plan lying on the terrain |
 | **Model** | `model.3dm` for Rhino and `model.obj` with `model.mtl` and `model_texture.png`: buildings with their roofs, in greys by use class, cut cleanly at the frame; the ground textured with the top view, on the terrain or flat; tree crowns |
-| **3D print** | `.3mf` or `.stl` in millimetres: a closed base plate with the buildings, raised streets and green areas, as one object of four parts for a four-colour printer, or in one colour. Any part of the frame, at a scale or fitted to the bed, split into tiles if it is larger |
+| **3D print** | `.3mf` or `.stl` in millimetres: a closed base plate with the buildings, raised streets, green areas and recessed water, as one object of five parts for a multicolour printer, or in one colour. Any part of the frame, at a scale or fitted to the bed, split into tiles if it is larger |
 | **UCX package** | Everything above in one ZIP, e.g. `UCX_Prato_2026-11-05.zip`, plus all data as JSON, the parts of buildings beyond the frame (`model_outside.obj`, they still cast shadows into it) and a README in the interface language |
 | **`frame.json`** | The data contract: frame, projection, scale, provenance, caveats, and the table of contents of the package |
 
@@ -98,10 +98,11 @@ Terrain is off by default; then everything stands on z = 0.
   each.
 - **Preview** shows the print on the stage, all tiles in place, before a file
   is written.
-- **Multicolour** writes one object of four parts — base, buildings, streets,
-  green — so each part gets its own spool (made for the four slots of a Bambu
-  Lab AMS). **Single colour** writes one body; streets stand 0.4 mm proud of
-  the plate so they still read.
+- **Multicolour** writes one object of five parts — base, buildings, streets,
+  green, water — so each part gets its own spool. With the four slots of a
+  Bambu Lab AMS, give base and buildings the same one. **Single colour**
+  writes one body; streets stand 0.4 mm proud of the plate and water lies
+  0.8 mm below it, so both still read.
 - **Base thickness** below the lowest point of the area, **terrain
   exaggeration** for flat places (only the ground, never the buildings),
   floating parts **to the ground** or **left out**.

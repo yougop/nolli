@@ -1,4 +1,5 @@
 import earcut from 'earcut';
+import polygonClipping, { type MultiPolygon } from 'polygon-clipping';
 import { zipSync, strToU8 } from 'fflate';
 import { unterkante, umrisseMitTeilen, type Objekt } from '../osm';
 import { hatDach, dachKoerper, rechteck } from '../dach';
@@ -41,6 +42,8 @@ export type Druckwahl = {
 	strassen: boolean;
 	/** Grünflächen als eigener Körper in der Platte, 0,2 mm erhaben. */
 	gruen: boolean;
+	/** Wasserflächen `WASSER_MM` in die Platte gesenkt, mit senkrechtem Ufer. */
+	wasser: boolean;
 	/**
 	 * Was gedruckt wird, als Bruchteil des Rahmens (0 bis 1, y von Süden).
 	 * Ab Werk alles; ein Teil, wenn der ganze Rahmen nicht druckbar ist.
@@ -51,7 +54,7 @@ export type Druckwahl = {
 };
 export const DRUCK_VORGABE: Druckwahl = {
 	groesse: 'bett', massstab: 1000, bettMm: 200, sockelMm: 3, ueberhoehung: 1, schwebend: 'durchziehen',
-	farben: 'mehr', strassen: true, gruen: true, ausschnitt: { x0: 0, y0: 0, x1: 1, y1: 1 }, klein: 'behalten'
+	farben: 'mehr', strassen: true, gruen: true, wasser: true, ausschnitt: { x0: 0, y0: 0, x1: 1, y1: 1 }, klein: 'behalten'
 };
 
 /**
@@ -85,6 +88,18 @@ function druckBereich(r: Rahmen, w: Druckwahl) {
 }
 /** Wie hoch die Straßen über der Platte stehen, und wie schmal sie höchstens werden. */
 const STRASSE_MM = 0.4, STRASSE_MIN_MM = 0.6, STRASSE_WEG_MM = 0.4;
+/**
+ * So tief liegt Wasser unter dem Land, höchstens bis 0,8 mm über dem Boden
+ * der Platte (Volker, 05.11.2026: In der HafenCity fehlte das Wasser, Elbe
+ * und Fleete lagen auf Höhe der Kais).
+ */
+const WASSER_MM = 0.8;
+/**
+ * Mehrfarbig füllt ein eigener Körper die Senke, für blaues Filament, so weit
+ * unter dem Land, dass das Ufer als Kante stehen bleibt (Volker, 05.11.2026:
+ * „Das Wasser muss natürlich in Blau gedruckt werden").
+ */
+const WASSER_UNTER_LAND_MM = 0.3;
 /** Was ein Drucker mit 0,4-mm-Düse noch sauber legt. */
 const MINDEST_MM = 0.8;
 const VERSENKT_MM = 0.5;
@@ -226,15 +241,17 @@ export function druckModell(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | n
 	const ersetzt = umrisseMitTeilen(objekte);
 	const { g, kb, kh } = m;
 	/** `kleine`: zu kleine Teile, die behalten werden; gehören beim Schreiben zu den Häusern. */
-	const kacheln: { name: string; i: number; j: number; bMm: number; hMm: number; platte: Netz; haeuser: Netz; kleine: Netz; strassen: Netz; gruen: Netz }[] = [];
+	const kacheln: { name: string; i: number; j: number; bMm: number; hMm: number; platte: Netz; wasser: Netz; see: Netz; haeuser: Netz; kleine: Netz; strassen: Netz; gruen: Netz }[] = [];
 
 	for (let j = 0; j < m.ny; j++)
 		for (let i = 0; i < m.nx; i++) {
 			const x0 = g.x0 + i * kb, y0 = g.y0 + j * kh, x1 = x0 + kb, y1 = y0 + kh;
 			const mm = (x: number, y: number): [number, number] => [(x - x0) * m.k, (y - y0) * m.k];
 			const rs = plattenRaster(feld, r, x0, y0, x1, y1, plattenZ);
+			const see = w.wasser ? seeIn(objekte, x0, y0, x1, y1) : null;
+			const tief = see ? Math.min(WASSER_MM, Math.max(0, w.sockelMm - 0.8)) : 0;
 			const flaeche = rs.hoehe;
-			const platte = grundplatte(rs, m.k);
+			const { netz: platte, wasser } = grundplatte(rs, m.k, see && tief > 0 ? see : null, tief, x0, y0, x1, y1);
 			const haeuser: Netz = [], kleine: Netz = [];
 			for (const roh of objekte) {
 				if (roh.ebene !== 'gebaeude' && roh.ebene !== 'erhalt') continue;
@@ -258,12 +275,15 @@ export function druckModell(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | n
 				 * im Modell. Vorher reichte ein Haus am Hang auf der Bergseite tief
 				 * in die Platte und schaute an ihrer Seite heraus (Volker, 05.11.2026).
 				 */
+				// Steht ein Haus auch nur mit einer Ecke im Wasser, reicht sein Fuß bis
+				// auf den Wassergrund, damit dort nichts über der Senke schwebt.
+				const nass = !!see && tief > 0 && teile.some((t) => t.some(([x, y]) => see.nass(x, y)));
 				const hinein = (q: number[]) => {
 					for (let a = 0; a < q.length; a += 3) {
 						const [x, y] = mm(q[a], q[a + 1]);
 						// Fuß und Boden liegen genau auf null, alles darüber ist Wand oder Dach.
 						const unten = q[a + 2] <= 0;
-						const f = flaeche(q[a], q[a + 1]);
+						const f = flaeche(q[a], q[a + 1]) - (nass && unten ? tief : 0);
 						// Oben mindestens knapp über der Platte, auch an einem steilen Hang.
 						ziel.push(x, y, unten ? f - VERSENKT_MM : Math.max(f + 0.2, fussMm + q[a + 2] * m.k));
 					}
@@ -278,8 +298,19 @@ export function druckModell(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | n
 				schnitt(ziel);
 			}
 			const strassen: Netz = w.strassen ? strassenStreifen(objekte, x0, y0, x1, y1, m.k, rs) : [];
-			const gruen: Netz = w.gruen ? gruenFlaechen(objekte, x0, y0, x1, y1, m.k, rs) : [];
-			kacheln.push({ name: m.nx * m.ny > 1 ? `kachel_${String.fromCharCode(65 + j)}${i + 1}` : 'modell', i, j, bMm: kb * m.k, hMm: kh * m.k, platte, haeuser, kleine, strassen, gruen });
+			/**
+			 * Das Wasser als Körper: von 0,6 mm unter dem Wassergrund bis knapp
+			 * unters Land, wie das Grün einen Hauch innerhalb der Kachel, damit
+			 * seine Wand nicht mit der Seite der Platte zusammenfällt.
+			 */
+			const seeKoerper: Netz = [];
+			if (see && tief > 0 && w.farben === 'mehr') {
+				const d = 0.05 / m.k;
+				const innen = polygonClipping.intersection(see.wasser, [[[x0 + d, y0 + d], [x1 - d, y0 + d], [x1 - d, y1 - d], [x0 + d, y1 - d], [x0 + d, y0 + d]]]);
+				aufPlatte(seeKoerper, dreieckeAus(innen), rs, x0, y0, m.k, -Math.min(WASSER_UNTER_LAND_MM, tief / 2), tief + 0.6);
+			}
+			const gruen: Netz = w.gruen ? gruenFlaechen(objekte, x0, y0, x1, y1, m.k, rs, see && tief > 0 ? see : null) : [];
+			kacheln.push({ name: m.nx * m.ny > 1 ? `kachel_${String.fromCharCode(65 + j)}${i + 1}` : 'modell', i, j, bMm: kb * m.k, hMm: kh * m.k, platte, wasser, see: seeKoerper, haeuser, kleine, strassen, gruen });
 		}
 	return { kacheln, masse: m };
 }
@@ -452,7 +483,13 @@ function strassenStreifen(objekte: Objekt[], x0: number, y0: number, x1: number,
  * schimmert das Grün dort durch, und der Slicer hat zwei Flächen
  * aufeinander (Volker, 05.11.2026).
  */
-function gruenFlaechen(objekte: Objekt[], x0: number, y0: number, x1: number, y1: number, k: number, rs: Raster): Netz {
+function gruenFlaechen(objekte: Objekt[], x0: number, y0: number, x1: number, y1: number, k: number, rs: Raster,
+	see: { wasser: MultiPolygon } | null): Netz {
+	// Je Wasserfläche ihr Umriss als Kasten: Grün wird nur gegen das Wasser geschnitten, das es berührt.
+	const kaesten = (see?.wasser ?? []).map((poly) => {
+		const xs = poly[0].map((q) => q[0]), ys = poly[0].map((q) => q[1]);
+		return { poly, x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) };
+	});
 	const aus: Netz = [];
 	const d = 0.05 / k, c = [x0 + d, y0 + d, x1 - d, y1 - d] as const;
 	for (const o of objekte) {
@@ -461,19 +498,13 @@ function gruenFlaechen(objekte: Objekt[], x0: number, y0: number, x1: number, y1
 		for (const roh of o.ringe) {
 			const aussen = sauber(amRahmen(roh, ...c).innen);
 			if (aussen.length < 3) continue;
-			const ringe = [aussen, ...hoefe];
-			const flach: number[] = [], grenzen: number[] = [];
-			for (const [x, y] of aussen) flach.push(x, y);
-			for (const l of hoefe) { grenzen.push(flach.length / 2); for (const [x, y] of l) flach.push(x, y); }
-			const alle = ringe.flat();
-			const idx = earcut(flach, grenzen);
-			if (!idx.length) continue;
-			const dreiecke: [number, number][][] = [];
-			for (let n = 0; n < idx.length; n += 3) {
-				let t = [alle[idx[n]], alle[idx[n + 1]], alle[idx[n + 2]]];
-				if ((t[1][0] - t[0][0]) * (t[2][1] - t[0][1]) - (t[1][1] - t[0][1]) * (t[2][0] - t[0][0]) < 0) t = [t[0], t[2], t[1]];
-				dreiecke.push(t);
-			}
+			// Über Wasser kein Grün: Es läge über der Senke in der Luft.
+			const gx = aussen.map((q) => q[0]), gy = aussen.map((q) => q[1]);
+			const gx0 = Math.min(...gx), gx1 = Math.max(...gx), gy0 = Math.min(...gy), gy1 = Math.max(...gy);
+			const nass = kaesten.filter((w) => w.x0 < gx1 && w.x1 > gx0 && w.y0 < gy1 && w.y1 > gy0).map((w) => w.poly);
+			const flaeche: MultiPolygon = [[zu(aussen), ...hoefe.map(zu)]];
+			const dreiecke = dreieckeAus(nass.length ? polygonClipping.difference(flaeche, ...nass) : flaeche);
+			if (!dreiecke.length) continue;
 			aufPlatte(aus, dreiecke, rs, x0, y0, k, GRUEN_MM, 0.6);
 		}
 	}
@@ -551,32 +582,132 @@ function aufsRaster(t: [number, number][], rs: Raster, x0: number, y0: number): 
 	return stuecke;
 }
 
-/** Die Platte: Raster oben (Gelände) und unten (null), Seiten dazwischen. Alles geschlossen. */
-function grundplatte(rs: Raster, k: number): Netz {
-	const aus: Netz = [];
-	const { nx, ny, cw, ch } = rs;
-	const oben: number[][][] = [];
-	for (let j = 0; j <= ny; j++) { oben.push([]); for (let i = 0; i <= nx; i++) oben[j].push([cw * i * k, ch * j * k, rs.z[j][i]]); }
-	const unten = (p: number[]) => [p[0], p[1], 0];
-	const tri = (a: number[], b: number[], c: number[]) => aus.push(...a, ...b, ...c);
-	for (let j = 0; j < ny; j++)
-		for (let i = 0; i < nx; i++) {
-			const a = oben[j][i], b = oben[j][i + 1], c = oben[j + 1][i + 1], d = oben[j + 1][i];
-			tri(a, b, c); tri(a, c, d);                                   // oben, nach oben
-			tri(unten(a), unten(c), unten(b)); tri(unten(a), unten(d), unten(c));   // unten, nach unten
+/** Ein Ring als geschlossener Zug für `polygon-clipping`. */
+const zu = (r: [number, number][]): [number, number][] => [...r, r[0]];
+
+/** Dreiecke gegen den Uhrzeigersinn aus einem Multipolygon (Ringe geschlossen, wie `polygon-clipping` sie liefert). */
+function dreieckeAus(mp: MultiPolygon): [number, number][][] {
+	const aus: [number, number][][] = [];
+	for (const poly of mp) {
+		const ringe = poly.map((r) => r.slice(0, -1) as [number, number][]).filter((r) => r.length >= 3);
+		if (!ringe.length) continue;
+		const flach: number[] = [], grenzen: number[] = [];
+		ringe.forEach((r, i) => { if (i) grenzen.push(flach.length / 2); for (const [x, y] of r) flach.push(x, y); });
+		const alle = ringe.flat();
+		const idx = earcut(flach, grenzen);
+		for (let n = 0; n < idx.length; n += 3) {
+			let t = [alle[idx[n]], alle[idx[n + 1]], alle[idx[n + 2]]];
+			if ((t[1][0] - t[0][0]) * (t[2][1] - t[0][1]) - (t[1][1] - t[0][1]) * (t[2][0] - t[0][0]) < 0) t = [t[0], t[2], t[1]];
+			aus.push(t);
 		}
-	// Seiten: der Rand gegen den Uhrzeigersinn, je Stück eine Wand nach außen.
-	const rand: number[][] = [];
-	for (let i = 0; i < nx; i++) rand.push(oben[0][i]);
-	for (let j = 0; j < ny; j++) rand.push(oben[j][nx]);
-	for (let i = nx; i > 0; i--) rand.push(oben[ny][i]);
-	for (let j = ny; j > 0; j--) rand.push(oben[j][0]);
-	for (let n = 0; n < rand.length; n++) {
-		const a = rand[n], b = rand[(n + 1) % rand.length];
-		tri(unten(a), unten(b), b); tri(unten(a), b, a);
 	}
-	schnitt(aus);
 	return aus;
+}
+
+/**
+ * Das Wasser einer Kachel: alle Wasserflächen vereinigt, Inseln ausgespart,
+ * auf die Kachel geschnitten; dazu das Land als Rest und ein schneller Test
+ * für einzelne Punkte (eine Maske im Meterraster).
+ */
+const seeSchon = new WeakMap<Objekt[], Map<string, ReturnType<typeof seeRechnen>>>();
+/**
+ * Gemerkt je Datenstand und Kachel: In Lower Manhattan kostet das Vereinigen
+ * von Hudson, East River und Hafen Sekunden, und die Vorschau rechnet bei
+ * jeder Einstellung neu, die am Wasser nichts ändert.
+ */
+function seeIn(objekte: Objekt[], x0: number, y0: number, x1: number, y1: number) {
+	let m = seeSchon.get(objekte);
+	if (!m) seeSchon.set(objekte, (m = new Map()));
+	const k = `${x0},${y0},${x1},${y1}`;
+	if (!m.has(k)) m.set(k, seeRechnen(objekte, x0, y0, x1, y1));
+	return m.get(k)!;
+}
+function seeRechnen(objekte: Objekt[], x0: number, y0: number, x1: number, y1: number) {
+	const aussen: MultiPolygon = [], innen: MultiPolygon = [];
+	for (const o of objekte) {
+		if (o.ebene !== 'wasser' || o.art !== 'flaeche' || o.zustand === 'gestrichen') continue;
+		for (const r of o.ringe) if (r.length >= 3) aussen.push([zu(r)]);
+		for (const r of o.loecher ?? []) if (r.length >= 3) innen.push([zu(r)]);
+	}
+	if (!aussen.length) return null;
+	const kachel: MultiPolygon = [[[[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]]]];
+	let wasser = polygonClipping.intersection(kachel, polygonClipping.union(aussen[0], ...aussen.slice(1)));
+	if (innen.length) wasser = polygonClipping.difference(wasser, ...innen);
+	if (!wasser.length) return null;
+	const land = polygonClipping.difference(kachel, wasser);
+	// Maske: je Zeile die Schnittpunkte aller Ränder, dazwischen abwechselnd Wasser.
+	const Z = 1, nx = Math.ceil((x1 - x0) / Z), ny = Math.ceil((y1 - y0) / Z);
+	const maske = new Uint8Array(nx * ny);
+	for (let j = 0; j < ny; j++) {
+		const y = y0 + (j + 0.5) * Z, xs: number[] = [];
+		for (const poly of wasser) for (const ring of poly)
+			for (let n = 0; n + 1 < ring.length; n++) {
+				const [ax, ay] = ring[n], [bx, by] = ring[n + 1];
+				if ((ay > y) !== (by > y)) xs.push(ax + ((y - ay) / (by - ay)) * (bx - ax));
+			}
+		xs.sort((a, b) => a - b);
+		for (let n = 0; n + 1 < xs.length; n += 2)
+			for (let i = Math.max(0, Math.ceil((xs[n] - x0) / Z - 0.5)); i < nx && x0 + (i + 0.5) * Z < xs[n + 1]; i++) maske[j * nx + i] = 1;
+	}
+	const nass = (x: number, y: number) => {
+		const i = Math.floor((x - x0) / Z), j = Math.floor((y - y0) / Z);
+		return i >= 0 && j >= 0 && i < nx && j < ny && maske[j * nx + i] === 1;
+	};
+	return { wasser, land, nass };
+}
+
+/**
+ * Die Platte: oben Land und, `tief` darunter, Wasser, unten null, Seiten
+ * dazwischen. Beide Flächen werden an den Maschen der Platte geteilt
+ * (`aufsRaster`) und teilen am Ufer genau dieselben Kanten; dort steht eine
+ * senkrechte Wand vom Wasser zum Land, am Rand eine bis auf null. Alles
+ * geschlossen. `wasser` ist nur die Oberseite des Wassers, für die Vorschau:
+ * Die Senke allein sieht man aus der Ferne nicht (Volker, 05.11.2026).
+ */
+function grundplatte(rs: Raster, k: number, see: { wasser: MultiPolygon; land: MultiPolygon } | null, tief: number,
+	x0: number, y0: number, x1: number, y1: number): { netz: Netz; wasser: Netz } {
+	const aus: Netz = [], wasser: Netz = [];
+	const kachel: MultiPolygon = [[[[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]]]];
+	const teile: { dreiecke: [number, number][][]; ab: number }[] = see
+		? [{ dreiecke: dreieckeAus(see.land), ab: 0 }, { dreiecke: dreieckeAus(see.wasser), ab: tief }]
+		: [{ dreiecke: dreieckeAus(kachel), ab: 0 }];
+	for (const t of teile) if (!rs.eben) t.dreiecke = t.dreiecke.flatMap((d) => aufsRaster(d, rs, x0, y0));
+	const p = (q: [number, number], z: number) => [(q[0] - x0) * k, (q[1] - y0) * k, z];
+	const sch = (q: [number, number]) => `${q[0].toFixed(4)},${q[1].toFixed(4)}`;
+	// Welche gerichtete Kante zu welcher Fläche gehört.
+	const kante = new Map<string, number>();
+	teile.forEach((t, n) => { for (const d of t.dreiecke) for (let e = 0; e < 3; e++) kante.set(`${sch(d[e])}>${sch(d[(e + 1) % 3])}`, n); });
+	teile.forEach((t, n) => {
+		const oben = (q: [number, number]) => p(q, rs.hoehe(q[0], q[1]) - t.ab);
+		const null0 = (q: [number, number]) => p(q, 0);
+		for (const d of t.dreiecke) {
+			aus.push(...oben(d[0]), ...oben(d[1]), ...oben(d[2]));
+			if (t.ab > 0) wasser.push(...oben(d[0]), ...oben(d[1]), ...oben(d[2]));
+			aus.push(...null0(d[0]), ...null0(d[2]), ...null0(d[1]));
+			for (let e = 0; e < 3; e++) {
+				const a = d[e], b = d[(e + 1) % 3];
+				const gegen = kante.get(`${sch(b)}>${sch(a)}`);
+				if (gegen === n) continue;
+				// Am Rand bis null; am Ufer nur vom höheren Land aus, bis auf das Wasser.
+				// Die Randwand des Landes ist auf Wasserhöhe geteilt: Wo das Ufer den
+				// Rand erreicht, trifft ihre senkrechte Kante sonst auf zwei Kanten
+				// (Wasserwand und Uferwand) und bliebe offen.
+				if (gegen === undefined) {
+					const tiefer = teile.length > 1 && t.ab < tief;
+					const mitte = (q: [number, number]) => p(q, rs.hoehe(q[0], q[1]) - tief);
+					if (tiefer) {
+						aus.push(...null0(a), ...null0(b), ...mitte(b), ...null0(a), ...mitte(b), ...mitte(a));
+						aus.push(...mitte(a), ...mitte(b), ...oben(b), ...mitte(a), ...oben(b), ...oben(a));
+					} else aus.push(...null0(a), ...null0(b), ...oben(b), ...null0(a), ...oben(b), ...oben(a));
+				} else if (t.ab < teile[gegen].ab) {
+					const unten = (q: [number, number]) => p(q, rs.hoehe(q[0], q[1]) - teile[gegen].ab);
+					aus.push(...unten(a), ...unten(b), ...oben(b), ...unten(a), ...oben(b), ...oben(a));
+				}
+			}
+		}
+	});
+	schnitt(aus);
+	return { netz: aus, wasser };
 }
 
 /** Ein flacher Körper mit Boden und Höfen, im Ortsgitter, Fuß auf null. */

@@ -3,7 +3,7 @@
  *
  * Beschrieben im Vault unter `Urban_Pipeline/00-Datenpaket _Datenvertrag/
  * 01-Materialschema.md`; diese Datei ist der Katalog, aus dem Nolli schreibt.
- * Pons und Obscura lesen ihn aus `data/materials.json` im Paket und erfinden
+ * Pons und Glimt lesen ihn aus `data/materials.json` im Paket und erfinden
  * nichts selbst.
  *
  * Bewusst schmal (Volker, 03.11.2026): Graustufen statt Materialbibliothek,

@@ -995,13 +995,14 @@
 		const { kacheln } = druckModell(bestand, rr, z.gelaendeJetzt, $state.snapshot(z.druck));
 		const mehr = z.druck.farben === 'mehr';
 		/**
-		 * Einfarbig ein Objekt. Mehrfarbig im 3MF bis zu vier Objekte, je eines
-		 * für Platte, Häuser, Straßen und Grün — so viele Spulen fasst das AMS
-		 * der Bambu X1 Carbon; STL kennt keine Objekte, dort werden es
-		 * einzelne Dateien, die man im Slicer als Teile eines Modells lädt.
+		 * Einfarbig ein Objekt. Mehrfarbig im 3MF bis zu fünf Objekte, je eines
+		 * für Platte, Häuser, Straßen, Grün und Wasser. Das AMS der Bambu X1
+		 * Carbon fasst vier Spulen; Platte und Häuser teilen sich im Slicer
+		 * eine. STL kennt keine Objekte, dort werden es einzelne Dateien, die
+		 * man im Slicer als Teile eines Modells lädt.
 		 */
 		const dateien = (k: (typeof kacheln)[number], vor: string): Record<string, Uint8Array> => {
-			const teile = [{ name: 'base', netz: k.platte }, { name: 'buildings', netz: [...k.haeuser, ...k.kleine] }, { name: 'streets', netz: k.strassen }, { name: 'green', netz: k.gruen }]
+			const teile = [{ name: 'base', netz: k.platte }, { name: 'buildings', netz: [...k.haeuser, ...k.kleine] }, { name: 'streets', netz: k.strassen }, { name: 'green', netz: k.gruen }, { name: 'water', netz: k.see }]
 				.filter((x) => x.netz.length);
 			if (art === '3mf') return { [`${vor}.3mf`]: als3mf(mehr ? teile : [{ name: 'model', netz: teile.flatMap((x) => x.netz) }]) };
 			if (!mehr) return { [`${vor}.stl`]: alsStl(teile.map((x) => x.netz), `Nolli ${basis} ${k.name}, mm`) };
@@ -1433,6 +1434,11 @@
 						<button type="button" class:an={z.druck.gruen} aria-pressed={z.druck.gruen} onclick={() => (z.druck.gruen = true)}>{t().sicht.kantenAn}</button>
 						<button type="button" class:an={!z.druck.gruen} aria-pressed={!z.druck.gruen} onclick={() => (z.druck.gruen = false)}>{t().sicht.kantenAus}</button>
 					</div>
+					<span class="unter">{t().ausgeben.druckWasser}</span>
+					<div class="wahl schmal" role="group" aria-label={t().ausgeben.druckWasser}>
+						<button type="button" class:an={z.druck.wasser} aria-pressed={z.druck.wasser} onclick={() => (z.druck.wasser = true)}>{t().sicht.kantenAn}</button>
+						<button type="button" class:an={!z.druck.wasser} aria-pressed={!z.druck.wasser} onclick={() => (z.druck.wasser = false)}>{t().sicht.kantenAus}</button>
+					</div>
 					<span class="unter">{t().ausgeben.druckStrassen}</span>
 					<div class="wahl schmal" role="group" aria-label={t().ausgeben.druckStrassen}>
 						<button type="button" class:an={z.druck.strassen} aria-pressed={z.druck.strassen} onclick={() => (z.druck.strassen = true)}>{t().sicht.kantenAn}</button>
@@ -1507,13 +1513,14 @@
 							{/each}
 						</ul>
 					{/if}
-					<!-- Zum Ausprobieren, ohne die gespendete Auskunft zu bemühen. -->
+					<!-- Zum Ausprobieren, ohne die gespendete Auskunft zu bemühen.
+					     Drei Maßstäbe der Stadt: Hafenquartier, Hochhauskern, Altstadt mit
+					     Dächern und Gelände (Volker, 05.11.2026, statt Holstenareal). -->
 					<p class="beispiele">
 						{t().rahmen.losLegen}
-						<button type="button" disabled={z.laden}
-							onclick={() => z.beispielLaden('hafencity')}>HafenCity</button>
-						<button type="button" disabled={z.laden}
-							onclick={() => z.beispielLaden('holstenareal')}>Holstenareal</button>
+						{#each [['hafencity', 'HafenCity'], ['manhattan', 'Lower Manhattan'], ['rothenburg', 'Rothenburg']] as [datei, name]}
+							<button type="button" disabled={z.laden} onclick={() => z.beispielLaden(datei)}>{name}</button>
+						{/each}
 					</p>
 				</div>
 

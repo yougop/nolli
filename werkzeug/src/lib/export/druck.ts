@@ -227,13 +227,14 @@ export function druckModell(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | n
 	const { g, kb, kh } = m;
 	/** `kleine`: zu kleine Teile, die behalten werden; gehören beim Schreiben zu den Häusern. */
 	const kacheln: { name: string; i: number; j: number; bMm: number; hMm: number; platte: Netz; haeuser: Netz; kleine: Netz; strassen: Netz; gruen: Netz }[] = [];
-	const flaeche = (xm: number, ym: number) => (feld ? plattenZ(netzHoehe(feld, xm - r.x0, ym - r.y0)) : plattenZ(0));
 
 	for (let j = 0; j < m.ny; j++)
 		for (let i = 0; i < m.nx; i++) {
 			const x0 = g.x0 + i * kb, y0 = g.y0 + j * kh, x1 = x0 + kb, y1 = y0 + kh;
 			const mm = (x: number, y: number): [number, number] => [(x - x0) * m.k, (y - y0) * m.k];
-			const platte = grundplatte(feld, r, x0, y0, x1, y1, m.k, plattenZ);
+			const rs = plattenRaster(feld, r, x0, y0, x1, y1, plattenZ);
+			const flaeche = rs.hoehe;
+			const platte = grundplatte(rs, m.k);
 			const haeuser: Netz = [], kleine: Netz = [];
 			for (const roh of objekte) {
 				if (roh.ebene !== 'gebaeude' && roh.ebene !== 'erhalt') continue;
@@ -276,100 +277,166 @@ export function druckModell(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | n
 				}
 				schnitt(ziel);
 			}
-			const strassen: Netz = w.strassen ? strassenStreifen(objekte, x0, y0, x1, y1, m.k, flaeche, feld ? feld.dx : Infinity) : [];
-			const gruen: Netz = w.gruen ? gruenFlaechen(objekte, x0, y0, x1, y1, m.k, flaeche, feld ? feld.dx : Infinity) : [];
+			const strassen: Netz = w.strassen ? strassenStreifen(objekte, x0, y0, x1, y1, m.k, rs) : [];
+			const gruen: Netz = w.gruen ? gruenFlaechen(objekte, x0, y0, x1, y1, m.k, rs) : [];
 			kacheln.push({ name: m.nx * m.ny > 1 ? `kachel_${String.fromCharCode(65 + j)}${i + 1}` : 'modell', i, j, bMm: kb * m.k, hMm: kh * m.k, platte, haeuser, kleine, strassen, gruen });
 		}
 	return { kacheln, masse: m };
 }
 
 /**
- * Straßen als Streifen, `STRASSE_MM` über der Platte und ebenso tief in sie
- * hinein. Jede Strecke ein geschlossener Quader, an jedem Knick ein
- * Achteck, damit die Ecken nicht aufklaffen; der Slicer verschmilzt, was
- * sich überlappt. Mit Gelände wird jede Strecke im Rasterabstand geteilt
- * und folgt so der Platte. Breite wie im Plan, mindestens 0,6 mm; was
- * schmaler als 0,4 mm würde (Fußwege bei kleinem Maßstab), fällt weg.
+ * Ein Körper auf der Platte: Dreiecke (gegen den Uhrzeigersinn, Meter) oben
+ * `hoch` über ihr, unten `tief` in ihr. Mit Gelände wird jedes Dreieck an den
+ * Maschen und Diagonalen der Platte geteilt (`aufsRaster`); so liegt jedes
+ * Stück in einem Dreieck der Platte, und der Körper ist überall genau so dick
+ * wie gewollt. Vorher wurde nur gleichmäßig verfeinert; auf einer Kuppe
+ * stach die Platte dann durch Grün und Straßen (Volker, 05.11.2026). Die
+ * Wände entstehen aus den Rändern der Zerlegung, so passen sie Ecke an Ecke,
+ * und der Körper ist geschlossen.
  */
-function strassenStreifen(objekte: Objekt[], x0: number, y0: number, x1: number, y1: number, k: number,
-	flaeche: (x: number, y: number) => number, schritt: number): Netz {
+function aufPlatte(aus: Netz, dreiecke: [number, number][][], rs: Raster, x0: number, y0: number, k: number, hoch: number, tief: number) {
+	if (!rs.eben) dreiecke = dreiecke.flatMap((t) => aufsRaster(t, rs, x0, y0));
+	const p = (q: [number, number], z: number) => [(q[0] - x0) * k, (q[1] - y0) * k, z];
+	const oben = (q: [number, number]) => p(q, rs.hoehe(q[0], q[1]) + hoch);
+	const unten = (q: [number, number]) => p(q, rs.hoehe(q[0], q[1]) - tief);
+	const kante = new Map<string, number>();
+	const sch = (q: [number, number]) => `${q[0].toFixed(4)},${q[1].toFixed(4)}`;
+	for (const t of dreiecke) {
+		aus.push(...oben(t[0]), ...oben(t[1]), ...oben(t[2]));
+		aus.push(...unten(t[0]), ...unten(t[2]), ...unten(t[1]));
+		for (let e = 0; e < 3; e++) { const key = `${sch(t[e])}>${sch(t[(e + 1) % 3])}`; kante.set(key, (kante.get(key) ?? 0) + 1); }
+	}
+	// Wände an den Kanten, die nur ein Dreieck hat: dort ist der Rand.
+	for (const t of dreiecke)
+		for (let e = 0; e < 3; e++) {
+			const a = t[e], b = t[(e + 1) % 3];
+			if (kante.has(`${sch(b)}>${sch(a)}`)) continue;
+			aus.push(...unten(a), ...unten(b), ...oben(b), ...unten(a), ...oben(b), ...oben(a));
+		}
+	schnitt(aus);
+}
+
+/**
+ * Straßen als Streifen, `STRASSE_MM` über der Platte und ebenso tief in sie
+ * hinein. Jeder Weg ein Körper mit Gehrung an den Knicken; wo Wege sich
+ * treffen, ein Achteck, damit die Ecken nicht aufklaffen. Der Slicer
+ * verschmilzt, was sich überlappt. Breite wie im Plan, mindestens 0,6 mm;
+ * was schmaler als 0,4 mm würde (Fußwege bei kleinem Maßstab), fällt weg.
+ */
+function strassenStreifen(objekte: Objekt[], x0: number, y0: number, x1: number, y1: number, k: number, rs: Raster): Netz {
 	const aus: Netz = [];
-	const tri = (a: number[], b: number[], c: number[]) => aus.push(...a, ...b, ...c);
-	/** Ein geschlossenes Prisma über einem Vieleck gegen den Uhrzeigersinn, Höhe je Ecke. */
-	const prisma = (eck: [number, number][]) => {
-		const o = eck.map(([x, y]) => { const f = flaeche(x, y); return { x: (x - x0) * k, y: (y - y0) * k, u: f - STRASSE_MM, h: f + STRASSE_MM }; });
-		const n = o.length;
-		for (let i = 0; i < n; i++) {
-			const a = o[i], b = o[(i + 1) % n];
-			tri([a.x, a.y, a.u], [b.x, b.y, b.u], [b.x, b.y, b.h]); tri([a.x, a.y, a.u], [b.x, b.y, b.h], [a.x, a.y, a.h]);
+	const d = 0.05 / k, cx0 = x0 + d, cy0 = y0 + d, cx1 = x1 - d, cy1 = y1 - d;
+	const innen = (q: number[]): [number, number] => [Math.max(cx0, Math.min(cx1, q[0])), Math.max(cy0, Math.min(cy1, q[1]))];
+	/** Konvexe Vielecke gegen den Uhrzeigersinn als ein Körper, in der Kachel gehalten. */
+	const koerper = (vielecke: number[][][]) => {
+		const f: [number, number][][] = [];
+		for (const eck of vielecke) {
+			const e = eck.map(innen);
+			for (let n = 1; n + 1 < e.length; n++) f.push([e[0], e[n], e[n + 1]]);
 		}
-		for (let i = 1; i + 1 < n; i++) {
-			tri([o[0].x, o[0].y, o[0].h], [o[i].x, o[i].y, o[i].h], [o[i + 1].x, o[i + 1].y, o[i + 1].h]);
-			tri([o[0].x, o[0].y, o[0].u], [o[i + 1].x, o[i + 1].y, o[i + 1].u], [o[i].x, o[i].y, o[i].u]);
-		}
+		if (f.length) aufPlatte(aus, f, rs, x0, y0, k, STRASSE_MM, STRASSE_MM);
 	};
 	const drin = (x: number, y: number) => x >= x0 && x <= x1 && y >= y0 && y <= y1;
 	const gelenke = new Set<string>();
+	const pk = (q: number[]) => `${q[0].toFixed(2)},${q[1].toFixed(2)}`;
+	// Wie oft ein Punkt als Ende oder Knick eines Wegs vorkommt: Wo sich Wege treffen, kommt ein Gelenk hin.
+	const treffen = new Map<string, number>();
+	for (const o of objekte)
+		if (o.ebene === 'strasse' && o.art === 'linie' && o.zustand !== 'gestrichen')
+			for (const zug of o.ringe) for (const q of zug) treffen.set(pk(q), (treffen.get(pk(q)) ?? 0) + 1);
+	/** Gelenk um einen Punkt, um 11,25° gedreht: So teilt es keine Ecke mit einem Streifen. Je Punkt nur einmal. */
+	const gelenk = (x: number, y: number, halb: number) => {
+		const g = `${x.toFixed(2)},${y.toFixed(2)},${halb.toFixed(2)}`;
+		if (!drin(x, y) || gelenke.has(g)) return;
+		gelenke.add(g);
+		const acht: number[][] = [];
+		for (let e = 0; e < 8; e++) acht.push([x + halb * Math.cos(((e + 0.125) * Math.PI) / 4), y + halb * Math.sin(((e + 0.125) * Math.PI) / 4)]);
+		koerper([acht]);
+	};
 	for (const o of objekte) {
 		if (o.ebene !== 'strasse' || o.art !== 'linie' || o.zustand === 'gestrichen') continue;
 		const bMm = (o.breiteM ?? 6) * k;
 		if (bMm < STRASSE_WEG_MM) continue;
 		const halb = Math.max(bMm, STRASSE_MIN_MM) / 2 / k;   // halbe Breite in Metern
 		for (const zug of o.ringe) {
+			// Jede Strecke auf die Kachel kürzen (Liang–Barsky), einen Hauch innerhalb
+			// der Kante wie die Häuser. Gemerkt wird, welche Kante sie schneidet.
+			const st: { i: number; a: number[]; b: number[]; u: number[]; l: number; k0: number; k1: number }[] = [];
 			for (let i = 0; i + 1 < zug.length; i++) {
-				// Strecke auf die Kachel kürzen (Liang–Barsky), halbe Breite Abstand zum Rand.
-				let [ax, ay] = zug[i], [bx, by] = zug[i + 1];
+				const [ax, ay] = zug[i], [bx, by] = zug[i + 1];
 				const dx = bx - ax, dy = by - ay;
-				let t0 = 0, t1 = 1;
-				const rx0 = x0 + halb, rx1 = x1 - halb, ry0 = y0 + halb, ry1 = y1 - halb;
-				for (const [p, q] of [[-dx, ax - rx0], [dx, rx1 - ax], [-dy, ay - ry0], [dy, ry1 - ay]] as [number, number][]) {
-					if (p === 0) { if (q < 0) { t0 = 1; t1 = 0; } continue; }
+				let t0 = 0, t1 = 1, k0 = -1, k1 = -1;
+				const kanten = [[-dx, ax - cx0], [dx, cx1 - ax], [-dy, ay - cy0], [dy, cy1 - ay]] as [number, number][];
+				kanten.forEach(([p, q], e) => {
+					if (p === 0) { if (q < 0) { t0 = 1; t1 = 0; } return; }
 					const t = q / p;
-					if (p < 0) t0 = Math.max(t0, t); else t1 = Math.min(t1, t);
-				}
+					if (p < 0) { if (t > t0) { t0 = t; k0 = e; } } else if (t < t1) { t1 = t; k1 = e; }
+				});
 				if (t1 - t0 <= 1e-9) continue;
-				[ax, ay, bx, by] = [ax + dx * t0, ay + dy * t0, ax + dx * t1, ay + dy * t1];
-				const l = Math.hypot(bx - ax, by - ay);
+				const a = [ax + dx * t0, ay + dy * t0], b = [ax + dx * t1, ay + dy * t1];
+				const l = Math.hypot(b[0] - a[0], b[1] - a[1]);
 				if (l < 1e-6) continue;
-				const nx = (-(by - ay) / l) * halb, ny = ((bx - ax) / l) * halb;
-				/**
-				 * Ein durchgehender Streifen je Strecke, mit Kappen nur an den
-				 * Enden, und 0,01 mm über die Enden hinaus. Vorher waren es viele
-				 * Quader, die sich an den Enden genau berührten; im 3MF fallen
-				 * deren Ecken zusammen, und Bambu Studio meldete „80 non-manifold
-				 * edges“ (Volker, 05.11.2026).
-				 */
-				const ue = 0.01 / k / l;
-				const sx = ax - (bx - ax) * ue, sy = ay - (by - ay) * ue, ex = bx + (bx - ax) * ue, ey = by + (by - ay) * ue;
-				const stuecke = Math.max(1, Math.ceil(l / schritt));
-				const reihe: { l: number[]; r: number[]; lu: number[]; ru: number[] }[] = [];
-				for (let n = 0; n <= stuecke; n++) {
-					const px = sx + ((ex - sx) * n) / stuecke, py = sy + ((ey - sy) * n) / stuecke;
-					const L = [px + nx, py + ny], R = [px - nx, py - ny];
-					const fl = flaeche(L[0], L[1]), fr = flaeche(R[0], R[1]);
-					const m2 = (q: number[], z: number) => [(q[0] - x0) * k, (q[1] - y0) * k, z];
-					reihe.push({ l: m2(L, fl + STRASSE_MM), r: m2(R, fr + STRASSE_MM), lu: m2(L, fl - STRASSE_MM), ru: m2(R, fr - STRASSE_MM) });
+				st.push({ i, a, b, u: [(b[0] - a[0]) / l, (b[1] - a[1]) / l], l, k0, k1 });
+			}
+			/**
+			 * Ein Weg ist ein Körper: Die Strecken stoßen an jedem Knick auf Gehrung
+			 * aneinander und teilen dort genau eine Kante. Vorher war jede Strecke
+			 * ein eigener Quader und jeder Knick ein Achteck darüber; in Rhino sah
+			 * das zerstückelt aus (Volker, 05.11.2026). Ist der Knick zu spitz oder
+			 * die Strecke zu kurz für die Gehrung, beginnt dort ein neuer Körper,
+			 * und ein Achteck schließt die Ecke.
+			 */
+			const gehrung = (s1: (typeof st)[0], s2: (typeof st)[0]) => {
+				if (s2.i !== s1.i + 1 || s1.k1 >= 0 || s2.k0 >= 0) return null;
+				const n1 = [-s1.u[1], s1.u[0]], n2 = [-s2.u[1], s2.u[0]];
+				const m = [n1[0] + n2[0], n1[1] + n2[1]], ml = Math.hypot(m[0], m[1]);
+				if (ml < 1e-9) return null;
+				const c = (m[0] * n1[0] + m[1] * n1[1]) / ml;        // cos des halben Knickwinkels
+				if (c < 0.5) return null;                              // spitzer als 120°
+				const lang = halb / c, weit = halb * Math.sqrt(Math.max(0, 1 - c * c)) / c;
+				if (weit > 0.45 * Math.min(s1.l, s2.l)) return null;
+				const p = s1.b;
+				return { l: [p[0] + (m[0] / ml) * lang, p[1] + (m[1] / ml) * lang], r: [p[0] - (m[0] / ml) * lang, p[1] - (m[1] / ml) * lang] };
+			};
+			/**
+			 * Am Kachelrand endet der Streifen bündig mit der Kante statt
+			 * rechtwinklig zu sich selbst: Jede Ecke der Kappe rückt längs der
+			 * Strecke auf die Kante, höchstens fast bis zur Mitte, damit das
+			 * Viereck nicht umklappt. Vorher endeten die Streifen eine halbe
+			 * Breite vor dem Rand und schräg zu ihm (Volker, 05.11.2026).
+			 */
+			const aufKante = (q: number[], e: number, s1: (typeof st)[0]) => {
+				if (e < 0) return q;
+				const s = e < 2 ? ((e === 0 ? cx0 : cx1) - q[0]) / s1.u[0] : ((e === 2 ? cy0 : cy1) - q[1]) / s1.u[1];
+				const t = Math.max(-0.45 * s1.l, Math.min(0.45 * s1.l, s));
+				return [q[0] + s1.u[0] * t, q[1] + s1.u[1] * t];
+			};
+			// Offene Enden 0,01 mm über den Punkt hinaus, damit sie andere Wege überlappen statt sie genau zu berühren.
+			const ue = 0.01 / k;
+			let lauf: number[][][] = [];
+			let vorne: { l: number[]; r: number[] } | null = null;
+			for (let n = 0; n < st.length; n++) {
+				const s1 = st[n], [ux, uy] = s1.u, nx = -uy * halb, ny = ux * halb;
+				if (!vorne) {
+					const e0 = s1.k0 < 0 ? ue : 0, sx = s1.a[0] - ux * e0, sy = s1.a[1] - uy * e0;
+					vorne = { l: aufKante([sx + nx, sy + ny], s1.k0, s1), r: aufKante([sx - nx, sy - ny], s1.k0, s1) };
+					if (s1.k0 < 0 && (treffen.get(pk(s1.a)) ?? 0) > 1) gelenk(s1.a[0], s1.a[1], halb);
 				}
-				for (let n = 0; n < stuecke; n++) {
-					const a = reihe[n], b = reihe[n + 1];
-					tri(a.r, b.r, b.l); tri(a.r, b.l, a.l);          // oben
-					tri(a.ru, a.lu, b.lu); tri(a.ru, b.lu, b.ru);    // unten
-					tri(a.ru, b.ru, b.r); tri(a.ru, b.r, a.r);       // rechts
-					tri(a.lu, a.l, b.l); tri(a.lu, b.l, b.lu);       // links
+				const g = n + 1 < st.length ? gehrung(s1, st[n + 1]) : null;
+				let hinten: { l: number[]; r: number[] };
+				if (g) hinten = g;
+				else {
+					const e1 = s1.k1 < 0 ? ue : 0, ex = s1.b[0] + ux * e1, ey = s1.b[1] + uy * e1;
+					hinten = { l: aufKante([ex + nx, ey + ny], s1.k1, s1), r: aufKante([ex - nx, ey - ny], s1.k1, s1) };
 				}
-				const A = reihe[0], E = reihe[stuecke];
-				tri(A.ru, A.r, A.l); tri(A.ru, A.l, A.lu);         // Anfang
-				tri(E.ru, E.lu, E.l); tri(E.ru, E.l, E.r);         // Ende
-				schnitt(aus);
-				// Gelenk am inneren Knick, um 11,25° gedreht: So teilt es keine Ecke mit
-				// einem Streifen. Je Punkt nur einmal, auch wenn mehrere Wege ihn teilen.
-				const g = `${ax.toFixed(2)},${ay.toFixed(2)},${halb.toFixed(2)}`;
-				if (i > 0 && t0 === 0 && drin(ax, ay) && !gelenke.has(g)) {
-					gelenke.add(g);
-					const acht: [number, number][] = [];
-					for (let e = 0; e < 8; e++) acht.push([ax + halb * Math.cos(((e + 0.125) * Math.PI) / 4), ay + halb * Math.sin(((e + 0.125) * Math.PI) / 4)]);
-					prisma(acht);
-					schnitt(aus);
+				lauf.push([vorne.r, hinten.r, hinten.l, vorne.l]);
+				vorne = g ? hinten : null;
+				if (!g) {
+					koerper(lauf);
+					lauf = [];
+					// Knick ohne Gehrung, oder ein Weg trifft hier andere: ein Achteck schließt die Ecke.
+					const weiter = n + 1 < st.length && st[n + 1].i === s1.i + 1 && s1.k1 < 0;
+					if (s1.k1 < 0 && (weiter || (treffen.get(pk(s1.b)) ?? 0) > 1)) gelenk(s1.b[0], s1.b[1], halb);
 				}
 			}
 		}
@@ -380,21 +447,19 @@ function strassenStreifen(objekte: Objekt[], x0: number, y0: number, x1: number,
 /**
  * Grünflächen als eigener Körper: oben `GRUEN_MM` über der Platte, unten
  * 0,6 mm in ihr, damit sie im Mehrfarbdruck als eigene Farbe oben liegen.
- *
- * Mit Gelände folgt die Fläche der Platte. Dazu wird die Zerlegung jeder
- * Fläche gleichmäßig verfeinert, bis keine Kante länger als ein Rasterschritt
- * ist (höchstens dreimal geviertelt). Die Wände entstehen aus den Rändern der
- * verfeinerten Zerlegung, so passen sie Ecke an Ecke, und der Körper ist
- * geschlossen.
+ * Wie Häuser und Straßen einen Hauch innerhalb der Kachel geschnitten: Sonst
+ * fällt die Wand des Grüns mit der Seite der Platte zusammen, in der Vorschau
+ * schimmert das Grün dort durch, und der Slicer hat zwei Flächen
+ * aufeinander (Volker, 05.11.2026).
  */
-function gruenFlaechen(objekte: Objekt[], x0: number, y0: number, x1: number, y1: number, k: number,
-	flaeche: (x: number, y: number) => number, schritt: number): Netz {
+function gruenFlaechen(objekte: Objekt[], x0: number, y0: number, x1: number, y1: number, k: number, rs: Raster): Netz {
 	const aus: Netz = [];
+	const d = 0.05 / k, c = [x0 + d, y0 + d, x1 - d, y1 - d] as const;
 	for (const o of objekte) {
 		if (o.ebene !== 'gruen' || o.art !== 'flaeche' || o.zustand === 'gestrichen') continue;
-		const hoefe = (o.loecher ?? []).map((l) => sauber(amRahmen(l, x0, y0, x1, y1).innen)).filter((l) => l.length >= 3);
+		const hoefe = (o.loecher ?? []).map((l) => sauber(amRahmen(l, ...c).innen)).filter((l) => l.length >= 3);
 		for (const roh of o.ringe) {
-			const aussen = sauber(amRahmen(roh, x0, y0, x1, y1).innen);
+			const aussen = sauber(amRahmen(roh, ...c).innen);
 			if (aussen.length < 3) continue;
 			const ringe = [aussen, ...hoefe];
 			const flach: number[] = [], grenzen: number[] = [];
@@ -403,60 +468,95 @@ function gruenFlaechen(objekte: Objekt[], x0: number, y0: number, x1: number, y1
 			const alle = ringe.flat();
 			const idx = earcut(flach, grenzen);
 			if (!idx.length) continue;
-			let dreiecke: [number, number][][] = [];
-			let laengste = 0;
+			const dreiecke: [number, number][][] = [];
 			for (let n = 0; n < idx.length; n += 3) {
 				let t = [alle[idx[n]], alle[idx[n + 1]], alle[idx[n + 2]]];
 				if ((t[1][0] - t[0][0]) * (t[2][1] - t[0][1]) - (t[1][1] - t[0][1]) * (t[2][0] - t[0][0]) < 0) t = [t[0], t[2], t[1]];
 				dreiecke.push(t);
-				for (let e = 0; e < 3; e++) laengste = Math.max(laengste, Math.hypot(t[e][0] - t[(e + 1) % 3][0], t[e][1] - t[(e + 1) % 3][1]));
 			}
-			const stufen = Number.isFinite(schritt) ? Math.min(3, Math.max(0, Math.ceil(Math.log2(laengste / schritt)))) : 0;
-			for (let s = 0; s < stufen; s++) {
-				const neu: [number, number][][] = [];
-				const m = (a: [number, number], b: [number, number]): [number, number] => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-				for (const [a, b, c] of dreiecke) {
-					const ab = m(a, b), bc = m(b, c), ca = m(c, a);
-					neu.push([a, ab, ca], [ab, b, bc], [ca, bc, c], [ab, bc, ca]);
-				}
-				dreiecke = neu;
-			}
-			const p = (q: [number, number], z: number) => [(q[0] - x0) * k, (q[1] - y0) * k, z];
-			const oben = (q: [number, number]) => p(q, flaeche(q[0], q[1]) + GRUEN_MM);
-			const unten = (q: [number, number]) => p(q, flaeche(q[0], q[1]) - 0.6);
-			const kante = new Map<string, number>();
-			const sch = (q: [number, number]) => `${q[0].toFixed(4)},${q[1].toFixed(4)}`;
-			for (const t of dreiecke) {
-				aus.push(...oben(t[0]), ...oben(t[1]), ...oben(t[2]));
-				aus.push(...unten(t[0]), ...unten(t[2]), ...unten(t[1]));
-				for (let e = 0; e < 3; e++) { const key = `${sch(t[e])}>${sch(t[(e + 1) % 3])}`; kante.set(key, (kante.get(key) ?? 0) + 1); }
-			}
-			// Wände an den Kanten, die nur ein Dreieck hat: dort ist der Rand.
-			for (const t of dreiecke)
-				for (let e = 0; e < 3; e++) {
-					const a = t[e], b = t[(e + 1) % 3];
-					if (kante.has(`${sch(b)}>${sch(a)}`)) continue;
-					aus.push(...unten(a), ...unten(b), ...oben(b), ...unten(a), ...oben(b), ...oben(a));
-				}
-			schnitt(aus);
+			aufPlatte(aus, dreiecke, rs, x0, y0, k, GRUEN_MM, 0.6);
 		}
 	}
 	return aus;
 }
 
-/** Die Platte: Raster oben (Gelände) und unten (null), Seiten dazwischen. Alles geschlossen. */
-function grundplatte(feld: Feld | null, r: Rahmen, x0: number, y0: number, x1: number, y1: number,
-	k: number, plattenZ: (z: number) => number): Netz {
-	const aus: Netz = [];
+/** Das Raster der Plattenoberseite einer Kachel, Ecken in mm über der Unterseite. */
+type Raster = { eben: boolean; nx: number; ny: number; cw: number; ch: number; z: number[][]; hoehe: (x: number, y: number) => number };
+
+/**
+ * Die Oberseite der Platte als Raster im Abstand des Geländenetzes, jede
+ * Masche längs derselben Diagonale geteilt. `hoehe` liest genau diese
+ * Dreiecke ab, nicht das Geländenetz: Das Raster der Kachel liegt gegen das
+ * Netz verschoben, und was auf der Platte liegen soll, muss ihr folgen.
+ */
+function plattenRaster(feld: Feld | null, r: Rahmen, x0: number, y0: number, x1: number, y1: number,
+	plattenZ: (z: number) => number): Raster {
 	const weite = feld ? feld.dx : Infinity;
 	const nx = Math.max(1, Math.ceil((x1 - x0) / weite)), ny = Math.max(1, Math.ceil((y1 - y0) / weite));
-	const P = (i: number, j: number) => {
-		const x = x0 + ((x1 - x0) * i) / nx, y = y0 + ((y1 - y0) * j) / ny;
-		const z = feld ? plattenZ(netzHoehe(feld, x - r.x0, y - r.y0)) : plattenZ(0);
-		return [(x - x0) * k, (y - y0) * k, z];
+	const cw = (x1 - x0) / nx, ch = (y1 - y0) / ny;
+	const z: number[][] = [];
+	for (let j = 0; j <= ny; j++) {
+		z.push([]);
+		for (let i = 0; i <= nx; i++) z[j].push(feld ? plattenZ(netzHoehe(feld, x0 + cw * i - r.x0, y0 + ch * j - r.y0)) : plattenZ(0));
+	}
+	const hoehe = (x: number, y: number) => {
+		const fx = Math.max(0, Math.min(nx, (x - x0) / cw)), fy = Math.max(0, Math.min(ny, (y - y0) / ch));
+		const i = Math.min(nx - 1, Math.floor(fx)), j = Math.min(ny - 1, Math.floor(fy));
+		const a = fx - i, b = fy - j;
+		return a >= b
+			? z[j][i] + a * (z[j][i + 1] - z[j][i]) + b * (z[j + 1][i + 1] - z[j][i + 1])
+			: z[j][i] + b * (z[j + 1][i] - z[j][i]) + a * (z[j + 1][i + 1] - z[j + 1][i]);
 	};
+	return { eben: !feld, nx, ny, cw, ch, z, hoehe };
+}
+
+/**
+ * Ein Dreieck (gegen den Uhrzeigersinn, Meter) in die Stücke zerlegen, die je
+ * in einem Dreieck der Platte liegen: Schnitt mit jeder berührten Masche und
+ * ihren beiden Hälften, dann als Fächer. Benachbarte Dreiecke werden an
+ * denselben Linien geteilt, die Teilpunkte auf gemeinsamen Kanten fallen
+ * zusammen. Flache Fächerstücke bleiben, damit keine Kante offen bleibt.
+ */
+function aufsRaster(t: [number, number][], rs: Raster, x0: number, y0: number): [number, number][][] {
+	const xs = t.map((q) => (q[0] - x0) / rs.cw), ys = t.map((q) => (q[1] - y0) / rs.ch);
+	const i0 = Math.max(0, Math.min(rs.nx - 1, Math.floor(Math.min(...xs)))), i1 = Math.max(i0, Math.min(rs.nx - 1, Math.ceil(Math.max(...xs)) - 1));
+	const j0 = Math.max(0, Math.min(rs.ny - 1, Math.floor(Math.min(...ys)))), j1 = Math.max(j0, Math.min(rs.ny - 1, Math.ceil(Math.max(...ys)) - 1));
+	/** Sutherland–Hodgman gegen die Halbebene a·x + b·y + c ≥ 0. */
+	const halb = (poly: [number, number][], a: number, b: number, c: number) => {
+		const aus: [number, number][] = [];
+		for (let n = 0; n < poly.length; n++) {
+			const p = poly[n], q = poly[(n + 1) % poly.length];
+			const fp = a * p[0] + b * p[1] + c, fq = a * q[0] + b * q[1] + c;
+			if (fp >= 0) aus.push(p);
+			if ((fp >= 0) !== (fq >= 0)) { const s = fp / (fp - fq); aus.push([p[0] + (q[0] - p[0]) * s, p[1] + (q[1] - p[1]) * s]); }
+		}
+		return aus;
+	};
+	const stuecke: [number, number][][] = [];
+	for (let j = j0; j <= j1; j++)
+		for (let i = i0; i <= i1; i++) {
+			const ax = x0 + i * rs.cw, ay = y0 + j * rs.ch, bx = ax + rs.cw, by = ay + rs.ch;
+			let zelle = halb(halb(halb(halb(t, 1, 0, -ax), -1, 0, bx), 0, 1, -ay), 0, -1, by);
+			if (zelle.length < 3) continue;
+			// Diagonale von (ax, ay) nach (bx, by), in Maschenanteilen: unter ihr a ≥ b.
+			const da = 1 / rs.cw, db = 1 / rs.ch, dc = -(ax / rs.cw) + ay / rs.ch;
+			for (const seite of [1, -1]) {
+				const poly = halb(zelle, seite * da, -seite * db, seite * dc).filter((q, n, a) => {
+					const v = a[(n + a.length - 1) % a.length];
+					return a.length < 2 || Math.abs(q[0] - v[0]) > 1e-9 || Math.abs(q[1] - v[1]) > 1e-9;
+				});
+				for (let n = 1; n + 1 < poly.length; n++) stuecke.push([poly[0], poly[n], poly[n + 1]]);
+			}
+		}
+	return stuecke;
+}
+
+/** Die Platte: Raster oben (Gelände) und unten (null), Seiten dazwischen. Alles geschlossen. */
+function grundplatte(rs: Raster, k: number): Netz {
+	const aus: Netz = [];
+	const { nx, ny, cw, ch } = rs;
 	const oben: number[][][] = [];
-	for (let j = 0; j <= ny; j++) { oben.push([]); for (let i = 0; i <= nx; i++) oben[j].push(P(i, j)); }
+	for (let j = 0; j <= ny; j++) { oben.push([]); for (let i = 0; i <= nx; i++) oben[j].push([cw * i * k, ch * j * k, rs.z[j][i]]); }
 	const unten = (p: number[]) => [p[0], p[1], 0];
 	const tri = (a: number[], b: number[], c: number[]) => aus.push(...a, ...b, ...c);
 	for (let j = 0; j < ny; j++)

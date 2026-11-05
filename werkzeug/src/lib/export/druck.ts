@@ -35,10 +35,17 @@ export type Druckwahl = {
 	sockelMm: number;
 	ueberhoehung: number;
 	schwebend: 'durchziehen' | 'weglassen';
+	/** `ein`: ein Objekt; `mehr`: Platte, Häuser und Straßen getrennt, für mehrere Farben. */
+	farben: 'ein' | 'mehr';
+	/** Straßen als flache Streifen über der Platte, damit man sie auch einfarbig erkennt. */
+	strassen: boolean;
 };
 export const DRUCK_VORGABE: Druckwahl = {
-	groesse: 'bett', massstab: 1000, bettMm: 200, sockelMm: 3, ueberhoehung: 1, schwebend: 'durchziehen'
+	groesse: 'bett', massstab: 1000, bettMm: 200, sockelMm: 3, ueberhoehung: 1, schwebend: 'durchziehen',
+	farben: 'mehr', strassen: true
 };
+/** Wie hoch die Straßen über der Platte stehen, und wie schmal sie höchstens werden. */
+const STRASSE_MM = 0.4, STRASSE_MIN_MM = 0.6, STRASSE_WEG_MM = 0.4;
 /** Was ein Drucker mit 0,4-mm-Düse noch sauber legt. */
 export const MINDEST_MM = 0.8;
 const VERSENKT_MM = 0.5;
@@ -88,7 +95,8 @@ export function druckModell(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | n
 	const ersetzt = umrisseMitTeilen(objekte);
 	const B = r.x1 - r.x0, H = r.y1 - r.y0;
 	const kb = B / m.nx, kh = H / m.ny;
-	const kacheln: { name: string; platte: Netz; haeuser: Netz }[] = [];
+	const kacheln: { name: string; platte: Netz; haeuser: Netz; strassen: Netz }[] = [];
+	const flaeche = (xm: number, ym: number) => (feld ? plattenZ(netzHoehe(feld, xm - r.x0, ym - r.y0)) : plattenZ(0));
 
 	for (let j = 0; j < m.ny; j++)
 		for (let i = 0; i < m.nx; i++) {
@@ -124,9 +132,76 @@ export function druckModell(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | n
 					hinein(quader(teile, loecher, hMm / m.k));
 				}
 			}
-			kacheln.push({ name: m.nx * m.ny > 1 ? `kachel_${String.fromCharCode(65 + j)}${i + 1}` : 'modell', platte, haeuser });
+			const strassen: Netz = w.strassen ? strassenStreifen(objekte, x0, y0, x1, y1, m.k, flaeche, feld ? feld.dx : Infinity) : [];
+			kacheln.push({ name: m.nx * m.ny > 1 ? `kachel_${String.fromCharCode(65 + j)}${i + 1}` : 'modell', platte, haeuser, strassen });
 		}
 	return { kacheln, masse: m };
+}
+
+/**
+ * Straßen als Streifen, `STRASSE_MM` über der Platte und ebenso tief in sie
+ * hinein. Jede Strecke ein geschlossener Quader, an jedem Knick ein
+ * Achteck, damit die Ecken nicht aufklaffen; der Slicer verschmilzt, was
+ * sich überlappt. Mit Gelände wird jede Strecke im Rasterabstand geteilt
+ * und folgt so der Platte. Breite wie im Plan, mindestens 0,6 mm; was
+ * schmaler als 0,4 mm würde (Fußwege bei kleinem Maßstab), fällt weg.
+ */
+function strassenStreifen(objekte: Objekt[], x0: number, y0: number, x1: number, y1: number, k: number,
+	flaeche: (x: number, y: number) => number, schritt: number): Netz {
+	const aus: Netz = [];
+	const tri = (a: number[], b: number[], c: number[]) => aus.push(...a, ...b, ...c);
+	/** Ein geschlossenes Prisma über einem Vieleck gegen den Uhrzeigersinn, Höhe je Ecke. */
+	const prisma = (eck: [number, number][]) => {
+		const o = eck.map(([x, y]) => { const f = flaeche(x, y); return { x: (x - x0) * k, y: (y - y0) * k, u: f - STRASSE_MM, h: f + STRASSE_MM }; });
+		const n = o.length;
+		for (let i = 0; i < n; i++) {
+			const a = o[i], b = o[(i + 1) % n];
+			tri([a.x, a.y, a.u], [b.x, b.y, b.u], [b.x, b.y, b.h]); tri([a.x, a.y, a.u], [b.x, b.y, b.h], [a.x, a.y, a.h]);
+		}
+		for (let i = 1; i + 1 < n; i++) {
+			tri([o[0].x, o[0].y, o[0].h], [o[i].x, o[i].y, o[i].h], [o[i + 1].x, o[i + 1].y, o[i + 1].h]);
+			tri([o[0].x, o[0].y, o[0].u], [o[i + 1].x, o[i + 1].y, o[i + 1].u], [o[i].x, o[i].y, o[i].u]);
+		}
+	};
+	const drin = (x: number, y: number) => x >= x0 && x <= x1 && y >= y0 && y <= y1;
+	for (const o of objekte) {
+		if (o.ebene !== 'strasse' || o.art !== 'linie' || o.zustand === 'gestrichen') continue;
+		const bMm = (o.breiteM ?? 6) * k;
+		if (bMm < STRASSE_WEG_MM) continue;
+		const halb = Math.max(bMm, STRASSE_MIN_MM) / 2 / k;   // halbe Breite in Metern
+		for (const zug of o.ringe) {
+			for (let i = 0; i + 1 < zug.length; i++) {
+				// Strecke auf die Kachel kürzen (Liang–Barsky), halbe Breite Abstand zum Rand.
+				let [ax, ay] = zug[i], [bx, by] = zug[i + 1];
+				const dx = bx - ax, dy = by - ay;
+				let t0 = 0, t1 = 1;
+				const rx0 = x0 + halb, rx1 = x1 - halb, ry0 = y0 + halb, ry1 = y1 - halb;
+				for (const [p, q] of [[-dx, ax - rx0], [dx, rx1 - ax], [-dy, ay - ry0], [dy, ry1 - ay]] as [number, number][]) {
+					if (p === 0) { if (q < 0) { t0 = 1; t1 = 0; } continue; }
+					const t = q / p;
+					if (p < 0) t0 = Math.max(t0, t); else t1 = Math.min(t1, t);
+				}
+				if (t1 - t0 <= 1e-9) continue;
+				[ax, ay, bx, by] = [ax + dx * t0, ay + dy * t0, ax + dx * t1, ay + dy * t1];
+				const l = Math.hypot(bx - ax, by - ay);
+				if (l < 1e-6) continue;
+				const nx = (-(by - ay) / l) * halb, ny = ((bx - ax) / l) * halb;
+				const stuecke = Math.max(1, Math.ceil(l / schritt));
+				for (let s = 0; s < stuecke; s++) {
+					const p0 = [ax + ((bx - ax) * s) / stuecke, ay + ((by - ay) * s) / stuecke];
+					const p1 = [ax + ((bx - ax) * (s + 1)) / stuecke, ay + ((by - ay) * (s + 1)) / stuecke];
+					prisma([[p0[0] - nx, p0[1] - ny], [p1[0] - nx, p1[1] - ny], [p1[0] + nx, p1[1] + ny], [p0[0] + nx, p0[1] + ny]]);
+				}
+				// Gelenk am inneren Knick
+				if (i > 0 && t0 === 0 && drin(ax, ay)) {
+					const acht: [number, number][] = [];
+					for (let e = 0; e < 8; e++) acht.push([ax + halb * Math.cos((e * Math.PI) / 4), ay + halb * Math.sin((e * Math.PI) / 4)]);
+					prisma(acht);
+				}
+			}
+		}
+	}
+	return aus;
 }
 
 /** Die Platte: Raster oben (Gelände) und unten (null), Seiten dazwischen. Alles geschlossen. */

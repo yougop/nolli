@@ -2,6 +2,7 @@
 	import Karte from '$lib/ui/Karte.svelte';
 	import Blatt from '$lib/ui/Blatt.svelte';
 	import Raum from '$lib/ui/Raum.svelte';
+	import DruckVorschau from '$lib/ui/DruckVorschau.svelte';
 	import { DACH_NAME } from '$lib/dach';
 	import { druckMasse } from '$lib/export/druck';
 	import { z, VERHAELTNISSE, AUSGABEBREITEN, KANTEN_VORGABE, SONNE_VORGABE } from '$lib/zustand.svelte';
@@ -961,17 +962,28 @@
 	 */
 	async function druckDatei(rr: Rahmen, art: '3mf' | 'stl', basis: string) {
 		const { druckModell, als3mf, alsStl } = await import('$lib/export/druck');
-		const { kacheln } = druckModell(bestand, rr, z.gelaendeJetzt, z.druck);
-		const datei = (k: (typeof kacheln)[number]) => art === '3mf'
-			? als3mf([{ name: 'base', netz: k.platte }, { name: 'buildings', netz: k.haeuser }])
-			: alsStl([k.platte, k.haeuser], `Nolli ${basis} ${k.name}, mm`);
-		if (kacheln.length === 1) {
-			laden(datei(kacheln[0]) as BlobPart, `${basis}_print.${art}`, art === '3mf' ? 'model/3mf' : 'model/stl');
+		const { kacheln } = druckModell(bestand, rr, z.gelaendeJetzt, $state.snapshot(z.druck));
+		const mehr = z.druck.farben === 'mehr';
+		/**
+		 * Einfarbig ein Objekt. Mehrfarbig im 3MF drei Objekte, je eines für
+		 * Platte, Häuser und Straßen; STL kennt keine Objekte, dort werden es
+		 * drei Dateien, die man im Slicer als Teile eines Modells lädt.
+		 */
+		const dateien = (k: (typeof kacheln)[number], vor: string): Record<string, Uint8Array> => {
+			const teile = [{ name: 'base', netz: k.platte }, { name: 'buildings', netz: k.haeuser }, { name: 'streets', netz: k.strassen }]
+				.filter((x) => x.netz.length);
+			if (art === '3mf') return { [`${vor}.3mf`]: als3mf(mehr ? teile : [{ name: 'model', netz: teile.flatMap((x) => x.netz) }]) };
+			if (!mehr) return { [`${vor}.stl`]: alsStl(teile.map((x) => x.netz), `Nolli ${basis} ${k.name}, mm`) };
+			return Object.fromEntries(teile.map((x) => [`${vor}_${x.name}.stl`, alsStl([x.netz], `Nolli ${basis} ${k.name} ${x.name}, mm`)]));
+		};
+		const inhalt: Record<string, Uint8Array> = {};
+		for (const k of kacheln) Object.assign(inhalt, dateien(k, kacheln.length === 1 ? `${basis}_print` : `${basis}_print_${k.name}`));
+		const namen = Object.keys(inhalt);
+		if (namen.length === 1) {
+			laden(inhalt[namen[0]] as BlobPart, namen[0], art === '3mf' ? 'model/3mf' : 'model/stl');
 			return;
 		}
 		const { zipSync } = await import('fflate');
-		const inhalt: Record<string, Uint8Array> = {};
-		for (const k of kacheln) inhalt[`${basis}_print_${k.name}.${art}`] = datei(k);
 		laden(zipSync(inhalt) as BlobPart, `${basis}_print_${art}.zip`, 'application/zip');
 	}
 
@@ -1766,6 +1778,17 @@
 					<div class="teil">
 						<span class="feld feldzeile">{t().ausgeben.druck}<em class="mono">{t().ausgeben.druckMass(druckJetzt.breiteMm, druckJetzt.hoeheMm, druckJetzt.massstab)}</em></span>
 						<div class="bildrahmen">
+							<DruckVorschau objekte={bestand} r={r!} />
+							<span class="unter">{t().ausgeben.druckFarben}</span>
+							<div class="wahl schmal" role="group" aria-label={t().ausgeben.druckFarben}>
+								<button type="button" class:an={z.druck.farben === 'ein'} aria-pressed={z.druck.farben === 'ein'} onclick={() => (z.druck.farben = 'ein')}>{t().ausgeben.druckEin}</button>
+								<button type="button" class:an={z.druck.farben === 'mehr'} aria-pressed={z.druck.farben === 'mehr'} onclick={() => (z.druck.farben = 'mehr')}>{t().ausgeben.druckMehr}</button>
+							</div>
+							<span class="unter">{t().ausgeben.druckStrassen}</span>
+							<div class="wahl schmal" role="group" aria-label={t().ausgeben.druckStrassen}>
+								<button type="button" class:an={z.druck.strassen} aria-pressed={z.druck.strassen} onclick={() => (z.druck.strassen = true)}>{t().sicht.kantenAn}</button>
+								<button type="button" class:an={!z.druck.strassen} aria-pressed={!z.druck.strassen} onclick={() => (z.druck.strassen = false)}>{t().sicht.kantenAus}</button>
+							</div>
 							<span class="unter">{t().ausgeben.druckGroesse}</span>
 							<div class="wahl schmal" role="group" aria-label={t().ausgeben.druckGroesse}>
 								<button type="button" class:an={z.druck.groesse === 'bett'} aria-pressed={z.druck.groesse === 'bett'} onclick={() => (z.druck.groesse = 'bett')}>{t().ausgeben.druckBett}</button>

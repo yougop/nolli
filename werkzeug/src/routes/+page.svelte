@@ -960,6 +960,7 @@
 
 	/** Maße des Druckmodells für die Anzeige, ohne es zu bauen. */
 	const druckJetzt = $derived(r ? druckMasse(bestand, r, z.druck) : null);
+	let druckOffen = $state(false);
 	/**
 	 * Das Druckmodell: je Kachel eine Datei, bei mehreren Kacheln zusammen im ZIP.
 	 * Die Bibliothek kommt erst beim ersten Druck, wie Rhino.
@@ -1777,13 +1778,17 @@
 				{/if}
 
 				<!--
-					3D-Druck als eigene Karte (Volker, 05.11.2026): eigene Größe, eigener
-					Sockel, eigene Überhöhung. Die Datei selbst steht unten mit den
-					anderen Ausgängen.
+					3D-Druck als Aufklappfeld (Volker, 05.11.2026: nahm zu viel Platz).
+					Zugeklappt nur die Zeile mit der Druckgröße. Maßstab und Größe stehen
+					beim Ausschnitt auf der Bühne, hier der Rest.
 				-->
 				{#if druckJetzt}
 					<div class="teil">
-						<span class="feld feldzeile">{t().ausgeben.druck}<em class="mono">{t().ausgeben.druckMass(druckJetzt.breiteMm, druckJetzt.hoeheMm, druckJetzt.massstab)}</em></span>
+						<button type="button" class="feld feldzeile aufklapp" class:offen={druckOffen} aria-expanded={druckOffen}
+							onclick={() => (druckOffen = !druckOffen)}>
+							<span>{t().ausgeben.druck}</span><em class="mono">{t().ausgeben.druckMass(druckJetzt.breiteMm, druckJetzt.hoeheMm, druckJetzt.massstab)}</em>
+						</button>
+						{#if druckOffen}
 						<div class="bildrahmen">
 							<!-- Vorschau und Ausschnitt auf der Bühne, statt der Ansicht (Volker, 05.11.2026). -->
 							<div class="wahl schmal" role="group" aria-label={t().ausgeben.druckBuehne}>
@@ -1792,6 +1797,7 @@
 								<button type="button" class:an={z.druckBuehne === 'ausschnitt'} aria-pressed={z.druckBuehne === 'ausschnitt'}
 									onclick={() => (z.druckBuehne = z.druckBuehne === 'ausschnitt' ? null : 'ausschnitt')}>{t().ausgeben.druckAusschnitt}</button>
 							</div>
+							<p class="hinweis leise">{t().ausgeben.druckAusschnittWas}</p>
 							{#if z.druck.ausschnitt.x0 > 0 || z.druck.ausschnitt.y0 > 0 || z.druck.ausschnitt.x1 < 1 || z.druck.ausschnitt.y1 < 1}
 								<div class="wahl schmal">
 									<button type="button" onclick={() => (z.druck.ausschnitt = { x0: 0, y0: 0, x1: 1, y1: 1 })}>{t().ausgeben.druckGanz}</button>
@@ -1812,24 +1818,6 @@
 								<button type="button" class:an={z.druck.strassen} aria-pressed={z.druck.strassen} onclick={() => (z.druck.strassen = true)}>{t().sicht.kantenAn}</button>
 								<button type="button" class:an={!z.druck.strassen} aria-pressed={!z.druck.strassen} onclick={() => (z.druck.strassen = false)}>{t().sicht.kantenAus}</button>
 							</div>
-							<span class="unter">{t().ausgeben.druckGroesse}</span>
-							<div class="wahl schmal" role="group" aria-label={t().ausgeben.druckGroesse}>
-								<button type="button" class:an={z.druck.groesse === 'bett'} aria-pressed={z.druck.groesse === 'bett'} onclick={() => (z.druck.groesse = 'bett')}>{t().ausgeben.druckBett}</button>
-								<button type="button" class:an={z.druck.groesse === 'massstab'} aria-pressed={z.druck.groesse === 'massstab'} onclick={() => (z.druck.groesse = 'massstab')}>{t().ausgeben.druckMassstab}</button>
-							</div>
-							{#if z.druck.groesse === 'massstab'}
-								<div class="wahl breiten" role="group" aria-label={t().ausgeben.druckMassstab}>
-									{#each [500, 1000, 2000, 5000] as m}
-										<button type="button" class:an={z.druck.massstab === m} aria-pressed={z.druck.massstab === m}
-											onclick={() => (z.druck.massstab = m)}>1:{zahl(m)}</button>
-									{/each}
-								</div>
-							{/if}
-							<label class="regelzeile">
-								<span>{t().ausgeben.druckBettMm}</span>
-								<input type="range" min="100" max="400" step="10" bind:value={z.druck.bettMm} />
-								<em class="mono">{z.druck.bettMm} mm</em>
-							</label>
 							<label class="regelzeile">
 								<span>{t().ausgeben.druckSockel}</span>
 								<input type="range" min="1" max="10" step="0.5" bind:value={z.druck.sockelMm} />
@@ -1855,6 +1843,7 @@
 							</div>
 							<p class="hinweis leise">{t().ausgeben.druckWas}</p>
 						</div>
+						{/if}
 					</div>
 				{/if}
 
@@ -2346,6 +2335,12 @@
 	.bildrahmen .wahl.formate:not(.breiten3d) button { padding: 4px 4px; font-size: 11px; }
 	.bildrahmen .wahl.formate button { padding: 5px 8px; }
 	.bildrahmen p { margin: 0; font-size: 11px; color: var(--tinte-3); }
+	/* Kopfzeile des 3D-Drucks als Aufklappknopf, mit Pfeil wie in der Leiste. */
+	.feldzeile.aufklapp {
+		width: 100%; border: 0; background: none; padding: 0; cursor: pointer; font: inherit; text-align: left;
+	}
+	.feldzeile.aufklapp span::after { content: ' ▾'; color: var(--tinte-3); }
+	.feldzeile.aufklapp.offen span::after { content: ' ▴'; }
 	/* Regler im 3D-Druck: dieselbe Zeile wie in den Aufklappfeldern der Leiste. */
 	.bildrahmen .regelzeile {
 		display: grid; grid-template-columns: 96px 1fr 56px; align-items: center; gap: 8px;

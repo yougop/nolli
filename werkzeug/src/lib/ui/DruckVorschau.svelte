@@ -100,21 +100,42 @@
 		return () => clearTimeout(takt);
 	});
 
-	let zieht: { x: number; y: number; w: number; n: number } | null = null;
-	const runter = (e: PointerEvent) => { (e.currentTarget as Element).setPointerCapture(e.pointerId); zieht = { x: e.clientX, y: e.clientY, w: winkel, n: neigung }; };
+	/**
+	 * Bedienung wie im 3D-Modell: links ziehen dreht, rechts oder mit Umschalt
+	 * schiebt, das Rad zoomt (Volker, 05.11.2026: Schieben fehlte). Am Fenster
+	 * verfolgt, damit das Ziehen nicht abreißt, wenn die Maus die Bühne verlässt.
+	 */
+	let zieht: { art: 'drehen' | 'schieben'; x: number; y: number; w: number; n: number; m: THREE.Vector3 } | null = null;
+	const runter = (e: PointerEvent) => {
+		e.preventDefault();
+		zieht = { art: e.button === 2 || e.shiftKey ? 'schieben' : 'drehen', x: e.clientX, y: e.clientY, w: winkel, n: neigung, m: mitte.clone() };
+	};
 	const bewegen = (e: PointerEvent) => {
-		if (!zieht) return;
-		winkel = zieht.w - (e.clientX - zieht.x) * 0.008;
-		neigung = Math.min(1.5, Math.max(0.1, zieht.n + (e.clientY - zieht.y) * 0.006));
+		if (!zieht || !leinwand) return;
+		const dx = e.clientX - zieht.x, dy = e.clientY - zieht.y;
+		if (zieht.art === 'drehen') {
+			winkel = zieht.w - dx * 0.008;
+			neigung = Math.min(1.5, Math.max(0.1, zieht.n + dy * 0.006));
+		} else {
+			// Auf der Platte schieben: ein Bildpunkt so viele mm, wie die Ansicht breit ist.
+			const mmJePx = (weite * 2.1 * abstand * 0.55) / Math.max(1, leinwand.clientHeight);
+			const rx = Math.cos(winkel), ry = Math.sin(winkel);   // rechts in der Ansicht
+			const vx = -Math.sin(winkel), vy = Math.cos(winkel);  // nach hinten
+			mitte.set(zieht.m.x - (dx * rx - dy * vx) * mmJePx, zieht.m.y - (dx * ry - dy * vy) * mmJePx, zieht.m.z);
+		}
 		zeichnen();
 	};
+	const hoch = () => (zieht = null);
 	const rad = (e: WheelEvent) => { e.preventDefault(); abstand = Math.min(3, Math.max(0.2, abstand * (e.deltaY > 0 ? 1.1 : 0.9))); zeichnen(); };
 </script>
 
+<svelte:window onpointermove={bewegen} onpointerup={hoch} onpointercancel={hoch} />
+
 <div class="vorschau">
-	<canvas bind:this={leinwand} onpointerdown={runter} onpointermove={bewegen}
-		onpointerup={() => (zieht = null)} onpointercancel={() => (zieht = null)} onwheel={rad}
+	<canvas bind:this={leinwand} onpointerdown={runter} onwheel={rad}
+		oncontextmenu={(e) => e.preventDefault()}
 		aria-label={t().ausgeben.druckVorschau}></canvas>
+	<p class="wink">{t().raum.wink}</p>
 	{#if rechnet}<span class="mono">{t().ausgeben.druckRechnet}</span>{/if}
 </div>
 
@@ -122,6 +143,10 @@
 	.vorschau { position: absolute; inset: 0; z-index: 1; background: var(--grund, #eaeae9); }
 	canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
 	canvas:active { cursor: grabbing; }
+	.wink {
+		position: absolute; right: 18px; bottom: 18px; margin: 0; font-size: 11px; color: var(--tinte-2);
+		background: var(--blatt); border: 1px solid var(--linie); padding: 3px 8px; border-radius: 2px;
+	}
 	span {
 		position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 10.5px; color: var(--tinte-2);
 		background: var(--blatt); padding: 2px 6px; border-radius: 2px;

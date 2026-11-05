@@ -17,7 +17,8 @@
 	let bild = $state('');
 	$effect(() => {
 		const c = document.createElement('canvas');
-		c.width = 1600; c.height = Math.round((1600 * r.hoeheM) / r.breiteM);
+		// Fein genug, dass es beim Zoomen bis 6× noch trägt.
+		c.width = 3200; c.height = Math.round((3200 * r.hoeheM) / r.breiteM);
 		const klein = new Rahmen({ lon0: r.gitter.lon0, bbox: [r.x0, r.y0, r.x1, r.y1], pixelBreite: c.width, verhaeltnis: r.verhaeltnis });
 		zeichneBlatt(c.getContext('2d')!, objekte, klein, {
 			darstellung: 'schwarzplan', bereinigt: z.bereinigt, beschriftung: false,
@@ -45,15 +46,39 @@
 		const s = r.breiteM / r.hoeheM;
 		return pb / ph > s ? { b: ph * s, h: ph } : { b: pb, h: pb / s };
 	});
-	let zieht: null | { art: 'mitte' | 'nw' | 'ne' | 'sw' | 'se'; x: number; y: number; vorher: typeof a } = null;
+	let zieht = $state.raw<null | { art: 'mitte' | 'nw' | 'ne' | 'sw' | 'se' | 'plan'; x: number; y: number; vorher: typeof a; tx: number; ty: number }>(null);
+
+	/**
+	 * Zoomen und Schieben (Volker, 05.11.2026): das Rad zoomt um den Zeiger,
+	 * Ziehen neben dem Rechteck schiebt den Plan. Griffe und Maßangabe
+	 * bleiben gleich groß.
+	 */
+	let zoom = $state(1), tx = $state(0), ty = $state(0);
+	const ox = $derived((pb - groesseFlaeche.b) / 2), oy = $derived((ph - groesseFlaeche.h) / 2);
+	function rad(e: WheelEvent) {
+		if (!platz) return;
+		e.preventDefault();
+		const b = platz.getBoundingClientRect();
+		const cx = e.clientX - b.left, cy = e.clientY - b.top;
+		const neu = Math.min(6, Math.max(1, zoom * (e.deltaY > 0 ? 0.88 : 1.14)));
+		const ux = (cx - ox - tx) / zoom, uy = (cy - oy - ty) / zoom;
+		tx = cx - ox - ux * neu; ty = cy - oy - uy * neu; zoom = neu;
+		if (zoom === 1) { tx = 0; ty = 0; }
+	}
+	function planRunter(e: PointerEvent) {
+		if (e.button !== 0 && e.button !== 2) return;
+		e.preventDefault();
+		zieht = { art: 'plan', x: e.clientX, y: e.clientY, vorher: { ...a }, tx, ty };
+	}
 
 	function runter(e: PointerEvent, art: 'mitte' | 'nw' | 'ne' | 'sw' | 'se') {
 		e.stopPropagation();
 		e.preventDefault();
-		zieht = { art, x: e.clientX, y: e.clientY, vorher: { ...a } };
+		zieht = { art, x: e.clientX, y: e.clientY, vorher: { ...a }, tx, ty };
 	}
 	function bewegen(e: PointerEvent) {
 		if (!zieht || !flaeche) return;
+		if (zieht.art === 'plan') { tx = zieht.tx + e.clientX - zieht.x; ty = zieht.ty + e.clientY - zieht.y; return; }
 		const b = flaeche.getBoundingClientRect();
 		const dx = (e.clientX - zieht.x) / b.width, dy = -(e.clientY - zieht.y) / b.height;   // y nach Norden
 		const v = zieht.vorher, MIN = 0.05;
@@ -100,8 +125,9 @@
 <svelte:window onpointermove={bewegen} onpointerup={hoch} onpointercancel={hoch} onkeydown={taste} />
 
 <div class="buehne-druck">
-	<div class="platz" bind:this={platz}>
-	<div class="flaeche" bind:this={flaeche} style:width="{groesseFlaeche.b}px" style:height="{groesseFlaeche.h}px" role="presentation">
+	<div class="platz" bind:this={platz} onwheel={rad} onpointerdown={planRunter} oncontextmenu={(e) => e.preventDefault()} role="presentation" class:zieht={zieht?.art === 'plan'}>
+	<div class="flaeche" bind:this={flaeche} style:width="{groesseFlaeche.b}px" style:height="{groesseFlaeche.h}px"
+		style:transform="translate({ox + tx}px, {oy + ty}px) scale({zoom})" style:--z={zoom} role="presentation">
 		{#if bild}<img src={bild} alt="" />{/if}
 		<div class="schleier"></div>
 		<div class="auswahl" role="presentation"
@@ -156,25 +182,28 @@
 		{/if}
 		{#if masse.nx * masse.ny > 1}<p>{t().ausgeben.druckKacheln(masse.nx, masse.ny)}</p>{/if}
 	</div>
-	<p class="wink">{t().ausgeben.druckAusschnittWink}</p>
+	<p class="wink">{t().ausgeben.druckAusschnittWink} · {t().ausgeben.druckZoomWink}</p>
 </div>
 
 <style>
 	.buehne-druck { position: absolute; inset: 0; z-index: 1; background: var(--grund, #eaeae9); }
 	/* Links Platz für das Druckfenster, rechts für die Tafel: Der Plan liegt dazwischen. */
-	.platz { position: absolute; inset: 28px 290px 56px 344px; display: grid; place-items: center; }
-	.flaeche { position: relative; touch-action: none; user-select: none; }
+	.platz { position: absolute; inset: 28px 290px 56px 344px; overflow: hidden; cursor: grab; }
+	.platz.zieht { cursor: grabbing; }
+	.flaeche { position: absolute; left: 0; top: 0; transform-origin: 0 0; touch-action: none; user-select: none; }
 	img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 	.schleier { position: absolute; inset: 0; background: rgb(0 0 0 / 0.08); pointer-events: none; }
 	.auswahl {
-		position: absolute; border: 2px solid var(--akzent); cursor: move;
+		position: absolute; border: calc(2px / var(--z)) solid var(--akzent); cursor: move;
 		box-shadow: 0 0 0 9999px rgb(255 255 255 / 0.55);
 	}
 	.mass {
-		position: absolute; left: 6px; top: 6px; font-size: 11px; padding: 2px 6px;
+		transform: scale(calc(1 / var(--z))); transform-origin: 0 0;
+		position: absolute; left: 6px; top: 6px; font-size: 11px; padding: 2px 6px; white-space: nowrap;
 		background: var(--blatt); color: var(--tinte); border-radius: 2px; pointer-events: none;
 	}
 	.griff {
+		transform: scale(calc(1 / var(--z)));
 		position: absolute; width: 12px; height: 12px; background: var(--blatt);
 		border: 2px solid var(--akzent); border-radius: 2px;
 	}

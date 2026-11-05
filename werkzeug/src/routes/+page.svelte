@@ -5,7 +5,7 @@
 	import DruckVorschau from '$lib/ui/DruckVorschau.svelte';
 	import DruckAusschnitt from '$lib/ui/DruckAusschnitt.svelte';
 	import { DACH_NAME } from '$lib/dach';
-	import { druckMasse } from '$lib/export/druck';
+	import { druckMasse, DRUCK_VORGABE } from '$lib/export/druck';
 	import { z, VERHAELTNISSE, AUSGABEBREITEN, KANTEN_VORGABE, SONNE_VORGABE } from '$lib/zustand.svelte';
 	import { breiteName, BILDFORMATE, gedreht } from '$lib/geo/rahmen';
 	import { STIFTE, FAHRBAHN } from '$lib/stifte';
@@ -1351,8 +1351,12 @@
 			<div class="druckfenster" role="dialog" aria-label={t().ausgeben.druck}>
 				<div class="druckkopf">
 					<span class="feld">{t().ausgeben.druck}</span>
-					<em class="mono">{t().ausgeben.druckMass(druckJetzt.breiteMm, druckJetzt.hoeheMm, druckJetzt.massstab)}</em>
 					<button type="button" class="zu" onclick={() => (druckOffen = false)} aria-label={t().meldungSchliessen}>×</button>
+				</div>
+				<div class="druckkopf zwei">
+					<em class="mono">{t().ausgeben.druckMass(druckJetzt.breiteMm, druckJetzt.hoeheMm, druckJetzt.massstab)}</em>
+					<!-- Alles auf die Vorgabe, auch den Ausschnitt. -->
+					<button type="button" class="zurueck" onclick={() => (z.druck = { ...DRUCK_VORGABE, ausschnitt: { ...DRUCK_VORGABE.ausschnitt } })}>{t().ausgeben.druckZurueck}</button>
 				</div>
 						<div class="bildrahmen">
 					<!-- Vorschau und Ausschnitt auf der Bühne, statt der Ansicht (Volker, 05.11.2026). -->
@@ -1388,12 +1392,14 @@
 						<input type="range" min="1" max="10" step="0.5" bind:value={z.druck.sockelMm} />
 						<em class="mono">{zahl(z.druck.sockelMm)} mm</em>
 					</label>
+					<p class="hinweis leise">{t().ausgeben.druckSockelWas}</p>
 					{#if z.gelaendeJetzt}
-						<label class="regelzeile" title={t().ausgeben.druckUeberWas}>
+						<label class="regelzeile">
 							<span>{t().ausgeben.druckUeber}</span>
 							<input type="range" min="1" max="5" step="0.5" bind:value={z.druck.ueberhoehung} />
 							<em class="mono">{zahl(z.druck.ueberhoehung)}×</em>
 						</label>
+						<p class="hinweis leise">{t().ausgeben.druckUeberWas}</p>
 					{/if}
 					<span class="unter">{t().ausgeben.druckSchwebend}</span>
 					<div class="wahl schmal" role="group" aria-label={t().ausgeben.druckSchwebend}>
@@ -2355,9 +2361,11 @@
 		background: var(--blatt); border: 1px solid var(--linie); border-radius: var(--rund);
 		box-shadow: 0 6px 24px rgb(0 0 0 / 0.14), 0 1px 3px rgb(0 0 0 / 0.08);
 	}
-	.druckkopf { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
+	.druckkopf { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+	.druckkopf.zwei { margin-bottom: 12px; }
 	.druckkopf .feld { margin: 0; }
-	.druckkopf em { font-style: normal; font-size: 11px; color: var(--tinte-2); margin-left: auto; }
+	.druckkopf em { font-style: normal; font-size: 11px; color: var(--tinte-2); white-space: nowrap; }
+	.druckkopf .zurueck { border: 1px solid var(--linie); background: var(--blatt); color: var(--tinte-2); font: inherit; font-size: 11px; padding: 2px 7px; border-radius: var(--rund); cursor: pointer; }
 	.druckkopf .zu { border: 0; background: none; font-size: 18px; line-height: 1; cursor: pointer; color: var(--tinte-2); padding: 0 2px; }
 	.druckfenster .bildrahmen { margin-bottom: 0; }
 	/* Regler im 3D-Druck: dieselbe Zeile wie in den Aufklappfeldern der Leiste. */

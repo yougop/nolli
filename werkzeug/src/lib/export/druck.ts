@@ -451,13 +451,25 @@ export function alsStl(netze: Netz[], kopf = 'Nolli 3D print, mm'): Uint8Array {
 	return new Uint8Array(buf);
 }
 
+/** Die Druckplatte der Bambu Lab X1 Carbon, auf deren Mitte das Modell gelegt wird. */
+const BETT_MITTE_MM = 128;
+
 /**
- * 3MF: Platte und Häuser als zwei Objekte, damit sie sich in zwei Farben
- * drucken lassen. Die Ecken werden zusammengelegt (auf 1 µm), sonst sieht
- * der Slicer keine geschlossenen Kanten.
+ * 3MF: ein Objekt aus Teilen (Platte, Häuser, Straßen, Grün), damit jedem
+ * Teil eine Spule zugeordnet werden kann. Als vier eigene Objekte fragte
+ * Bambu Studio „Mehrteiliges Objekt erkannt“ (Volker, 05.11.2026); mit
+ * `components` lädt es sie ohne Rückfrage als ein Objekt mit Teilen.
+ * Das Modell liegt mittig auf der Druckplatte der X1 Carbon. Die Ecken
+ * werden zusammengelegt (auf 1 µm), sonst sieht der Slicer keine
+ * geschlossenen Kanten.
  */
 export function als3mf(objekte: { name: string; netz: Netz }[]): Uint8Array {
 	const teile: string[] = [];
+	let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+	for (const ob of objekte) for (let i = 0; i < ob.netz.length; i += 3) {
+		x0 = Math.min(x0, ob.netz[i]); x1 = Math.max(x1, ob.netz[i]); y0 = Math.min(y0, ob.netz[i + 1]); y1 = Math.max(y1, ob.netz[i + 1]);
+	}
+	const tx = Number.isFinite(x0) ? BETT_MITTE_MM - (x0 + x1) / 2 : 0, ty = Number.isFinite(y0) ? BETT_MITTE_MM - (y0 + y1) / 2 : 0;
 	objekte.forEach((ob, n) => {
 		const index = new Map<string, number>(), ecken: string[] = [], dreiecke: string[] = [];
 		const ecke = (x: number, y: number, z: number) => {
@@ -477,8 +489,9 @@ export function als3mf(objekte: { name: string; netz: Netz }[]): Uint8Array {
 	const modell = `<?xml version="1.0" encoding="UTF-8"?>
 <model unit="millimeter" xml:lang="en" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
 <metadata name="Application">Nolli</metadata>
-<resources>${teile.join('\n')}</resources>
-<build>${objekte.map((_, n) => `<item objectid="${n + 1}"/>`).join('')}</build>
+<resources>${teile.join('\n')}
+<object id="${objekte.length + 1}" name="nolli" type="model"><components>${objekte.map((_, n) => `<component objectid="${n + 1}"/>`).join('')}</components></object></resources>
+<build><item objectid="${objekte.length + 1}" transform="1 0 0 0 1 0 0 0 1 ${tx.toFixed(3)} ${ty.toFixed(3)} 0"/></build>
 </model>`;
 	return zipSync({
 		'[Content_Types].xml': strToU8(`<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>`),

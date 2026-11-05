@@ -217,6 +217,13 @@ const de = {
 		druckGroesse: 'Größe',
 		druckFarben: 'Farben',
 		druckGruen: 'Grünflächen',
+		druckKleinTeile: 'Zu kleine Teile',
+		druckBehalten: 'Behalten',
+		druckKleinArt: (a: { anschnitt: number; antenne: number; schmal: number }) => 'Zu kleine Teile, in der Vorschau rot: ' + [
+			a.anschnitt ? `${zahl(a.anschnitt)} ${a.anschnitt === 1 ? 'Anschnitt' : 'Anschnitte'} am Rand` : '',
+			a.antenne ? `${zahl(a.antenne)} ${a.antenne === 1 ? 'Antenne oder schlanker Turm' : 'Antennen oder schlanke Türme'}` : '',
+			a.schmal ? `${zahl(a.schmal)} ${a.schmal === 1 ? 'Bau' : 'Bauten'} schmaler als 0,8 mm` : ''
+		].filter(Boolean).join(', ') + '. Sie drucken nicht sauber oder brechen ab.',
 		druckBuehne: 'Druck auf der Bühne',
 		druckVorschauKnopf: 'Vorschau',
 		druckAusschnitt: 'Ausschnitt wählen',
@@ -245,7 +252,6 @@ const de = {
 		druckWeg: 'Weglassen',
 		druckMass: (b: number, h: number, m: number) => `${zahl(Math.round(b))} × ${zahl(Math.round(h))} mm · 1:${zahl(m)}`,
 		druckKacheln: (nx: number, ny: number) => `${nx} × ${ny} Kacheln, je eine Datei`,
-		druckKlein: (n: number) => n === 1 ? 'Ein Haus ist schmaler als 0,8 mm und druckt nicht sauber. Größerer Maßstab hilft.' : `${zahl(n)} Häuser schmaler als 0,8 mm: Sie drucken nicht sauber. Größerer Maßstab hilft.`,
 		druckWas: 'Geschlossene Körper in Millimetern: Grundplatte, darauf die Häuser, einen halben Millimeter versenkt, Straßen 0,4 mm erhaben. Mehrfarbig: Platte, Häuser, Straßen und Grün als vier Objekte im 3MF, für das AMS der Bambu X1 Carbon, als eigene Dateien bei STL.',
 		druckUeberWas: 'Multipliziert die Geländehöhen, damit flache Orte Relief zeigen. Die Häuser behalten ihre Höhe.',
 		karteBreite: 'Karte und Textur',
@@ -572,6 +578,13 @@ const en: typeof de = {
 		druckGroesse: 'Size',
 		druckFarben: 'Colours',
 		druckGruen: 'Green areas',
+		druckKleinTeile: 'Parts too small',
+		druckBehalten: 'Keep',
+		druckKleinArt: (a: { anschnitt: number; antenne: number; schmal: number }) => 'Parts too small, red in the preview: ' + [
+			a.anschnitt ? `${zahl(a.anschnitt)} ${a.anschnitt === 1 ? 'cut piece' : 'cut pieces'} at the edge` : '',
+			a.antenne ? `${zahl(a.antenne)} ${a.antenne === 1 ? 'antenna or slender tower' : 'antennas or slender towers'}` : '',
+			a.schmal ? `${zahl(a.schmal)} ${a.schmal === 1 ? 'building' : 'buildings'} narrower than 0.8 mm` : ''
+		].filter(Boolean).join(', ') + '. They will not print cleanly or will break off.',
 		druckBuehne: 'Print on the stage',
 		druckVorschauKnopf: 'Preview',
 		druckAusschnitt: 'Choose area',
@@ -600,7 +613,6 @@ const en: typeof de = {
 		druckWeg: 'Leave out',
 		druckMass: (b: number, h: number, m: number) => `${zahl(Math.round(b))} × ${zahl(Math.round(h))} mm · 1:${zahl(m)}`,
 		druckKacheln: (nx: number, ny: number) => `${nx} × ${ny} tiles, one file each`,
-		druckKlein: (n: number) => n === 1 ? 'One building is narrower than 0.8 mm and will not print cleanly. A larger scale helps.' : `${zahl(n)} buildings narrower than 0.8 mm: they will not print cleanly. A larger scale helps.`,
 		druckWas: 'Closed solids in millimetres: a base plate with the buildings on it, sunk half a millimetre, streets raised 0.4 mm. Multicolour: plate, buildings, streets and green as four objects in the 3MF, for the AMS of a Bambu X1 Carbon, separate files for STL.',
 		druckUeberWas: 'Multiplies the terrain heights so flat places show relief. Buildings keep their height.',
 		karteBreite: 'Map and texture',

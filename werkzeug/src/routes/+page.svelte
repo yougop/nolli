@@ -977,7 +977,7 @@
 		 * einzelne Dateien, die man im Slicer als Teile eines Modells lädt.
 		 */
 		const dateien = (k: (typeof kacheln)[number], vor: string): Record<string, Uint8Array> => {
-			const teile = [{ name: 'base', netz: k.platte }, { name: 'buildings', netz: k.haeuser }, { name: 'streets', netz: k.strassen }, { name: 'green', netz: k.gruen }]
+			const teile = [{ name: 'base', netz: k.platte }, { name: 'buildings', netz: [...k.haeuser, ...k.kleine] }, { name: 'streets', netz: k.strassen }, { name: 'green', netz: k.gruen }]
 				.filter((x) => x.netz.length);
 			if (art === '3mf') return { [`${vor}.3mf`]: als3mf(mehr ? teile : [{ name: 'model', netz: teile.flatMap((x) => x.netz) }]) };
 			if (!mehr) return { [`${vor}.stl`]: alsStl(teile.map((x) => x.netz), `Nolli ${basis} ${k.name}, mm`) };
@@ -1407,7 +1407,14 @@
 						<button type="button" class:an={z.druck.schwebend === 'weglassen'} aria-pressed={z.druck.schwebend === 'weglassen'} onclick={() => (z.druck.schwebend = 'weglassen')}>{t().ausgeben.druckWeg}</button>
 					</div>
 					{#if druckJetzt.nx * druckJetzt.ny > 1}<p class="hinweis leise">{t().ausgeben.druckKacheln(druckJetzt.nx, druckJetzt.ny)}</p>{/if}
-					{#if druckJetzt.klein}<p class="hinweis leise">{t().ausgeben.druckKlein(druckJetzt.klein)}</p>{/if}
+					<!-- Zu kleine Teile: was, wie viele, und behalten oder weglassen. -->
+				{#if druckJetzt.klein}
+					<p class="hinweis warnung">{t().ausgeben.druckKleinArt(druckJetzt.kleinArt)}</p>
+					<div class="wahl schmal" role="group" aria-label={t().ausgeben.druckKleinTeile}>
+						<button type="button" class:an={z.druck.klein === 'behalten'} aria-pressed={z.druck.klein === 'behalten'} onclick={() => (z.druck.klein = 'behalten')}>{t().ausgeben.druckBehalten}</button>
+						<button type="button" class:an={z.druck.klein === 'weglassen'} aria-pressed={z.druck.klein === 'weglassen'} onclick={() => (z.druck.klein = 'weglassen')}>{t().ausgeben.druckWeg}</button>
+					</div>
+				{/if}
 					<div class="wahl schmal" role="group" aria-label={t().ausgeben.druck}>
 						<button type="button" disabled={!!arbeitet} onclick={() => ausgeben('3mf')}>{arbeitet === '3mf' ? t().ausgeben.schreibt : '3MF'}</button>
 						<button type="button" disabled={!!arbeitet} onclick={() => ausgeben('stl')}>{arbeitet === 'stl' ? t().ausgeben.schreibt : 'STL'}</button>
@@ -2368,6 +2375,7 @@
 	.druckkopf .zurueck { border: 1px solid var(--linie); background: var(--blatt); color: var(--tinte-2); font: inherit; font-size: 11px; padding: 2px 7px; border-radius: var(--rund); cursor: pointer; }
 	.druckkopf .zu { border: 0; background: none; font-size: 18px; line-height: 1; cursor: pointer; color: var(--tinte-2); padding: 0 2px; }
 	.druckfenster .bildrahmen { margin-bottom: 0; }
+	.druckfenster .warnung { margin: 0; font-size: 11.5px; color: var(--warn); }
 	/* Regler im 3D-Druck: dieselbe Zeile wie in den Aufklappfeldern der Leiste. */
 	.bildrahmen .regelzeile {
 		display: grid; grid-template-columns: 96px 1fr 56px; align-items: center; gap: 8px;

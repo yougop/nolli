@@ -32,7 +32,7 @@
 	szene.add(gruppe);
 	let winkel = -0.6, neigung = 0.75, abstand = 1, mitte = new THREE.Vector3(), weite = 200;
 
-	const FARBEN = { platte: 0xcfcdc7, haeuser: 0xf4f3ef, strassen: 0x5f5f5c, gruen: 0x8aa874 };
+	const FARBEN = { platte: 0xcfcdc7, haeuser: 0xf4f3ef, strassen: 0x5f5f5c, gruen: 0x8aa874, klein: 0xd2453a };
 
 	function netz(q: number[], farbe: number) {
 		const g = new THREE.BufferGeometry();
@@ -75,6 +75,8 @@
 				const teil = new THREE.Group();
 				teil.add(netz(k.platte, ein ? FARBEN.haeuser : FARBEN.platte));
 				if (k.haeuser.length) teil.add(netz(k.haeuser, FARBEN.haeuser));
+				// Zu kleine Teile rot, damit man sieht, was nicht sauber druckt.
+				if (k.kleine.length) teil.add(netz(k.kleine, FARBEN.klein));
 				if (k.strassen.length) teil.add(netz(k.strassen, ein ? FARBEN.haeuser : FARBEN.strassen));
 				if (k.gruen.length) teil.add(netz(k.gruen, ein ? FARBEN.haeuser : FARBEN.gruen));
 				teil.position.set(k.i * (k.bMm + FUGE), k.j * (k.hMm + FUGE), 0);

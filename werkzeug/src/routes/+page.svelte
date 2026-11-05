@@ -2354,7 +2354,8 @@
 	.fuss .zweit.an em { color: var(--blatt); }
 	.flaeche { position: relative; }
 	.druckfenster {
-		position: absolute; right: calc(var(--schiene) + 12px); bottom: 16px; z-index: 5;
+		/* Links bündig an der Bühne (Volker, 05.11.2026). */
+		position: absolute; left: 16px; bottom: 16px; z-index: 5;
 		width: 312px; max-height: calc(100% - 32px); overflow-y: auto; padding: 14px 16px;
 		background: var(--blatt); border: 1px solid var(--linie); border-radius: var(--rund); box-shadow: var(--heben);
 	}

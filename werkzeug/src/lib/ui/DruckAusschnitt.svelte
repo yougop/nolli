@@ -161,7 +161,7 @@
 
 <style>
 	.buehne-druck { position: absolute; inset: 0; z-index: 1; background: var(--grund, #eaeae9); }
-	.platz { position: absolute; inset: 28px 28px 56px 290px; display: grid; place-items: center; }
+	.platz { position: absolute; inset: 28px 290px 56px 28px; display: grid; place-items: center; }
 	.flaeche { position: relative; touch-action: none; user-select: none; }
 	img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 	.schleier { position: absolute; inset: 0; background: rgb(0 0 0 / 0.08); pointer-events: none; }
@@ -182,7 +182,8 @@
 	.sw { left: -7px; bottom: -7px; cursor: nesw-resize; }
 	.se { right: -7px; bottom: -7px; cursor: nwse-resize; }
 	.tafel {
-		position: absolute; left: 18px; top: 18px; z-index: 2; width: 248px;
+		/* Rechts oben: links steht das Druckfenster. */
+		position: absolute; right: 18px; top: 18px; z-index: 2; width: 248px;
 		display: grid; gap: 7px; padding: 12px;
 		background: var(--blatt); border: 1px solid var(--linie); border-radius: var(--rund); box-shadow: var(--heben);
 		font-size: 12px; color: var(--tinte-2);

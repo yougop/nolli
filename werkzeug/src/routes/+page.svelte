@@ -1,11 +1,12 @@
 <script lang="ts">
 	import Karte from '$lib/ui/Karte.svelte';
 	import Blatt from '$lib/ui/Blatt.svelte';
+	import { untrack } from 'svelte';
 	import Raum from '$lib/ui/Raum.svelte';
 	import DruckVorschau from '$lib/ui/DruckVorschau.svelte';
 	import DruckAusschnitt from '$lib/ui/DruckAusschnitt.svelte';
 	import { DACH_NAME } from '$lib/dach';
-	import { druckMasse, DRUCK_VORGABE } from '$lib/export/druck';
+	import { druckMasse, druckVorschlag, ausschnittGroesse, DRUCK_VORGABE } from '$lib/export/druck';
 	import { z, VERHAELTNISSE, AUSGABEBREITEN, KANTEN_VORGABE, SONNE_VORGABE } from '$lib/zustand.svelte';
 	import { breiteName, BILDFORMATE, gedreht } from '$lib/geo/rahmen';
 	import { STIFTE, FAHRBAHN } from '$lib/stifte';
@@ -964,6 +965,23 @@
 	/** Maße des Druckmodells für die Anzeige, ohne es zu bauen. */
 	const druckJetzt = $derived(r ? druckMasse(bestand, r, z.druck) : null);
 	let druckOffen = $state(false);
+	/** Ab Werk unberührt? Dann bekommt das Fenster beim Öffnen den Vorschlag statt des ganzen Rahmens. */
+	const druckUnberuehrt = () => {
+		const d = z.druck, v = DRUCK_VORGABE, a = d.ausschnitt;
+		return d.groesse === v.groesse && d.massstab === v.massstab && d.bettMm === v.bettMm && a.x0 <= 0 && a.y0 <= 0 && a.x1 >= 1 && a.y1 >= 1;
+	};
+	function druckZuruecksetzen() {
+		if (r) z.druck = druckVorschlag(bestand, r, { ...DRUCK_VORGABE, ausschnitt: { ...DRUCK_VORGABE.ausschnitt } });
+	}
+	$effect(() => { if (druckOffen && r && untrack(druckUnberuehrt)) untrack(druckZuruecksetzen); });
+	/** Maßstab wechseln: Die Druckgröße bleibt, das Rechteck auf dem Plan ändert sich. */
+	function massstabSetzen(m: number) {
+		if (!r || !druckJetzt) return;
+		const b = druckJetzt.breiteMm, h = druckJetzt.hoeheMm;
+		z.druck.groesse = 'massstab'; z.druck.massstab = m;
+		z.druck.ausschnitt = ausschnittGroesse(r, z.druck, b, h);
+	}
+	const druckGanz = $derived(z.druck.ausschnitt.x0 <= 0 && z.druck.ausschnitt.y0 <= 0 && z.druck.ausschnitt.x1 >= 1 && z.druck.ausschnitt.y1 >= 1);
 	// Fenster zu: auch Vorschau und Ausschnitt von der Bühne (Volker, 05.11.2026:
 	// man kam aus der Druckansicht nicht mehr heraus).
 	$effect(() => { if (!druckOffen) z.druckBuehne = null; });
@@ -1363,7 +1381,7 @@
 				<div class="druckkopf zwei">
 					<em class="mono">{t().ausgeben.druckMass(druckJetzt.breiteMm, druckJetzt.hoeheMm, druckJetzt.massstab)}</em>
 					<!-- Alles auf die Vorgabe, auch den Ausschnitt. -->
-					<button type="button" class="zurueck" onclick={() => (z.druck = { ...DRUCK_VORGABE, ausschnitt: { ...DRUCK_VORGABE.ausschnitt } })}>{t().ausgeben.druckZurueck}</button>
+					<button type="button" class="zurueck" onclick={druckZuruecksetzen}>{t().ausgeben.druckZurueck}</button>
 				</div>
 						<div class="bildrahmen">
 					<!-- Vorschau und Ausschnitt auf der Bühne, statt der Ansicht (Volker, 05.11.2026). -->
@@ -1373,12 +1391,38 @@
 						<button type="button" class:an={z.druckBuehne === 'ausschnitt'} aria-pressed={z.druckBuehne === 'ausschnitt'}
 							onclick={() => (z.druckBuehne = z.druckBuehne === 'ausschnitt' ? null : 'ausschnitt')}>{t().ausgeben.druckAusschnitt}</button>
 					</div>
-					<p class="hinweis leise">{t().ausgeben.druckAusschnittWas}</p>
-					{#if z.druck.ausschnitt.x0 > 0 || z.druck.ausschnitt.y0 > 0 || z.druck.ausschnitt.x1 < 1 || z.druck.ausschnitt.y1 < 1}
-						<div class="wahl schmal">
-							<button type="button" onclick={() => (z.druck.ausschnitt = { x0: 0, y0: 0, x1: 1, y1: 1 })}>{t().ausgeben.druckGanz}</button>
+					<!-- Größe, Maßstab und Rechteck hier statt auf einer zweiten Tafel rechts (Impeccable, 05.11.2026). -->
+					<span class="unter">{t().ausgeben.druckGroesse}</span>
+					<div class="wahl schmal" role="group" aria-label={t().ausgeben.druckGroesse}>
+						<button type="button" class:an={z.druck.groesse === 'bett'} aria-pressed={z.druck.groesse === 'bett'} onclick={() => (z.druck.groesse = 'bett')}>{t().ausgeben.druckBett}</button>
+						<button type="button" class:an={z.druck.groesse === 'massstab'} aria-pressed={z.druck.groesse === 'massstab'} onclick={() => massstabSetzen(z.druck.massstab)}>{t().ausgeben.druckMassstab}</button>
+					</div>
+					{#if z.druck.groesse === 'massstab'}
+						<div class="wahl breiten" role="group" aria-label={t().ausgeben.druckMassstab}>
+							{#each [500, 1000, 2000, 5000] as m}
+								<button type="button" class:an={z.druck.massstab === m} aria-pressed={z.druck.massstab === m} onclick={() => massstabSetzen(m)}>1:{zahl(m)}</button>
+							{/each}
 						</div>
 					{/if}
+					<label class="regelzeile">
+						<span>{t().ausgeben.druckBettMm}</span>
+						<input type="range" min="100" max="400" step="10" bind:value={z.druck.bettMm} />
+						<em class="mono">{z.druck.bettMm} mm</em>
+					</label>
+					{#if z.druck.groesse === 'massstab'}
+						<div class="masse">
+							<label><span>{t().ausgeben.druckBreite}</span>
+								<input type="number" min="10" step="5" value={Math.round(druckJetzt.breiteMm)}
+									onchange={(e) => { if (r) z.druck.ausschnitt = ausschnittGroesse(r, z.druck, Number((e.currentTarget as HTMLInputElement).value), druckJetzt!.hoeheMm); }} /><em>mm</em></label>
+							<label><span>{t().ausgeben.druckHoehe}</span>
+								<input type="number" min="10" step="5" value={Math.round(druckJetzt.hoeheMm)}
+									onchange={(e) => { if (r) z.druck.ausschnitt = ausschnittGroesse(r, z.druck, druckJetzt!.breiteMm, Number((e.currentTarget as HTMLInputElement).value)); }} /><em>mm</em></label>
+						</div>
+					{/if}
+					<div class="wahl schmal">
+						{#if z.druck.groesse === 'massstab'}<button type="button" onclick={() => { if (r) z.druck.ausschnitt = ausschnittGroesse(r, z.druck, z.druck.bettMm, z.druck.bettMm); }}>{t().ausgeben.druckAufsBett}</button>{/if}
+						<button type="button" disabled={druckGanz} onclick={() => (z.druck.ausschnitt = { x0: 0, y0: 0, x1: 1, y1: 1 })}>{t().ausgeben.druckGanz}</button>
+					</div>
 					<span class="unter">{t().ausgeben.druckFarben}</span>
 					<div class="wahl schmal" role="group" aria-label={t().ausgeben.druckFarben}>
 						<button type="button" class:an={z.druck.farben === 'ein'} aria-pressed={z.druck.farben === 'ein'} onclick={() => (z.druck.farben = 'ein')}>{t().ausgeben.druckEin}</button>
@@ -1422,12 +1466,16 @@
 						<button type="button" class:an={z.druck.klein === 'weglassen'} aria-pressed={z.druck.klein === 'weglassen'} onclick={() => (z.druck.klein = 'weglassen')}>{t().ausgeben.druckWeg}</button>
 					</div>
 				{/if}
-					<div class="wahl schmal" role="group" aria-label={t().ausgeben.druck}>
-						<button type="button" disabled={!!arbeitet} onclick={() => ausgeben('3mf')}>{arbeitet === '3mf' ? t().ausgeben.schreibt : '3MF'}</button>
-						<button type="button" disabled={!!arbeitet} onclick={() => ausgeben('stl')}>{arbeitet === 'stl' ? t().ausgeben.schreibt : 'STL'}</button>
-					</div>
-					<p class="hinweis leise">{t().ausgeben.druckBambu}</p>
 					<p class="hinweis leise">{t().ausgeben.druckWas}</p>
+					<!-- Die Datei ist die Hauptaktion des Fensters und sieht auch so aus (Impeccable, 05.11.2026). -->
+					<div class="druckfuss">
+						<button type="button" class="haupt" class:arbeitet={arbeitet === '3mf'} disabled={!!arbeitet} onclick={() => ausgeben('3mf')}>
+							<span class="ring" aria-hidden="true"></span>
+							{arbeitet === '3mf' ? t().ausgeben.schreibt : t().ausgeben.druck3mf(Math.round(druckJetzt.breiteMm), Math.round(druckJetzt.hoeheMm))}
+						</button>
+						<button type="button" class="haupt zweit" disabled={!!arbeitet} onclick={() => ausgeben('stl')}>{arbeitet === 'stl' ? t().ausgeben.schreibt : t().ausgeben.druckStl}</button>
+						<p class="hinweis leise">{t().ausgeben.druckBambu}</p>
+					</div>
 				</div>
 			</div>
 		{/if}
@@ -2383,6 +2431,13 @@
 	.druckkopf .zurueck { border: 1px solid var(--linie); background: var(--blatt); color: var(--tinte-2); font: inherit; font-size: 11px; padding: 2px 7px; border-radius: var(--rund); cursor: pointer; }
 	.druckkopf .zu { border: 0; background: none; font-size: 18px; line-height: 1; cursor: pointer; color: var(--tinte-2); padding: 0 2px; }
 	.druckfenster .bildrahmen { margin-bottom: 0; }
+	.druckfuss { display: grid; gap: 8px; margin-top: 6px; padding-top: 12px; border-top: 1px solid var(--linie); }
+	.druckfuss .zweit { background: var(--blatt); color: var(--tinte); }
+	.druckfuss .hinweis { margin: 0; }
+	.druckfenster .masse { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+	.druckfenster .masse label { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 4px; font-size: 12px; color: var(--tinte-2); }
+	.druckfenster .masse input { width: 100%; min-width: 0; padding: 4px 5px; font: inherit; border: 1px solid var(--linie); border-radius: var(--rund); background: var(--blatt); color: var(--tinte); }
+	.druckfenster .masse em { font-style: normal; font-size: 11px; }
 	/* Wie der Urteilskasten: Mahnung auf ihrer Fläche, ohne Rand (DESIGN.md). */
 	.druckfenster .warnung { margin: 0; padding: 8px 10px; font-size: 11.5px; line-height: 1.45; color: var(--warn); background: var(--warn-flor); border-radius: var(--rund); }
 	/* Regler im 3D-Druck: dieselbe Zeile wie in den Aufklappfeldern der Leiste. */

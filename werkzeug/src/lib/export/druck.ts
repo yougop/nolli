@@ -146,6 +146,7 @@ export function druckMasse(objekte: Objekt[], r: Rahmen, w: Druckwahl) {
 	const m = druckGroesse(r, w);
 	const { g, k, nx, ny, kb, kh } = m;
 	const zahl: Record<Klein, number> = { anschnitt: 0, antenne: 0, schmal: 0 };
+	let gesamt = 0;
 	const ersetzt = umrisseMitTeilen(objekte);
 	for (const o of objekte) {
 		if ((o.ebene !== 'gebaeude' && o.ebene !== 'erhalt') || o.zustand === 'gestrichen' || !o.ringe.length || ersetzt.has(o.id)) continue;
@@ -161,11 +162,43 @@ export function druckMasse(objekte: Objekt[], r: Rahmen, w: Druckwahl) {
 				if (x1 < tx0 || x0 > tx1 || y1 < ty0 || y0 > ty1) continue;
 				const st = stuecke(o, tx0, ty0, tx1, ty1, k);
 				if (!st.teile.length) continue;
+				gesamt++;
 				const art = zuKlein(st.teile, st.ganz, o.hoeheM ?? 8, k);
 				if (art) zahl[art]++;
 			}
 	}
-	return { ...m, klein: zahl.anschnitt + zahl.antenne + zahl.schmal, kleinArt: zahl };
+	return { ...m, gesamt, klein: zahl.anschnitt + zahl.antenne + zahl.schmal, kleinArt: zahl };
+}
+
+/** Das Rechteck auf eine Größe in Millimetern setzen, um seine Mitte; nur im Maßstab sinnvoll. */
+export function ausschnittGroesse(r: Rahmen, w: Druckwahl, bMm: number, hMm: number): Druckwahl['ausschnitt'] {
+	const k = 1000 / w.massstab, a = w.ausschnitt;
+	const wb = Math.min(1, Math.max(0.02, bMm / k / (r.x1 - r.x0))), wh = Math.min(1, Math.max(0.02, hMm / k / (r.y1 - r.y0)));
+	const cx = (a.x0 + a.x1) / 2, cy = (a.y0 + a.y1) / 2;
+	const x0 = Math.min(1 - wb, Math.max(0, cx - wb / 2)), y0 = Math.min(1 - wh, Math.max(0, cy - wh / 2));
+	return { x0, y0, x1: x0 + wb, y1: y0 + wh };
+}
+
+/**
+ * Der Vorschlag beim ersten Öffnen (Impeccable, 05.11.2026): Vorher stand ab
+ * Werk der ganze Rahmen aufs Bett, und das Erste, was das Fenster sagte, war
+ * „93 Bauten schmaler als 0,8 mm“. Jetzt ein bettgroßer Ausschnitt in der
+ * Rahmenmitte, im gröbsten Maßstab, bei dem weniger als 5 % der Bauten zu
+ * schmal für die Düse sind — also so viel Stadt, wie sauber druckbar ist.
+ */
+export function druckVorschlag(objekte: Objekt[], r: Rahmen, w: Druckwahl): Druckwahl {
+	for (const m of [5000, 2000, 1000, 500]) {
+		const k = 1000 / m, B = r.x1 - r.x0, H = r.y1 - r.y0;
+		const wb = Math.min(1, w.bettMm / k / B), wh = Math.min(1, w.bettMm / k / H);
+		const probe: Druckwahl = { ...w, groesse: 'massstab', massstab: m, ausschnitt: { x0: (1 - wb) / 2, y0: (1 - wh) / 2, x1: (1 + wb) / 2, y1: (1 + wh) / 2 } };
+		const z = druckMasse(objekte, r, probe);
+		// Antennen zählen hier nicht: Sie sind eine Warnung („bricht ab“), kein
+		// Hindernis, und an der HafenCity drückten vier davon den Vorschlag auf
+		// 1:500, ein 100-m-Stück Stadt. Entscheidend ist, was die Düse nicht legt.
+		const zuEng = z.kleinArt.anschnitt + z.kleinArt.schmal;
+		if (!z.gesamt || zuEng / z.gesamt < 0.05 || m === 500) return probe;
+	}
+	return w;
 }
 
 /** Die Körper je Kachel, in Millimetern. */

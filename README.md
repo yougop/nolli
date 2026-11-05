@@ -89,10 +89,13 @@ Terrain is off by default; then everything stands on z = 0.
 
 **3D print** below **Export image** opens a panel on the left.
 
-- **Choose area** shows the frame as a plan with a rectangle: drag it, pull
-  its corners, zoom with the wheel. Next to it: fitted to the bed, or a scale
-  from 1:500 to 1:5,000, the bed size, and the rectangle in millimetres. If
-  the area is larger than the bed, Nolli splits it into tiles, one file each.
+- **Size:** fitted to the bed, or a scale from 1:500 to 1:5,000, the bed size,
+  and the area in millimetres. On opening, Nolli proposes a bed-sized area at
+  the coarsest scale at which fewer than 5 % of the buildings are too narrow
+  to print. **Choose area** shows the frame as a plan with a rectangle: drag
+  it, pull its corners, zoom with the wheel, or move it with the arrow keys.
+  If the area is larger than the bed, Nolli splits it into tiles, one file
+  each.
 - **Preview** shows the print on the stage, all tiles in place, before a file
   is written.
 - **Multicolour** writes one object of four parts — base, buildings, streets,

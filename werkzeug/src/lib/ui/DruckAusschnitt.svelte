@@ -44,10 +44,10 @@
 	});
 	/**
 	 * Der Plan liegt über der ganzen Bühne und läuft beim Schieben unter das
-	 * Druckfenster und die Tafel (Volker, 05.11.2026). Eingepasst wird er
-	 * aber in den freien Platz dazwischen.
+	 * Druckfenster (Volker, 05.11.2026). Eingepasst wird er in den freien
+	 * Platz rechts davon; Maßstab und Größe stehen im Fenster.
 	 */
-	const FREI = { links: 344, rechts: 290, oben: 28, unten: 56 };
+	const FREI = { links: 344, rechts: 28, oben: 28, unten: 56 };
 	const groesseFlaeche = $derived.by(() => {
 		const s = r.breiteM / r.hoeheM;
 		const fb = Math.max(100, pb - FREI.links - FREI.rechts), fh = Math.max(100, ph - FREI.oben - FREI.unten);
@@ -105,14 +105,6 @@
 	}
 	const hoch = () => (zieht = null);
 
-	/** Das Rechteck auf eine Größe in mm setzen, um seine Mitte (nur im Maßstab sinnvoll). */
-	function groesse(bMm: number, hMm: number) {
-		const k = 1000 / z.druck.massstab;
-		const w = Math.min(1, Math.max(0.02, bMm / k / r.breiteM)), h = Math.min(1, Math.max(0.02, hMm / k / r.hoeheM));
-		const cx = (a.x0 + a.x1) / 2, cy = (a.y0 + a.y1) / 2;
-		const x0 = Math.min(1 - w, Math.max(0, cx - w / 2)), y0 = Math.min(1 - h, Math.max(0, cy - h / 2));
-		z.druck.ausschnitt = { x0, y0, x1: x0 + w, y1: y0 + h };
-	}
 	/** Pfeiltasten schieben das Rechteck, mit Umschalt in größeren Schritten. */
 	function taste(e: KeyboardEvent) {
 		const d = e.shiftKey ? 0.05 : 0.01;
@@ -123,20 +115,7 @@
 		const x0 = Math.min(1 - w, Math.max(0, a.x0 + dx)), y0 = Math.min(1 - h, Math.max(0, a.y0 + dy));
 		z.druck.ausschnitt = { x0, y0, x1: x0 + w, y1: y0 + h };
 	}
-	const ganz = $derived(a.x0 <= 0 && a.y0 <= 0 && a.x1 >= 1 && a.y1 >= 1);
 
-	/**
-	 * Maßstab wechseln: Die Druckgröße bleibt, das Rechteck auf dem Plan
-	 * ändert sich (Volker, 05.11.2026). 150 × 150 mm sind bei 1:5.000 ein
-	 * größeres Stück Stadt als bei 1:2.000. Vorher blieb das Rechteck und die
-	 * Druckgröße sprang.
-	 */
-	function massstabSetzen(m: number) {
-		const b = masse.breiteMm, h = masse.hoeheMm;
-		z.druck.groesse = 'massstab';
-		z.druck.massstab = m;
-		groesse(b, h);
-	}
 </script>
 
 <!-- Am Fenster, nicht am Griff: Mit Pointer Capture riss das Ziehen nach
@@ -170,47 +149,6 @@
 		</div>
 	</div>
 	</div>
-	<!-- Maßstab und Größe gehören zum Ausschnitt (Volker, 05.11.2026). -->
-	<div class="tafel">
-		<span class="unter">{t().ausgeben.druckGroesse}</span>
-		<div class="wahl" role="group" aria-label={t().ausgeben.druckGroesse}>
-			<button type="button" class:an={z.druck.groesse === 'bett'} aria-pressed={z.druck.groesse === 'bett'} onclick={() => (z.druck.groesse = 'bett')}>{t().ausgeben.druckBett}</button>
-			<button type="button" class:an={z.druck.groesse === 'massstab'} aria-pressed={z.druck.groesse === 'massstab'} onclick={() => massstabSetzen(z.druck.massstab)}>{t().ausgeben.druckMassstab}</button>
-		</div>
-		{#if z.druck.groesse === 'massstab'}
-			<div class="wahl" role="group" aria-label={t().ausgeben.druckMassstab}>
-				{#each [500, 1000, 2000, 5000] as m}
-					<button type="button" class:an={z.druck.massstab === m} aria-pressed={z.druck.massstab === m}
-						onclick={() => massstabSetzen(m)}>1:{zahl(m)}</button>
-				{/each}
-			</div>
-		{/if}
-		<label class="zeile">
-			<span>{t().ausgeben.druckBettMm}</span>
-			<input type="range" min="100" max="400" step="10" bind:value={z.druck.bettMm} />
-			<em class="mono">{z.druck.bettMm} mm</em>
-		</label>
-		{#if z.druck.groesse === 'massstab'}
-			<span class="unter">{t().ausgeben.druckRechteck}</span>
-			<div class="masse">
-				<label><span>{t().ausgeben.druckBreite}</span>
-					<input type="number" min="10" step="5" value={Math.round(masse.breiteMm)}
-						onchange={(e) => groesse(Number((e.currentTarget as HTMLInputElement).value), masse.hoeheMm)} /><em>mm</em></label>
-				<label><span>{t().ausgeben.druckHoehe}</span>
-					<input type="number" min="10" step="5" value={Math.round(masse.hoeheMm)}
-						onchange={(e) => groesse(masse.breiteMm, Number((e.currentTarget as HTMLInputElement).value))} /><em>mm</em></label>
-			</div>
-			<div class="wahl">
-				<button type="button" onclick={() => groesse(z.druck.bettMm, z.druck.bettMm)}>{t().ausgeben.druckAufsBett}</button>
-				<button type="button" disabled={ganz} onclick={() => (z.druck.ausschnitt = { x0: 0, y0: 0, x1: 1, y1: 1 })}>{t().ausgeben.druckGanz}</button>
-			</div>
-		{:else}
-			<div class="wahl">
-				<button type="button" disabled={ganz} onclick={() => (z.druck.ausschnitt = { x0: 0, y0: 0, x1: 1, y1: 1 })}>{t().ausgeben.druckGanz}</button>
-			</div>
-		{/if}
-		{#if masse.nx * masse.ny > 1}<p>{t().ausgeben.druckKacheln(masse.nx, masse.ny)}</p>{/if}
-	</div>
 	<p class="wink">{t().ausgeben.druckAusschnittWink} · {t().ausgeben.druckZoomWink}</p>
 </div>
 
@@ -241,31 +179,6 @@
 	.ne { right: -7px; top: -7px; cursor: nesw-resize; }
 	.sw { left: -7px; bottom: -7px; cursor: nesw-resize; }
 	.se { right: -7px; bottom: -7px; cursor: nwse-resize; }
-	.tafel {
-		/* Rechts oben: links steht das Druckfenster. */
-		position: absolute; right: 18px; top: 18px; z-index: 2; width: 248px;
-		display: grid; gap: 7px; padding: 12px;
-		background: var(--blatt); border: 1px solid var(--linie); border-radius: var(--rund); box-shadow: var(--heben);
-		font-size: 12.5px; color: var(--tinte-2);
-	}
-	/* Dieselben Maße wie die Wahlknöpfe der Seite, damit beide Tafeln eine Sprache sprechen. */
-	.tafel .unter { font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--tinte-3); }
-	.tafel .wahl { display: flex; gap: 4px; flex-wrap: wrap; }
-	.tafel .wahl button {
-		flex: 1; padding: 7px 4px; font: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer;
-		background: var(--grund); color: var(--tinte-2); border: 1px solid var(--linie); border-radius: var(--rund);
-	}
-	.tafel .wahl button:hover:not(:disabled):not(.an) { color: var(--tinte); }
-	.tafel .wahl button.an { background: var(--tinte); color: var(--blatt); border-color: var(--tinte); }
-	.tafel .wahl button:disabled { opacity: 0.42; cursor: default; }
-	.tafel .zeile { display: grid; grid-template-columns: 74px 1fr 52px; align-items: center; gap: 6px; }
-	.tafel .zeile input { width: 100%; accent-color: var(--tinte); }
-	.tafel .zeile em { font-style: normal; font-size: 11px; text-align: right; color: var(--tinte); }
-	.tafel .masse { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-	.tafel .masse label { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 4px; }
-	.tafel .masse input { width: 100%; min-width: 0; padding: 3px 4px; font: inherit; border: 1px solid var(--linie); border-radius: var(--rund); background: var(--blatt); color: var(--tinte); }
-	.tafel .masse em { font-style: normal; font-size: 11px; }
-	.tafel p { margin: 0; font-size: 11px; color: var(--tinte-3); }
 	.wink {
 		position: absolute; right: 18px; bottom: 18px; margin: 0; font-size: 11px; color: var(--tinte-2);
 		background: var(--blatt); border: 1px solid var(--linie); padding: 3px 8px; border-radius: 2px;

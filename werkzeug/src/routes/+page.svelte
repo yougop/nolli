@@ -253,6 +253,7 @@
 		if (kartenRegler && zu(kartenKlapp)) kartenRegler = false;
 		if (kantenRegler && zu(kantenKlapp)) kantenRegler = false;
 		if (lichtRegler && zu(lichtKlapp)) lichtRegler = false;
+		if (druckOffen && e instanceof KeyboardEvent && e.key === 'Escape') druckOffen = false;
 	}
 	const f0 = (n: number) => zahl(Math.round(n));
 	const f1 = (n: number) => zahl(n, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -1777,75 +1778,6 @@
 					</div>
 				{/if}
 
-				<!--
-					3D-Druck als Aufklappfeld (Volker, 05.11.2026: nahm zu viel Platz).
-					Zugeklappt nur die Zeile mit der Druckgröße. Maßstab und Größe stehen
-					beim Ausschnitt auf der Bühne, hier der Rest.
-				-->
-				{#if druckJetzt}
-					<div class="teil">
-						<button type="button" class="feld feldzeile aufklapp" class:offen={druckOffen} aria-expanded={druckOffen}
-							onclick={() => (druckOffen = !druckOffen)}>
-							<span>{t().ausgeben.druck}</span><em class="mono">{t().ausgeben.druckMass(druckJetzt.breiteMm, druckJetzt.hoeheMm, druckJetzt.massstab)}</em>
-						</button>
-						{#if druckOffen}
-						<div class="bildrahmen">
-							<!-- Vorschau und Ausschnitt auf der Bühne, statt der Ansicht (Volker, 05.11.2026). -->
-							<div class="wahl schmal" role="group" aria-label={t().ausgeben.druckBuehne}>
-								<button type="button" class:an={z.druckBuehne === 'vorschau'} aria-pressed={z.druckBuehne === 'vorschau'}
-									onclick={() => (z.druckBuehne = z.druckBuehne === 'vorschau' ? null : 'vorschau')}>{t().ausgeben.druckVorschauKnopf}</button>
-								<button type="button" class:an={z.druckBuehne === 'ausschnitt'} aria-pressed={z.druckBuehne === 'ausschnitt'}
-									onclick={() => (z.druckBuehne = z.druckBuehne === 'ausschnitt' ? null : 'ausschnitt')}>{t().ausgeben.druckAusschnitt}</button>
-							</div>
-							<p class="hinweis leise">{t().ausgeben.druckAusschnittWas}</p>
-							{#if z.druck.ausschnitt.x0 > 0 || z.druck.ausschnitt.y0 > 0 || z.druck.ausschnitt.x1 < 1 || z.druck.ausschnitt.y1 < 1}
-								<div class="wahl schmal">
-									<button type="button" onclick={() => (z.druck.ausschnitt = { x0: 0, y0: 0, x1: 1, y1: 1 })}>{t().ausgeben.druckGanz}</button>
-								</div>
-							{/if}
-							<span class="unter">{t().ausgeben.druckFarben}</span>
-							<div class="wahl schmal" role="group" aria-label={t().ausgeben.druckFarben}>
-								<button type="button" class:an={z.druck.farben === 'ein'} aria-pressed={z.druck.farben === 'ein'} onclick={() => (z.druck.farben = 'ein')}>{t().ausgeben.druckEin}</button>
-								<button type="button" class:an={z.druck.farben === 'mehr'} aria-pressed={z.druck.farben === 'mehr'} onclick={() => (z.druck.farben = 'mehr')}>{t().ausgeben.druckMehr}</button>
-							</div>
-							<span class="unter">{t().ausgeben.druckGruen}</span>
-							<div class="wahl schmal" role="group" aria-label={t().ausgeben.druckGruen}>
-								<button type="button" class:an={z.druck.gruen} aria-pressed={z.druck.gruen} onclick={() => (z.druck.gruen = true)}>{t().sicht.kantenAn}</button>
-								<button type="button" class:an={!z.druck.gruen} aria-pressed={!z.druck.gruen} onclick={() => (z.druck.gruen = false)}>{t().sicht.kantenAus}</button>
-							</div>
-							<span class="unter">{t().ausgeben.druckStrassen}</span>
-							<div class="wahl schmal" role="group" aria-label={t().ausgeben.druckStrassen}>
-								<button type="button" class:an={z.druck.strassen} aria-pressed={z.druck.strassen} onclick={() => (z.druck.strassen = true)}>{t().sicht.kantenAn}</button>
-								<button type="button" class:an={!z.druck.strassen} aria-pressed={!z.druck.strassen} onclick={() => (z.druck.strassen = false)}>{t().sicht.kantenAus}</button>
-							</div>
-							<label class="regelzeile">
-								<span>{t().ausgeben.druckSockel}</span>
-								<input type="range" min="1" max="10" step="0.5" bind:value={z.druck.sockelMm} />
-								<em class="mono">{zahl(z.druck.sockelMm)} mm</em>
-							</label>
-							{#if z.gelaendeJetzt}
-								<label class="regelzeile" title={t().ausgeben.druckUeberWas}>
-									<span>{t().ausgeben.druckUeber}</span>
-									<input type="range" min="1" max="5" step="0.5" bind:value={z.druck.ueberhoehung} />
-									<em class="mono">{zahl(z.druck.ueberhoehung)}×</em>
-								</label>
-							{/if}
-							<span class="unter">{t().ausgeben.druckSchwebend}</span>
-							<div class="wahl schmal" role="group" aria-label={t().ausgeben.druckSchwebend}>
-								<button type="button" class:an={z.druck.schwebend === 'durchziehen'} aria-pressed={z.druck.schwebend === 'durchziehen'} onclick={() => (z.druck.schwebend = 'durchziehen')}>{t().ausgeben.druckDurch}</button>
-								<button type="button" class:an={z.druck.schwebend === 'weglassen'} aria-pressed={z.druck.schwebend === 'weglassen'} onclick={() => (z.druck.schwebend = 'weglassen')}>{t().ausgeben.druckWeg}</button>
-							</div>
-							{#if druckJetzt.nx * druckJetzt.ny > 1}<p class="hinweis leise">{t().ausgeben.druckKacheln(druckJetzt.nx, druckJetzt.ny)}</p>{/if}
-							{#if druckJetzt.klein}<p class="hinweis leise">{t().ausgeben.druckKlein(druckJetzt.klein)}</p>{/if}
-							<div class="wahl schmal" role="group" aria-label={t().ausgeben.druck}>
-								<button type="button" disabled={!!arbeitet} onclick={() => ausgeben('3mf')}>{arbeitet === '3mf' ? t().ausgeben.schreibt : '3MF'}</button>
-								<button type="button" disabled={!!arbeitet} onclick={() => ausgeben('stl')}>{arbeitet === 'stl' ? t().ausgeben.schreibt : 'STL'}</button>
-							</div>
-							<p class="hinweis leise">{t().ausgeben.druckWas}</p>
-						</div>
-						{/if}
-					</div>
-				{/if}
 
 				<div class="teil">
 					<span class="feld">{t().ausgeben.weitere}</span>
@@ -1893,9 +1825,85 @@
 							? t().ausgeben.zeichnet
 							: t().ausgeben.bildAusgeben(bildMass[0], bildMass[1])}
 					</button>
+					<!-- 3D-Druck als zweiter Knopf, das Fenster öffnet links daneben (Volker, 05.11.2026). -->
+					{#if druckJetzt}
+						<button type="button" class="zweit" class:an={druckOffen} aria-expanded={druckOffen}
+							onclick={() => (druckOffen = !druckOffen)}>
+							<span>{t().ausgeben.druck}</span><em class="mono">{t().ausgeben.druckMass(druckJetzt.breiteMm, druckJetzt.hoeheMm, druckJetzt.massstab)}</em>
+						</button>
+					{/if}
 				</div>
 			{/if}
 		</aside>
+
+		<!--
+			Das Fenster für den 3D-Druck, links neben der Spalte über der Bühne.
+			Schließt mit × oder Escape; Vorschau und Ausschnitt bleiben auf der
+			Bühne stehen, bis man sie abschaltet.
+		-->
+		{#if druckOffen && druckJetzt && z.schritt === 3}
+			<div class="druckfenster" role="dialog" aria-label={t().ausgeben.druck}>
+				<div class="druckkopf">
+					<span class="feld">{t().ausgeben.druck}</span>
+					<em class="mono">{t().ausgeben.druckMass(druckJetzt.breiteMm, druckJetzt.hoeheMm, druckJetzt.massstab)}</em>
+					<button type="button" class="zu" onclick={() => (druckOffen = false)} aria-label={t().meldungSchliessen}>×</button>
+				</div>
+						<div class="bildrahmen">
+					<!-- Vorschau und Ausschnitt auf der Bühne, statt der Ansicht (Volker, 05.11.2026). -->
+					<div class="wahl schmal" role="group" aria-label={t().ausgeben.druckBuehne}>
+						<button type="button" class:an={z.druckBuehne === 'vorschau'} aria-pressed={z.druckBuehne === 'vorschau'}
+							onclick={() => (z.druckBuehne = z.druckBuehne === 'vorschau' ? null : 'vorschau')}>{t().ausgeben.druckVorschauKnopf}</button>
+						<button type="button" class:an={z.druckBuehne === 'ausschnitt'} aria-pressed={z.druckBuehne === 'ausschnitt'}
+							onclick={() => (z.druckBuehne = z.druckBuehne === 'ausschnitt' ? null : 'ausschnitt')}>{t().ausgeben.druckAusschnitt}</button>
+					</div>
+					<p class="hinweis leise">{t().ausgeben.druckAusschnittWas}</p>
+					{#if z.druck.ausschnitt.x0 > 0 || z.druck.ausschnitt.y0 > 0 || z.druck.ausschnitt.x1 < 1 || z.druck.ausschnitt.y1 < 1}
+						<div class="wahl schmal">
+							<button type="button" onclick={() => (z.druck.ausschnitt = { x0: 0, y0: 0, x1: 1, y1: 1 })}>{t().ausgeben.druckGanz}</button>
+						</div>
+					{/if}
+					<span class="unter">{t().ausgeben.druckFarben}</span>
+					<div class="wahl schmal" role="group" aria-label={t().ausgeben.druckFarben}>
+						<button type="button" class:an={z.druck.farben === 'ein'} aria-pressed={z.druck.farben === 'ein'} onclick={() => (z.druck.farben = 'ein')}>{t().ausgeben.druckEin}</button>
+						<button type="button" class:an={z.druck.farben === 'mehr'} aria-pressed={z.druck.farben === 'mehr'} onclick={() => (z.druck.farben = 'mehr')}>{t().ausgeben.druckMehr}</button>
+					</div>
+					<span class="unter">{t().ausgeben.druckGruen}</span>
+					<div class="wahl schmal" role="group" aria-label={t().ausgeben.druckGruen}>
+						<button type="button" class:an={z.druck.gruen} aria-pressed={z.druck.gruen} onclick={() => (z.druck.gruen = true)}>{t().sicht.kantenAn}</button>
+						<button type="button" class:an={!z.druck.gruen} aria-pressed={!z.druck.gruen} onclick={() => (z.druck.gruen = false)}>{t().sicht.kantenAus}</button>
+					</div>
+					<span class="unter">{t().ausgeben.druckStrassen}</span>
+					<div class="wahl schmal" role="group" aria-label={t().ausgeben.druckStrassen}>
+						<button type="button" class:an={z.druck.strassen} aria-pressed={z.druck.strassen} onclick={() => (z.druck.strassen = true)}>{t().sicht.kantenAn}</button>
+						<button type="button" class:an={!z.druck.strassen} aria-pressed={!z.druck.strassen} onclick={() => (z.druck.strassen = false)}>{t().sicht.kantenAus}</button>
+					</div>
+					<label class="regelzeile">
+						<span>{t().ausgeben.druckSockel}</span>
+						<input type="range" min="1" max="10" step="0.5" bind:value={z.druck.sockelMm} />
+						<em class="mono">{zahl(z.druck.sockelMm)} mm</em>
+					</label>
+					{#if z.gelaendeJetzt}
+						<label class="regelzeile" title={t().ausgeben.druckUeberWas}>
+							<span>{t().ausgeben.druckUeber}</span>
+							<input type="range" min="1" max="5" step="0.5" bind:value={z.druck.ueberhoehung} />
+							<em class="mono">{zahl(z.druck.ueberhoehung)}×</em>
+						</label>
+					{/if}
+					<span class="unter">{t().ausgeben.druckSchwebend}</span>
+					<div class="wahl schmal" role="group" aria-label={t().ausgeben.druckSchwebend}>
+						<button type="button" class:an={z.druck.schwebend === 'durchziehen'} aria-pressed={z.druck.schwebend === 'durchziehen'} onclick={() => (z.druck.schwebend = 'durchziehen')}>{t().ausgeben.druckDurch}</button>
+						<button type="button" class:an={z.druck.schwebend === 'weglassen'} aria-pressed={z.druck.schwebend === 'weglassen'} onclick={() => (z.druck.schwebend = 'weglassen')}>{t().ausgeben.druckWeg}</button>
+					</div>
+					{#if druckJetzt.nx * druckJetzt.ny > 1}<p class="hinweis leise">{t().ausgeben.druckKacheln(druckJetzt.nx, druckJetzt.ny)}</p>{/if}
+					{#if druckJetzt.klein}<p class="hinweis leise">{t().ausgeben.druckKlein(druckJetzt.klein)}</p>{/if}
+					<div class="wahl schmal" role="group" aria-label={t().ausgeben.druck}>
+						<button type="button" disabled={!!arbeitet} onclick={() => ausgeben('3mf')}>{arbeitet === '3mf' ? t().ausgeben.schreibt : '3MF'}</button>
+						<button type="button" disabled={!!arbeitet} onclick={() => ausgeben('stl')}>{arbeitet === 'stl' ? t().ausgeben.schreibt : 'STL'}</button>
+					</div>
+					<p class="hinweis leise">{t().ausgeben.druckWas}</p>
+				</div>
+			</div>
+		{/if}
 	</main>
 
 	<footer class="zeile mono">
@@ -2335,12 +2343,26 @@
 	.bildrahmen .wahl.formate:not(.breiten3d) button { padding: 4px 4px; font-size: 11px; }
 	.bildrahmen .wahl.formate button { padding: 5px 8px; }
 	.bildrahmen p { margin: 0; font-size: 11px; color: var(--tinte-3); }
-	/* Kopfzeile des 3D-Drucks als Aufklappknopf, mit Pfeil wie in der Leiste. */
-	.feldzeile.aufklapp {
-		width: 100%; border: 0; background: none; padding: 0; cursor: pointer; font: inherit; text-align: left;
+	/* Zweiter Knopf unter „Bild ausgeben“: 3D-Druck. */
+	.fuss .zweit {
+		width: 100%; margin-top: 8px; display: flex; justify-content: space-between; align-items: center;
+		padding: 10px 14px; font: inherit; font-size: 13px; cursor: pointer;
+		background: var(--blatt); color: var(--tinte); border: 1px solid var(--tinte); border-radius: var(--rund);
 	}
-	.feldzeile.aufklapp span::after { content: ' ▾'; color: var(--tinte-3); }
-	.feldzeile.aufklapp.offen span::after { content: ' ▴'; }
+	.fuss .zweit em { font-style: normal; font-size: 11px; color: var(--tinte-2); }
+	.fuss .zweit.an { background: var(--tinte); color: var(--blatt); }
+	.fuss .zweit.an em { color: var(--blatt); }
+	.flaeche { position: relative; }
+	.druckfenster {
+		position: absolute; right: calc(var(--schiene) + 12px); bottom: 16px; z-index: 5;
+		width: 312px; max-height: calc(100% - 32px); overflow-y: auto; padding: 14px 16px;
+		background: var(--blatt); border: 1px solid var(--linie); border-radius: var(--rund); box-shadow: var(--heben);
+	}
+	.druckkopf { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
+	.druckkopf .feld { margin: 0; }
+	.druckkopf em { font-style: normal; font-size: 11px; color: var(--tinte-2); margin-left: auto; }
+	.druckkopf .zu { border: 0; background: none; font-size: 18px; line-height: 1; cursor: pointer; color: var(--tinte-2); padding: 0 2px; }
+	.druckfenster .bildrahmen { margin-bottom: 0; }
 	/* Regler im 3D-Druck: dieselbe Zeile wie in den Aufklappfeldern der Leiste. */
 	.bildrahmen .regelzeile {
 		display: grid; grid-template-columns: 96px 1fr 56px; align-items: center; gap: 8px;

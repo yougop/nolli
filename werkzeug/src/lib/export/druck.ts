@@ -142,25 +142,37 @@ export function druckModell(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | n
 				const schwebt = unterkante(roh) > 0;
 				if (schwebt && w.schwebend === 'weglassen') continue;
 				const o: Objekt = schwebt ? { ...roh, unterM: undefined } : roh;
-				const teile = o.ringe.map((x) => sauber(amRahmen(x, x0, y0, x1, y1).innen)).filter((x) => x.length >= 3);
+				// Einen Hauch innerhalb der Kachel schneiden: Sonst fällt die Wand eines
+				// angeschnittenen Hauses mit der Seite der Platte zusammen und flimmert.
+				const d = 0.05 / m.k, [cx0, cy0, cx1, cy1] = [x0 + d, y0 + d, x1 - d, y1 - d];
+				const teile = o.ringe.map((x) => sauber(amRahmen(x, cx0, cy0, cx1, cy1).innen)).filter((x) => x.length >= 3);
 				if (!teile.length) continue;
 				const boden = gelaende ? tiefsteUnter(gelaende, o.ringe) : 0;
 				// Fuß in mm, versenkt; darüber zählen die Meter des Hauses unverzerrt.
 				const fussMm = plattenZ(boden) - VERSENKT_MM;
+				/**
+				 * Die Unterseite folgt der Platte, einen halben Millimeter darin;
+				 * alles darüber steht auf dem tiefsten Punkt unter dem Grundriss wie
+				 * im Modell. Vorher reichte ein Haus am Hang auf der Bergseite tief
+				 * in die Platte und schaute an ihrer Seite heraus (Volker, 05.11.2026).
+				 */
 				const hinein = (q: number[]) => {
 					for (let a = 0; a < q.length; a += 3) {
 						const [x, y] = mm(q[a], q[a + 1]);
-						haeuser.push(x, y, fussMm + q[a + 2] * m.k);
+						const unten = Math.abs(q[a + 2]) < 1e-6;
+						const f = flaeche(q[a], q[a + 1]);
+						// Oben mindestens knapp über der Platte, auch an einem steilen Hang.
+						haeuser.push(x, y, unten ? f - VERSENKT_MM : Math.max(f + 0.2, fussMm + q[a + 2] * m.k));
 					}
 				};
-				const ganz = o.ringe.length === 1 && teile.length === 1 && amRahmen(o.ringe[0], x0, y0, x1, y1).aussen.length === 0;
+				const ganz = o.ringe.length === 1 && teile.length === 1 && amRahmen(o.ringe[0], cx0, cy0, cx1, cy1).aussen.length === 0;
 				const hMm = Math.max(VERSENKT_MM + 0.4, (o.hoeheM ?? 8) * m.k + VERSENKT_MM);
 				if (hatDach(o)) {
 					// Boden über eine winzige Unterkante, damit `dachKoerper` ihn mitbaut.
 					const eps = 1e-3 / m.k;
 					hinein(dachKoerper({ ...o, hoeheM: hMm / m.k }, teile, -eps, eps, ganz).dreiecke);
 				} else {
-					const loecher = (o.loecher ?? []).map((x) => sauber(amRahmen(x, x0, y0, x1, y1).innen)).filter((x) => x.length >= 3);
+					const loecher = (o.loecher ?? []).map((x) => sauber(amRahmen(x, cx0, cy0, cx1, cy1).innen)).filter((x) => x.length >= 3);
 					hinein(quader(teile, loecher, hMm / m.k));
 				}
 			}

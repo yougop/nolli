@@ -5,6 +5,7 @@
 	import { t } from '$lib/sprache.svelte';
 	import type { Rahmen } from '$lib/geo/rahmen';
 	import type { Objekt } from '$lib/osm';
+	import { ohneSchnitte } from '$lib/export/druck';
 
 	/**
 	 * Die Vorschau des Druckmodells (Volker, 05.11.2026): alle Kacheln des
@@ -37,7 +38,7 @@
 
 	function netz(q: number[], farbe: number) {
 		const g = new THREE.BufferGeometry();
-		g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(q), 3));
+		g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(ohneSchnitte(q)), 3));
 		g.computeVertexNormals();
 		return new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: farbe }));
 	}

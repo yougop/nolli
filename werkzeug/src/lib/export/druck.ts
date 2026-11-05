@@ -94,6 +94,19 @@ const VERSENKT_MM = 0.5;
 type Netz = number[];   // x y z je Ecke, drei Ecken je Dreieck, außen gegen den Uhrzeigersinn
 
 /**
+ * Ende eines Körpers: ein „Dreieck“ aus NaN. Wer schreibt, legt gleiche
+ * Ecken nur innerhalb eines Körpers zusammen. Über Körper hinweg teilten sich
+ * Reihenhäuser und angrenzende Grünflächen sonst Kanten mit vier Dreiecken,
+ * und Bambu Studio meldete „non-manifold edges“ (Volker, 05.11.2026). Wer
+ * zeichnet oder zählt, überspringt die Marke (`istSchnitt`).
+ */
+const SCHNITT = [NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN];
+export const istSchnitt = (q: Netz, i: number) => Number.isNaN(q[i]);
+const schnitt = (q: Netz) => { q.push(...SCHNITT); };
+/** Die Marken entfernen, für die Vorschau. */
+export const ohneSchnitte = (q: Netz) => { const a: number[] = []; for (let i = 0; i < q.length; i += 9) if (!istSchnitt(q, i)) for (let j = 0; j < 9; j++) a.push(q[i + j]); return a; };
+
+/**
  * Ein Ring ohne doppelte Punkte. OSM schließt Ringe mit dem ersten Punkt,
  * und manche Wege tragen denselben Punkt zweimal hintereinander. Daraus
  * würden Wände der Länge null, und der Körper wäre für den Slicer offen.
@@ -224,6 +237,7 @@ export function druckModell(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | n
 					const loecher = (o.loecher ?? []).map((x) => sauber(amRahmen(x, cx0, cy0, cx1, cy1).innen)).filter((x) => x.length >= 3);
 					hinein(quader(teile, loecher, hMm / m.k));
 				}
+				schnitt(ziel);
 			}
 			const strassen: Netz = w.strassen ? strassenStreifen(objekte, x0, y0, x1, y1, m.k, flaeche, feld ? feld.dx : Infinity) : [];
 			const gruen: Netz = w.gruen ? gruenFlaechen(objekte, x0, y0, x1, y1, m.k, flaeche, feld ? feld.dx : Infinity) : [];
@@ -258,6 +272,7 @@ function strassenStreifen(objekte: Objekt[], x0: number, y0: number, x1: number,
 		}
 	};
 	const drin = (x: number, y: number) => x >= x0 && x <= x1 && y >= y0 && y <= y1;
+	const gelenke = new Set<string>();
 	for (const o of objekte) {
 		if (o.ebene !== 'strasse' || o.art !== 'linie' || o.zustand === 'gestrichen') continue;
 		const bMm = (o.breiteM ?? 6) * k;
@@ -280,17 +295,44 @@ function strassenStreifen(objekte: Objekt[], x0: number, y0: number, x1: number,
 				const l = Math.hypot(bx - ax, by - ay);
 				if (l < 1e-6) continue;
 				const nx = (-(by - ay) / l) * halb, ny = ((bx - ax) / l) * halb;
+				/**
+				 * Ein durchgehender Streifen je Strecke, mit Kappen nur an den
+				 * Enden, und 0,01 mm über die Enden hinaus. Vorher waren es viele
+				 * Quader, die sich an den Enden genau berührten; im 3MF fallen
+				 * deren Ecken zusammen, und Bambu Studio meldete „80 non-manifold
+				 * edges“ (Volker, 05.11.2026).
+				 */
+				const ue = 0.01 / k / l;
+				const sx = ax - (bx - ax) * ue, sy = ay - (by - ay) * ue, ex = bx + (bx - ax) * ue, ey = by + (by - ay) * ue;
 				const stuecke = Math.max(1, Math.ceil(l / schritt));
-				for (let s = 0; s < stuecke; s++) {
-					const p0 = [ax + ((bx - ax) * s) / stuecke, ay + ((by - ay) * s) / stuecke];
-					const p1 = [ax + ((bx - ax) * (s + 1)) / stuecke, ay + ((by - ay) * (s + 1)) / stuecke];
-					prisma([[p0[0] - nx, p0[1] - ny], [p1[0] - nx, p1[1] - ny], [p1[0] + nx, p1[1] + ny], [p0[0] + nx, p0[1] + ny]]);
+				const reihe: { l: number[]; r: number[]; lu: number[]; ru: number[] }[] = [];
+				for (let n = 0; n <= stuecke; n++) {
+					const px = sx + ((ex - sx) * n) / stuecke, py = sy + ((ey - sy) * n) / stuecke;
+					const L = [px + nx, py + ny], R = [px - nx, py - ny];
+					const fl = flaeche(L[0], L[1]), fr = flaeche(R[0], R[1]);
+					const m2 = (q: number[], z: number) => [(q[0] - x0) * k, (q[1] - y0) * k, z];
+					reihe.push({ l: m2(L, fl + STRASSE_MM), r: m2(R, fr + STRASSE_MM), lu: m2(L, fl - STRASSE_MM), ru: m2(R, fr - STRASSE_MM) });
 				}
-				// Gelenk am inneren Knick
-				if (i > 0 && t0 === 0 && drin(ax, ay)) {
+				for (let n = 0; n < stuecke; n++) {
+					const a = reihe[n], b = reihe[n + 1];
+					tri(a.r, b.r, b.l); tri(a.r, b.l, a.l);          // oben
+					tri(a.ru, a.lu, b.lu); tri(a.ru, b.lu, b.ru);    // unten
+					tri(a.ru, b.ru, b.r); tri(a.ru, b.r, a.r);       // rechts
+					tri(a.lu, a.l, b.l); tri(a.lu, b.l, b.lu);       // links
+				}
+				const A = reihe[0], E = reihe[stuecke];
+				tri(A.ru, A.r, A.l); tri(A.ru, A.l, A.lu);         // Anfang
+				tri(E.ru, E.lu, E.l); tri(E.ru, E.l, E.r);         // Ende
+				schnitt(aus);
+				// Gelenk am inneren Knick, um 11,25° gedreht: So teilt es keine Ecke mit
+				// einem Streifen. Je Punkt nur einmal, auch wenn mehrere Wege ihn teilen.
+				const g = `${ax.toFixed(2)},${ay.toFixed(2)},${halb.toFixed(2)}`;
+				if (i > 0 && t0 === 0 && drin(ax, ay) && !gelenke.has(g)) {
+					gelenke.add(g);
 					const acht: [number, number][] = [];
-					for (let e = 0; e < 8; e++) acht.push([ax + halb * Math.cos((e * Math.PI) / 4), ay + halb * Math.sin((e * Math.PI) / 4)]);
+					for (let e = 0; e < 8; e++) acht.push([ax + halb * Math.cos(((e + 0.125) * Math.PI) / 4), ay + halb * Math.sin(((e + 0.125) * Math.PI) / 4)]);
 					prisma(acht);
+					schnitt(aus);
 				}
 			}
 		}
@@ -359,6 +401,7 @@ function gruenFlaechen(objekte: Objekt[], x0: number, y0: number, x1: number, y1
 					if (kante.has(`${sch(b)}>${sch(a)}`)) continue;
 					aus.push(...unten(a), ...unten(b), ...oben(b), ...unten(a), ...oben(b), ...oben(a));
 				}
+			schnitt(aus);
 		}
 	}
 	return aus;
@@ -433,7 +476,8 @@ function quader(teile: [number, number][][], loecher: [number, number][][], h: n
 
 /** Binäres STL, alle Körper zusammen. */
 export function alsStl(netze: Netz[], kopf = 'Nolli 3D print, mm'): Uint8Array {
-	const n = netze.reduce((s, q) => s + q.length / 9, 0);
+	let n = 0;
+	for (const q of netze) for (let i = 0; i < q.length; i += 9) if (!istSchnitt(q, i)) n++;
 	const buf = new ArrayBuffer(84 + n * 50), dv = new DataView(buf);
 	const k = strToU8(kopf.slice(0, 79));
 	new Uint8Array(buf, 0, 80).set(k);
@@ -441,6 +485,7 @@ export function alsStl(netze: Netz[], kopf = 'Nolli 3D print, mm'): Uint8Array {
 	let o = 84;
 	for (const q of netze)
 		for (let i = 0; i < q.length; i += 9) {
+			if (istSchnitt(q, i)) continue;
 			const ux = q[i + 3] - q[i], uy = q[i + 4] - q[i + 1], uz = q[i + 5] - q[i + 2];
 			const wx = q[i + 6] - q[i], wy = q[i + 7] - q[i + 1], wz = q[i + 8] - q[i + 2];
 			const nx = uy * wz - uz * wy, ny = uz * wx - ux * wz, nz = ux * wy - uy * wx, l = Math.hypot(nx, ny, nz) || 1;
@@ -467,6 +512,7 @@ export function als3mf(objekte: { name: string; netz: Netz }[]): Uint8Array {
 	const teile: string[] = [];
 	let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
 	for (const ob of objekte) for (let i = 0; i < ob.netz.length; i += 3) {
+		if (Number.isNaN(ob.netz[i])) continue;
 		x0 = Math.min(x0, ob.netz[i]); x1 = Math.max(x1, ob.netz[i]); y0 = Math.min(y0, ob.netz[i + 1]); y1 = Math.max(y1, ob.netz[i + 1]);
 	}
 	const tx = Number.isFinite(x0) ? BETT_MITTE_MM - (x0 + x1) / 2 : 0, ty = Number.isFinite(y0) ? BETT_MITTE_MM - (y0 + y1) / 2 : 0;
@@ -479,6 +525,8 @@ export function als3mf(objekte: { name: string; netz: Netz }[]): Uint8Array {
 			return i;
 		};
 		for (let i = 0; i < ob.netz.length; i += 9) {
+			// Neuer Körper: gleiche Ecken nicht mit dem vorigen zusammenlegen.
+			if (istSchnitt(ob.netz, i)) { index.clear(); continue; }
 			const a = ecke(ob.netz[i], ob.netz[i + 1], ob.netz[i + 2]);
 			const b = ecke(ob.netz[i + 3], ob.netz[i + 4], ob.netz[i + 5]);
 			const c = ecke(ob.netz[i + 6], ob.netz[i + 7], ob.netz[i + 8]);

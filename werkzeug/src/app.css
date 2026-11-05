@@ -6,7 +6,9 @@
 @font-face { font-family: Satoshi; src: url('/schrift/satoshi-500.woff2') format('woff2'); font-weight: 500; font-display: swap; }
 @font-face { font-family: Satoshi; src: url('/schrift/satoshi-700.woff2') format('woff2'); font-weight: 700; font-display: swap; }
 @font-face { font-family: 'JetBrains Mono'; src: url('/schrift/jetbrains-400.woff2') format('woff2'); font-weight: 400; font-display: swap; }
-@font-face { font-family: 'JetBrains Mono'; src: url('/schrift/jetbrains-500.woff2') format('woff2'); font-weight: 500; font-display: swap; }
+/* Neuer Name statt neuer Inhalt: Schriften liegen ein Jahr im Browser-Cache
+   (`immutable`). Unter dem alten Namen lag bis 05.11.2026 eine Kopie der 400er. */
+@font-face { font-family: 'JetBrains Mono'; src: url('/schrift/jetbrains-500-v2.woff2') format('woff2'); font-weight: 500; font-display: swap; }
 
 :root {
 	--grund: #fafafa;

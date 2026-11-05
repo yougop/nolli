@@ -31,8 +31,8 @@ import { amRahmen, drin, gegenUhr, mitUhr, verschoben } from '../schneiden';
 import { MATERIALIEN, materialFuer } from '../material';
 import { planZuege } from './dxf';
 import { dxfEbene, objName, WERTE } from '../vertrag';
-import { BAUM } from '$lib/analysedaten';
-import { ECKEN, FLAECHEN } from './baeume';
+import type { Baum } from '$lib/analysedaten';
+import { ECKEN, FLAECHEN, STAMM_ECKEN, STAMM_FLAECHEN, baumForm } from './baeume';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Rh = any;
@@ -56,7 +56,7 @@ export type Rhino3dmEingabe = {
 	objekte: Objekt[];
 	r: Rahmen;
 	gelaende: Gelaende | null;
-	baeume: { x: number; y: number; krone: number; gemessen: boolean }[];
+	baeume: Baum[];
 	/** Kopfdaten für die Datei: Vertrag in Kurzform, Herkunft, Georeferenz. */
 	kopf: Record<string, unknown>;
 	/** Das Bodenbild als PNG, wird in die Datei eingebettet und aufs Gelände gelegt. */
@@ -308,22 +308,29 @@ export async function als3dm(e: Rhino3dmEingabe): Promise<Uint8Array> {
 		}
 	}
 
-	// ---- Bäume: Kronen als ein Netz, wie `trees` im OBJ ------------------
+	// ---- Bäume: Kronen und Stämme als je ein Netz, wie `trees` und `trunks` im OBJ
 	const drinnen = baeume.filter((b) => b.x >= r.x0 && b.x <= r.x1 && b.y >= r.y0 && b.y <= r.y1);
 	if (drinnen.length) {
-		const m = new rh.Mesh();
+		const kronen = new rh.Mesh(), staemme = new rh.Mesh();
 		for (const b of drinnen) {
-			const nenn = Math.max(0.5, b.krone / 2), rad = nenn * BAUM.silhouetteFaktor;
-			const mz = (gelaende ? hoeheBei(gelaende, b.x, b.y) : 0) + BAUM.stammhoeheM + nenn;
-			const basis = m.vertices().count;
-			for (const [ex, ey, ez] of ECKEN) m.vertices().add(b.x - r.x0 + ex * rad, b.y - r.y0 - ez * rad, mz + ey * rad);
-			for (const [p, q, s] of FLAECHEN) m.faces().addTriFace(basis + p - 1, basis + q - 1, basis + s - 1);
+			const form = baumForm(b), fuss = gelaende ? hoeheBei(gelaende, b.x, b.y) : 0;
+			const mx = b.x - r.x0, my = b.y - r.y0, mz = fuss + form.mitte;
+			const c = Math.cos(form.dreh), d = Math.sin(form.dreh);
+			let basis = kronen.vertices().count;
+			for (const [ex, ey, ez] of ECKEN) kronen.vertices().add(mx + (ex * c + ez * d) * form.rx, my + (ex * d - ez * c) * form.rx, mz + ey * form.rz);
+			for (const [p, q, s] of FLAECHEN) kronen.faces().addTriFace(basis + p - 1, basis + q - 1, basis + s - 1);
+			basis = staemme.vertices().count;
+			const z0 = fuss - 0.5, h = form.stammH + 0.5;
+			for (const [ex, ey, ez] of STAMM_ECKEN) staemme.vertices().add(mx + (ex * c - ey * d) * form.stammR, my + (ex * d + ey * c) * form.stammR, z0 + ez * h);
+			for (const [p, q, s] of STAMM_FLAECHEN) staemme.faces().addTriFace(basis + p - 1, basis + q - 1, basis + s - 1);
 		}
-		m.normals().computeNormals();
-		const a = new rh.ObjectAttributes();
-		a.layerIndex = ebene('trees', { eltern: LAND, farbe: '#3E4A3A', material: 'tree' });
-		a.name = 'trees';
-		f.objects().addMesh(m, a);
+		for (const [m, name, farbe] of [[kronen, 'trees', '#3E4A3A'], [staemme, 'trunks', '#6B5B4B']] as const) {
+			m.normals().computeNormals();
+			const a = new rh.ObjectAttributes();
+			a.layerIndex = ebene(name, { eltern: LAND, farbe, material: name === 'trees' ? 'tree' : 'trunk' });
+			a.name = name;
+			f.objects().addMesh(m, a);
+		}
 	}
 
 	// ---- Kurven der Zeichnung ---------------------------------------------

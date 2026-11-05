@@ -2,6 +2,7 @@ import { objName } from '../vertrag';
 import { type Gelaende, tiefsteUnter, feldImRahmen } from '../geo/gelaende';
 import earcut from 'earcut';
 import { kronenKoerper } from './baeume';
+import type { Baum } from '$lib/analysedaten';
 import { unterkante, umrisseMitTeilen, type Objekt } from '../osm';
 import { hatDach, dachKoerper } from '../dach';
 import type { Rahmen } from '../geo/rahmen';
@@ -51,7 +52,7 @@ import { MATERIALIEN, materialFuer, kd } from '../material';
  */
 export function alsObj(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | null = null,
 	material: string | null = null, teil: 'innen' | 'aussen' = 'innen',
-	baeume: { x: number; y: number; krone: number; gemessen: boolean }[] = []): string {
+	baeume: Baum[] = []): string {
 	const zeilen: string[] = [
 		'# Nolli — context model from OpenStreetMap',
 		'# ODbL, © OpenStreetMap contributors',
@@ -275,7 +276,8 @@ export function alsObj(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | null =
 
 		if (teil === 'innen' && baeume.length) {
 			const k = kronenKoerper(baeume, r, gelaende, !!material, basis, normalen);
-			zeilen.push(...k.zeilen);
+			// Einzeln anhängen: Mit Stämmen sind es bei 1.781 Bäumen 185.000 Zeilen, zu viele für ein Spread.
+			for (const z of k.zeilen) zeilen.push(z);
 			basis += k.punkte;
 			normalen += k.normalen;
 		}

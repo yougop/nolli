@@ -11,7 +11,7 @@ import { holeBestand, QuellFehler, Abgebrochen } from './quelle';
 import { DRUCK_VORGABE } from './export/druck';
 import { holeGelaende, wasserEbnen, netzWeite, type Gelaende } from './geo/gelaende';
 import { holeOverture, gebaeudeErgaenzen, placesAus, type Place } from './overture';
-import { netzAus, nutzflaechenAus, poisAus, halteAus, restAus, baeumeAus,
+import { netzAus, nutzflaechenAus, poisAus, halteAus, restAus, baeumeAus, type Baum,
 	type Netz, type Nutzflaeche, type Poi, type Haltestelle, type Linie, type Rest } from './analysedaten';
 
 export type Ort = { name: string; wo: string; lon: number; lat: number; bbox: number[] | null };
@@ -89,7 +89,7 @@ class Zustand {
 	/** Alles, wofuer Nolli keine eigene Schublade hat. Siehe `restAus`. */
 	rest = $state.raw<Rest[]>([]);
 	/** Die Baeume aus dem Rest, fertig zum Zeichnen. */
-	baumpunkte = $state.raw<{ x: number; y: number; krone: number; gemessen: boolean }[]>([]);
+	baumpunkte = $state.raw<Baum[]>([]);
 	sichtbar = $state(new Set<StiftId>(STIFTE.map((s) => s.id)));
 	hervorgehoben = $state<StiftId | null>(null);
 	ausgewaehlt = $state(new Set<string>());

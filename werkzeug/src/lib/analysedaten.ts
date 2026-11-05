@@ -478,15 +478,26 @@ export const BAUM = {
 	silhouetteFaktor: 1.1456
 };
 
+/**
+ * Ein Baum, wie Nolli ihn zeichnet. `hoehe` und `stamm` (Stammumfang) nur,
+ * wo OpenStreetMap sie führt (`height`, `circumference`), in Metern.
+ */
+export type Baum = { x: number; y: number; krone: number; gemessen: boolean; hoehe?: number; stamm?: number };
+
 export function baeumeAus(rest: Rest[]) {
-	const aus: { x: number; y: number; krone: number; gemessen: boolean }[] = [];
+	const aus: Baum[] = [];
+	const meter = (v?: string) => { const n = parseFloat(v ?? ''); return Number.isFinite(n) && n > 0 ? n : undefined; };
 	for (const e of rest) {
 		if (e.tags.natural !== 'tree') continue;
-		const d = parseFloat(e.tags.diameter_crown ?? '');
+		const d = meter(e.tags.diameter_crown);
+		const h = meter(e.tags.height), u = meter(e.tags.circumference);
 		aus.push({
 			x: e.x, y: e.y,
-			krone: Number.isFinite(d) && d > 0 ? d : BAUM.vorgabeKroneM,
-			gemessen: Number.isFinite(d) && d > 0
+			krone: d ?? BAUM.vorgabeKroneM,
+			gemessen: d !== undefined,
+			// Unplausibles fällt weg: kein Baum über 60 m, kein Stamm über 12 m Umfang.
+			...(h !== undefined && h <= 60 ? { hoehe: h } : {}),
+			...(u !== undefined && u <= 12 ? { stamm: u } : {})
 		});
 	}
 	return aus;

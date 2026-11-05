@@ -14,7 +14,7 @@
 	import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
 	import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 	import { feldImRahmen, tiefsteUnter, hoeheBei } from '$lib/geo/gelaende';
-	import { BAUM } from '$lib/analysedaten';
+	import { baumForm } from '$lib/export/baeume';
 	import type { StiftId } from '$lib/stifte';
 	import { KARTE_GLSL, mitte } from '$lib/anpassen';
 
@@ -232,6 +232,8 @@
 	 * Baum in der ganzen Kette derselbe Gegenstand ist.
 	 */
 	const KRONE = { hell: 0x4f7f4a, dunkel: 0x6ea368 };
+	/** Stammfarbe, je Schema eine, wie `trunk` im Materialkatalog. */
+	const STAMM = { hell: 0x6b5b4b, dunkel: 0x8a7866 };
 
 	/**
 	 * Der Grund folgt dem Schema der Oberflaeche.
@@ -468,17 +470,30 @@
 					new THREE.MeshStandardMaterial({ color: KRONE[schema], flatShading: true, roughness: 1, metalness: 0 }),
 					drin.length
 				);
-				const m = new THREE.Matrix4();
+				// Stämme als sechseckige Säulen, wie `trunks` im OBJ; die Form beider aus `baumForm`.
+				const saeule = new THREE.CylinderGeometry(1, 1, 1, 6);
+				saeule.translate(0, 0.5, 0);
+				const staemme = new THREE.InstancedMesh(
+					saeule,
+					new THREE.MeshStandardMaterial({ color: STAMM[schema], flatShading: true, roughness: 1, metalness: 0 }),
+					drin.length
+				);
+				const m = new THREE.Matrix4(), ort = new THREE.Vector3(), groesse = new THREE.Vector3();
+				const dreh = new THREE.Quaternion(), hoch = new THREE.Vector3(0, 1, 0);
 				for (let i = 0; i < drin.length; i++) {
-					const b = drin[i];
-					const rad = Math.max(0.5, b.krone / 2) * BAUM.silhouetteFaktor;
-					m.makeScale(rad, rad, rad);
-					m.setPosition(b.x - r.x0, (g ? hoeheBei(g, b.x, b.y) - bezug : 0) + BAUM.stammhoeheM + Math.max(0.5, b.krone / 2), -(b.y - r.y0));
-					kugel.setMatrixAt(i, m);
+					const b = drin[i], f = baumForm(b);
+					const fuss = g ? hoeheBei(g, b.x, b.y) - bezug : 0;
+					// Im Modell zeigt Z nach Süden: dieselbe Drehung wie im OBJ, also mit umgekehrtem Sinn.
+					dreh.setFromAxisAngle(hoch, -f.dreh);
+					kugel.setMatrixAt(i, m.compose(ort.set(b.x - r.x0, fuss + f.mitte, -(b.y - r.y0)), dreh, groesse.set(f.rx, f.rz, f.rx)));
+					// Der Fuß einen halben Meter im Grund, damit er am Hang nicht in der Luft steht.
+					staemme.setMatrixAt(i, m.compose(ort.set(b.x - r.x0, fuss - 0.5, -(b.y - r.y0)), dreh, groesse.set(f.stammR, f.stammH + 0.5, f.stammR)));
 				}
-				kugel.instanceMatrix.needsUpdate = true;
-				kugel.castShadow = true; kugel.receiveShadow = true;
-				szene.add(kugel); geloescht.push(kugel);
+				for (const t of [kugel, staemme]) {
+					t.instanceMatrix.needsUpdate = true;
+					t.castShadow = true; t.receiveShadow = true;
+					szene.add(t); geloescht.push(t);
+				}
 			}
 		}
 

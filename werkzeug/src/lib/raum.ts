@@ -1,5 +1,5 @@
 import earcut from 'earcut';
-import { drin, amRahmen } from './schneiden';
+import { drin, amRahmen, gegenUhr, mitUhr, verschoben } from './schneiden';
 import { unterkante, type Objekt } from './osm';
 import { hatDach, dachKoerper } from './dach';
 import type { Rahmen } from './geo/rahmen';
@@ -27,22 +27,6 @@ import type { Rahmen } from './geo/rahmen';
  * Loecher an earcut gereicht, die Hofwaende werden mitgebaut.
  */
 export type Punkt = [number, number];
-
-const flaeche = (r: Punkt[]) => {
-	let s = 0;
-	for (let i = 0, j = r.length - 1; i < r.length; j = i++) s += r[j][0] * r[i][1] - r[i][0] * r[j][1];
-	return s / 2;
-};
-
-/** Ring in lokale Koordinaten bringen, schliessenden Punkt entfernen. */
-function ring(roh: [number, number][], r: Rahmen): Punkt[] {
-	const p = roh.map(([x, y]) => [x - r.x0, -(y - r.y0)] as Punkt);
-	if (p.length > 1) {
-		const a = p[0], b = p[p.length - 1];
-		if (Math.abs(a[0] - b[0]) < 1e-9 && Math.abs(a[1] - b[1]) < 1e-9) p.pop();
-	}
-	return p;
-}
 
 /**
  * `fuss` hebt einen Körper an, wenn das Gelände an ist: auf die tiefste
@@ -115,14 +99,14 @@ export function baukoerper(objekte: Objekt[], r: Rahmen, fuss: (o: Objekt) => nu
 		};
 		const aussenteile = o.ringe
 			.flatMap(innen)
-			.map((a) => ring(a, r))
+			.map((a) => verschoben(a, r.x0, r.y0, true))
 			.filter((a) => a.length >= 3)
-			.map((a) => (flaeche(a) < 0 ? a.slice().reverse() : a));   // gegen den Uhrzeigersinn
+			.map(gegenUhr);
 		const offeneLoecher = (o.loecher ?? [])
 			.flatMap(innen)
-			.map((l) => ring(l, r))
+			.map((l) => verschoben(l, r.x0, r.y0, true))
 			.filter((l) => l.length >= 3)
-			.map((l) => (flaeche(l) > 0 ? l.slice().reverse() : l));   // mit dem Uhrzeigersinn
+			.map(mitUhr);
 
 		for (const aussen of aussenteile) {
 			const loecher = offeneLoecher.filter((l) => drin(l[0], aussen));
@@ -189,7 +173,7 @@ export function baukanten(objekte: Objekt[], r: Rahmen, fuss: (o: Objekt) => num
 		const f = fuss(o) + unterkante(o);
 		const ringe = [...o.ringe, ...(o.loecher ?? [])]
 			.flatMap(innen)
-			.map((a) => ring(a, r))
+			.map((a) => verschoben(a, r.x0, r.y0, true))
 			.filter((a) => a.length >= 3);
 		for (const k of ringe) {
 			const n = k.length;

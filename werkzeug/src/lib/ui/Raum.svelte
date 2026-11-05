@@ -187,7 +187,7 @@
 				m.map = bodenbild(r, voll);
 				alt?.dispose();
 				zeichne();
-			}
+			} else if (takt === schaerfTakt && !aktiv) veraltet = true;   // beim Zurückkommen nachholen
 			if (takt === schaerfTakt) schaerft = false;
 		});
 	}	/** Wofür zuletzt gebaut wurde, als Schlüssel: `z.rahmen` ist bei jedem Lesen ein neues Objekt. */
@@ -1005,7 +1005,7 @@
 		z.kanten.karteDicke; z.kanten.karteDeckkraft;
 		clearTimeout(linienTakt);
 		linienTakt = setTimeout(() => {
-			const r = z.rahmen, m = bodenNetz?.material as THREE.MeshLambertMaterial | undefined;
+			const r = z.rahmen, m = bodenNetz?.material as THREE.MeshStandardMaterial | undefined;
 			if (!r || !m) return;
 			if (!aktiv) { veraltet = true; return; }
 			const alt = m.map;

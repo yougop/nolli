@@ -2,7 +2,7 @@ import earcut from 'earcut';
 import { zipSync, strToU8 } from 'fflate';
 import { unterkante, umrisseMitTeilen, type Objekt } from '../osm';
 import { hatDach, dachKoerper, rechteck } from '../dach';
-import { amRahmen } from '../schneiden';
+import { amRahmen, drin, gegenUhr, mitUhr } from '../schneiden';
 import { type Gelaende, tiefsteUnter, feldImRahmen, netzHoehe, type Feld } from '../geo/gelaende';
 import type { Rahmen } from '../geo/rahmen';
 
@@ -67,8 +67,8 @@ export const DRUCK_VORGABE: Druckwahl = {
  *
  * Breite ist die kurze Seite des kleinsten umschreibenden Rechtecks.
  */
-export type Klein = 'anschnitt' | 'antenne' | 'schmal';
-export function zuKlein(teile: [number, number][][], ganz: boolean, hoeheM: number, k: number): Klein | null {
+type Klein = 'anschnitt' | 'antenne' | 'schmal';
+function zuKlein(teile: [number, number][][], ganz: boolean, hoeheM: number, k: number): Klein | null {
 	let b = Infinity;
 	for (const t of teile) b = Math.min(b, 2 * rechteck(t).hv * k);
 	if (!Number.isFinite(b)) return null;
@@ -76,19 +76,17 @@ export function zuKlein(teile: [number, number][][], ganz: boolean, hoeheM: numb
 	if (b < MINDEST_MM) return ganz ? 'schmal' : 'anschnitt';
 	return null;
 }
-/** Die Bambu X1 Carbon mit AMS fasst vier Spulen: Platte, Häuser, Straßen, Grün. */
-export const DRUCK_FARBEN = 4;
 const GRUEN_MM = 0.2;
 
 /** Der Ausschnitt im Ortsgitter. */
-export function druckBereich(r: Rahmen, w: Druckwahl) {
+function druckBereich(r: Rahmen, w: Druckwahl) {
 	const a = w.ausschnitt ?? DRUCK_VORGABE.ausschnitt, B = r.x1 - r.x0, H = r.y1 - r.y0;
 	return { x0: r.x0 + a.x0 * B, y0: r.y0 + a.y0 * H, x1: r.x0 + a.x1 * B, y1: r.y0 + a.y1 * H };
 }
 /** Wie hoch die Straßen über der Platte stehen, und wie schmal sie höchstens werden. */
 const STRASSE_MM = 0.4, STRASSE_MIN_MM = 0.6, STRASSE_WEG_MM = 0.4;
 /** Was ein Drucker mit 0,4-mm-Düse noch sauber legt. */
-export const MINDEST_MM = 0.8;
+const MINDEST_MM = 0.8;
 const VERSENKT_MM = 0.5;
 
 type Netz = number[];   // x y z je Ecke, drei Ecken je Dreieck, außen gegen den Uhrzeigersinn
@@ -101,7 +99,7 @@ type Netz = number[];   // x y z je Ecke, drei Ecken je Dreieck, außen gegen de
  * zeichnet oder zählt, überspringt die Marke (`istSchnitt`).
  */
 const SCHNITT = [NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN];
-export const istSchnitt = (q: Netz, i: number) => Number.isNaN(q[i]);
+const istSchnitt = (q: Netz, i: number) => Number.isNaN(q[i]);
 const schnitt = (q: Netz) => { q.push(...SCHNITT); };
 /** Die Marken entfernen, für die Vorschau. */
 export const ohneSchnitte = (q: Netz) => { const a: number[] = []; for (let i = 0; i < q.length; i += 9) if (!istSchnitt(q, i)) for (let j = 0; j < 9; j++) a.push(q[i + j]); return a; };
@@ -126,28 +124,36 @@ function stuecke(o: Objekt, x0: number, y0: number, x1: number, y1: number, k: n
 	// Einen Hauch innerhalb der Kachel schneiden: Sonst fällt die Wand eines
 	// angeschnittenen Hauses mit der Seite der Platte zusammen und flimmert.
 	const d = 0.05 / k, c = [x0 + d, y0 + d, x1 - d, y1 - d] as const;
-	const teile = o.ringe.map((x) => sauber(amRahmen(x, ...c).innen)).filter((x) => x.length >= 3);
-	const ganz = o.ringe.length === 1 && teile.length === 1 && amRahmen(o.ringe[0], ...c).aussen.length === 0;
+	const zer = o.ringe.map((x) => amRahmen(x, ...c));
+	const teile = zer.map((z) => sauber(z.innen)).filter((x) => x.length >= 3);
+	const ganz = o.ringe.length === 1 && teile.length === 1 && zer[0].aussen.length === 0;
 	return { teile, ganz, c };
 }
 
-/** Maße vorab, für die Anzeige: Millimeter je Meter, Gesamtgröße, Kacheln, zu kleine Häuser. */
-export function druckMasse(objekte: Objekt[], r: Rahmen, w: Druckwahl) {
+/** Die Größe allein, ohne Zählung: Millimeter je Meter, Maße, Kacheln. Billig, läuft beim Ziehen des Rechtecks. */
+export function druckGroesse(r: Rahmen, w: Druckwahl) {
 	const g = druckBereich(r, w);
 	const B = g.x1 - g.x0, H = g.y1 - g.y0;
 	const k = w.groesse === 'bett' ? w.bettMm / Math.max(B, H) : 1000 / w.massstab;
 	const breiteMm = B * k, hoeheMm = H * k;
 	const nx = w.groesse === 'bett' ? 1 : Math.max(1, Math.ceil(breiteMm / w.bettMm - 1e-6));
 	const ny = w.groesse === 'bett' ? 1 : Math.max(1, Math.ceil(hoeheMm / w.bettMm - 1e-6));
-	// Zu kleine Teile je Kachel zählen, so wie sie gedruckt würden.
+	return { g, k, breiteMm, hoeheMm, nx, ny, kb: B / nx, kh: H / ny, massstab: Math.round(1000 / k) };
+}
+
+/** Maße samt Zählung der zu kleinen Teile je Kachel, so wie sie gedruckt würden. */
+export function druckMasse(objekte: Objekt[], r: Rahmen, w: Druckwahl) {
+	const m = druckGroesse(r, w);
+	const { g, k, nx, ny, kb, kh } = m;
 	const zahl: Record<Klein, number> = { anschnitt: 0, antenne: 0, schmal: 0 };
-	const kb = B / nx, kh = H / ny;
 	const ersetzt = umrisseMitTeilen(objekte);
 	for (const o of objekte) {
 		if ((o.ebene !== 'gebaeude' && o.ebene !== 'erhalt') || o.zustand === 'gestrichen' || !o.ringe.length || ersetzt.has(o.id)) continue;
 		if (unterkante(o) > 0 && w.schwebend === 'weglassen') continue;
+		// Hülle über alle Außenringe, nicht nur den ersten: ein Anbau als zweiter
+		// Ring läge sonst in einer Kachel, die die Zählung nie ansieht.
 		let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-		for (const [x, y] of o.ringe[0]) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+		for (const ring of o.ringe) for (const [x, y] of ring) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
 		if (x1 < g.x0 || x0 > g.x1 || y1 < g.y0 || y0 > g.y1) continue;
 		for (let j = 0; j < ny; j++)
 			for (let i = 0; i < nx; i++) {
@@ -159,14 +165,14 @@ export function druckMasse(objekte: Objekt[], r: Rahmen, w: Druckwahl) {
 				if (art) zahl[art]++;
 			}
 	}
-	return { k, breiteMm, hoeheMm, nx, ny, massstab: Math.round(1000 / k), klein: zahl.anschnitt + zahl.antenne + zahl.schmal, kleinArt: zahl };
+	return { ...m, klein: zahl.anschnitt + zahl.antenne + zahl.schmal, kleinArt: zahl };
 }
 
 /** Die Körper je Kachel, in Millimetern. */
 export function druckModell(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | null, w: Druckwahl) {
-	const m = druckMasse(objekte, r, w);
+	const m = druckGroesse(r, w);
 	const feld = gelaende ? feldImRahmen(gelaende, r) : null;
-	const g0 = druckBereich(r, w);
+	const g0 = m.g;
 	/**
 	 * Bezug ist der tiefste Punkt im Ausschnitt, nicht im ganzen Rahmen.
 	 * Sonst stand ein kleiner Ausschnitt über einem tiefen Flussufer auf einer
@@ -185,8 +191,7 @@ export function druckModell(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | n
 	/** Geländehöhe in mm über der Plattenunterseite. */
 	const plattenZ = (zGelaende: number) => w.sockelMm + (zGelaende - zRef) * m.k * ue;
 	const ersetzt = umrisseMitTeilen(objekte);
-	const g = druckBereich(r, w);
-	const kb = (g.x1 - g.x0) / m.nx, kh = (g.y1 - g.y0) / m.ny;
+	const { g, kb, kh } = m;
 	/** `kleine`: zu kleine Teile, die behalten werden; gehören beim Schreiben zu den Häusern. */
 	const kacheln: { name: string; i: number; j: number; bMm: number; hMm: number; platte: Netz; haeuser: Netz; kleine: Netz; strassen: Netz; gruen: Netz }[] = [];
 	const flaeche = (xm: number, ym: number) => (feld ? plattenZ(netzHoehe(feld, xm - r.x0, ym - r.y0)) : plattenZ(0));
@@ -222,7 +227,8 @@ export function druckModell(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | n
 				const hinein = (q: number[]) => {
 					for (let a = 0; a < q.length; a += 3) {
 						const [x, y] = mm(q[a], q[a + 1]);
-						const unten = Math.abs(q[a + 2]) < 1e-6;
+						// Fuß und Boden liegen genau auf null, alles darüber ist Wand oder Dach.
+						const unten = q[a + 2] <= 0;
 						const f = flaeche(q[a], q[a + 1]);
 						// Oben mindestens knapp über der Platte, auch an einem steilen Hang.
 						ziel.push(x, y, unten ? f - VERSENKT_MM : Math.max(f + 0.2, fussMm + q[a + 2] * m.k));
@@ -230,9 +236,7 @@ export function druckModell(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | n
 				};
 				const hMm = Math.max(VERSENKT_MM + 0.4, (o.hoeheM ?? 8) * m.k + VERSENKT_MM);
 				if (hatDach(o)) {
-					// Boden über eine winzige Unterkante, damit `dachKoerper` ihn mitbaut.
-					const eps = 1e-3 / m.k;
-					hinein(dachKoerper({ ...o, hoeheM: hMm / m.k }, teile, -eps, eps, ganz).dreiecke);
+					hinein(dachKoerper({ ...o, hoeheM: hMm / m.k }, teile, 0, 0, ganz, 20, true).dreiecke);
 				} else {
 					const loecher = (o.loecher ?? []).map((x) => sauber(amRahmen(x, cx0, cy0, cx1, cy1).innen)).filter((x) => x.length >= 3);
 					hinein(quader(teile, loecher, hMm / m.k));
@@ -438,21 +442,16 @@ function grundplatte(feld: Feld | null, r: Rahmen, x0: number, y0: number, x1: n
 		const a = rand[n], b = rand[(n + 1) % rand.length];
 		tri(unten(a), unten(b), b); tri(unten(a), b, a);
 	}
+	schnitt(aus);
 	return aus;
 }
 
 /** Ein flacher Körper mit Boden und Höfen, im Ortsgitter, Fuß auf null. */
 function quader(teile: [number, number][][], loecher: [number, number][][], h: number): Netz {
 	const aus: Netz = [];
-	const flaeche = (q: [number, number][]) => { let s = 0; for (let i = 0, j = q.length - 1; i < q.length; j = i++) s += q[j][0] * q[i][1] - q[i][0] * q[j][1]; return s / 2; };
-	const drin = (p: [number, number], q: [number, number][]) => {
-		let d = false;
-		for (let i = 0, j = q.length - 1; i < q.length; j = i++) if (q[i][1] > p[1] !== q[j][1] > p[1] && p[0] < ((q[j][0] - q[i][0]) * (p[1] - q[i][1])) / (q[j][1] - q[i][1]) + q[i][0]) d = !d;
-		return d;
-	};
 	for (const roh of teile) {
-		const aussen = flaeche(roh) < 0 ? roh.slice().reverse() : roh;
-		const hoefe = loecher.filter((l) => drin(l[0], aussen)).map((l) => (flaeche(l) > 0 ? l.slice().reverse() : l));
+		const aussen = gegenUhr(roh);
+		const hoefe = loecher.filter((l) => drin(l[0], aussen)).map(mitUhr);
 		for (const kette of [aussen, ...hoefe])
 			for (let i = 0; i < kette.length; i++) {
 				const [ax, ay] = kette[i], [bx, by] = kette[(i + 1) % kette.length];

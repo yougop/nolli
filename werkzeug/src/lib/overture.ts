@@ -20,7 +20,8 @@ import { PMTiles, FetchSource } from 'pmtiles';
 import { VectorTile } from '@mapbox/vector-tile';
 import Pbf from 'pbf';
 import { nachGitter, type Gitter } from './geo/utm';
-import { ringflaeche, istTeil, KLASSEN, type Objekt } from './osm';
+import { KLASSEN, type Objekt } from './osm';
+import { drin, ringflaeche } from './schneiden';
 
 /** Rückfall, wenn der Katalog nicht antwortet. Am 28.10.2026 der neueste. */
 const RELEASE_RUECKFALL = '2026-10-21.0';
@@ -96,15 +97,6 @@ export async function holeOverture(thema: 'buildings' | 'places', roh: Ecken,
 	return { release: rel, merkmale: je.flat(), kacheln: liste.length, bytes };
 }
 
-const innen = (p: [number, number], ring: [number, number][]) => {
-	let c = false;
-	for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-		const [xi, yi] = ring[i], [xj, yj] = ring[j];
-		if ((yi > p[1]) !== (yj > p[1]) && p[0] < ((xj - xi) * (p[1] - yi)) / (yj - yi) + xi) c = !c;
-	}
-	return c;
-};
-
 function schwerpunkt(ring: [number, number][]): [number, number] {
 	let sx = 0, sy = 0;
 	for (const [x, y] of ring) { sx += x; sy += y; }
@@ -139,14 +131,16 @@ export function gebaeudeErgaenzen(merkmale: Merkmal[], gitter: Gitter, osm: Obje
 	// OSM-Gebäude mit ihrer Hülle, damit der Punkttest nicht jedes Haus prüft.
 	// Baustellen zählen mit: Wo OSM eine führt, gilt sie, auch wenn das
 	// Luftbild dort schon ein Haus sieht (HafenCity, 28.10.2026).
-	const haeuser = osm.filter((o) => (o.ebene === 'gebaeude' || o.ebene === 'erhalt' || o.ebene === 'bau') && !istTeil(o))
+	// Teile zählen mit: Ein Haus, das OSM nur als `building:part` führt, hielte
+	// sonst kein Overture-Haus fern (Fund der Fehlersuche, 05.11.2026).
+	const haeuser = osm.filter((o) => o.ebene === 'gebaeude' || o.ebene === 'erhalt' || o.ebene === 'bau')
 		.flatMap((o) => o.ringe.map((r) => {
 			let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
 			for (const [x, y] of r) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
 			return { r, x0, y0, x1, y1 };
 		}));
 	const besetzt = (p: [number, number]) =>
-		haeuser.some((h) => p[0] >= h.x0 && p[0] <= h.x1 && p[1] >= h.y0 && p[1] <= h.y1 && innen(p, h.r));
+		haeuser.some((h) => p[0] >= h.x0 && p[0] <= h.x1 && p[1] >= h.y0 && p[1] <= h.y1 && drin(p, h.r));
 
 	const aus: Objekt[] = [];
 	const quellen = new Map<string, number>();

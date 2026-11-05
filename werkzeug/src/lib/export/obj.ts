@@ -5,7 +5,7 @@ import { kronenKoerper } from './baeume';
 import { unterkante, umrisseMitTeilen, type Objekt } from '../osm';
 import { hatDach, dachKoerper } from '../dach';
 import type { Rahmen } from '../geo/rahmen';
-import { drin, amRahmen } from '../schneiden';
+import { drin, amRahmen, gegenUhr, mitUhr, verschoben } from '../schneiden';
 import { MATERIALIEN, materialFuer, kd } from '../material';
 
 /**
@@ -121,15 +121,15 @@ export function alsObj(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | null =
 		const holen = (
 			was: (t: Zerlegung) => [number, number][][],
 			teile: Zerlegung[]
-		) => teile.flatMap(was).filter((a) => a.length >= 3).map((a) => ring(a, r));
+		) => teile.flatMap(was).filter((a) => a.length >= 3).map((a) => verschoben(a, r.x0, r.y0));
 
 		const aussenteile = holen((t) => (t.innen.length ? [t.innen] : []), zerlegt)
 			.filter((a) => a.length >= 3)
-			.map((a) => (flaeche(a) < 0 ? a.slice().reverse() : a));   // gegen den Uhrzeigersinn
+			.map(gegenUhr);
 		if (!aussenteile.length && !nachAussen) continue;
 		const offeneLoecher = holen((t) => (t.innen.length ? [t.innen] : []), loecherZerlegt)
 			.filter((l) => l.length >= 3)
-			.map((l) => (flaeche(l) > 0 ? l.slice().reverse() : l));   // mit dem Uhrzeigersinn
+			.map(mitUhr);
 
 		// Ein schwebender Teil beginnt an seiner Unterkante; `h` ist dann nur
 		// noch seine eigene Höhe, und er bekommt einen Boden.
@@ -211,10 +211,10 @@ export function alsObj(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | null =
 		if (nachAussen && teil === 'aussen') {
 			const draussen = holen((t) => t.aussen, zerlegt)
 				.filter((a) => a.length >= 3)
-				.map((a) => (flaeche(a) < 0 ? a.slice().reverse() : a));
+				.map(gegenUhr);
 			const draussenLoecher = holen((t) => t.aussen, loecherZerlegt)
 				.filter((l) => l.length >= 3)
-				.map((l) => (flaeche(l) > 0 ? l.slice().reverse() : l));
+				.map(mitUhr);
 			schreiben(`${o.ebene}_${o.id}${marke}_ausserhalb`, draussen, draussenLoecher);
 		}
 		}
@@ -283,23 +283,6 @@ export function alsObj(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | null =
 	}
 
 type Zerlegung = { innen: [number, number][]; aussen: [number, number][][] };
-
-/** Ring in Rahmenkoordinaten, schliessenden Punkt entfernen. */
-function ring(roh: [number, number][], r: Rahmen): [number, number][] {
-	const p = roh.map(([x, y]) => [x - r.x0, y - r.y0] as [number, number]);
-	if (p.length > 1) {
-		const a = p[0], b = p[p.length - 1];
-		if (Math.abs(a[0] - b[0]) < 1e-9 && Math.abs(a[1] - b[1]) < 1e-9) p.pop();
-	}
-	return p;
-}
-
-/** Vorzeichenbehaftete Flaeche. Positiv heisst gegen den Uhrzeigersinn. */
-function flaeche(r: [number, number][]): number {
-	let s = 0;
-	for (let i = 0, j = r.length - 1; i < r.length; j = i++) s += r[j][0] * r[i][1] - r[i][0] * r[j][1];
-	return s / 2;
-}
 
 /**
  * Die Materialdatei zum Modell.

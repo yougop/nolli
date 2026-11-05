@@ -9,6 +9,33 @@
  */
 export type Punkt = [number, number];
 
+/**
+ * Vorzeichenbehaftete Ringfläche (Schnürformel). Positiv heißt gegen den
+ * Uhrzeigersinn. Bis 05.11.2026 stand diese Formel viermal im Code, der
+ * Punkttest unten fünfmal; jetzt einmal, hier.
+ */
+export function ringflaeche(ring: Punkt[]): number {
+	let s = 0;
+	for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) s += ring[j][0] * ring[i][1] - ring[i][0] * ring[j][1];
+	return s / 2;
+}
+/** Den Ring gegen den Uhrzeigersinn laufen lassen (Außenringe) … */
+export const gegenUhr = (r: Punkt[]) => (ringflaeche(r) < 0 ? r.slice().reverse() : r);
+/** … oder mit ihm (Löcher). */
+export const mitUhr = (r: Punkt[]) => (ringflaeche(r) > 0 ? r.slice().reverse() : r);
+/**
+ * Ring um einen Ursprung verschieben und den schließenden Punkt entfernen,
+ * den OSM mitführt. `spiegelY` für die Raumansicht, deren z nach Süden zeigt.
+ */
+export function verschoben(roh: Punkt[], x0: number, y0: number, spiegelY = false): Punkt[] {
+	const p = roh.map(([x, y]) => [x - x0, spiegelY ? -(y - y0) : y - y0] as Punkt);
+	if (p.length > 1) {
+		const a = p[0], b = p[p.length - 1];
+		if (Math.abs(a[0] - b[0]) < 1e-9 && Math.abs(a[1] - b[1]) < 1e-9) p.pop();
+	}
+	return p;
+}
+
 /** Punkt im Polygon, Strahlverfahren. */
 export function drin([x, y]: Punkt, p: Punkt[]): boolean {
 	let innen = false;

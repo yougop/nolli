@@ -1,4 +1,5 @@
 import { nachGitter, type Gitter } from './geo/utm';
+import { drin, ringflaeche } from './schneiden';
 import { dachAusTags } from './dach';
 import { FAHRBAHN, type StiftId } from './stifte';
 import { NUTZUNG, BUCHHALTUNG } from './analysedaten';
@@ -294,9 +295,12 @@ export function lesen(roh: { elements: RohElement[] }, gitter: Gitter, kasten?: 
 				name: t.name, nutzung: t.construction ?? t.landuse ?? t.building, zustand: 'normal' });
 		} else if (t.building || t['building:part']) {
 			const h = hoehe(t);
-			const dach = dachAusTags(t, flaechen[0]);
+			// Mit Hof bleibt das Dach flach (`hatDach`); dann darf auch der Vertrag
+			// keine Form nennen und die Höhe nicht um das Dach wachsen.
+			const dach = loecher ? null : dachAusTags(t, flaechen[0]);
 			// Ohne gemessene Höhe: Geschosse bis zur Traufe, das Dach kommt dazu.
-			if (dach && h.geschaetzt) h.m = (h.geschosse ? h.geschosse * 3.2 : Math.max(6, h.unter ?? 0)) + dach.hoeheM;
+			// Ein schwebender Teil bekommt mindestens ein Geschoss Wand über der Unterkante.
+			if (dach && h.geschaetzt) h.m = (h.geschosse ? h.geschosse * 3.2 : Math.max(6, (h.unter ?? 0) + 3.2)) + dach.hoeheM;
 			const art = t.building && t.building !== 'yes' ? t.building : (t['building:use'] ?? t.amenity ?? '');
 			aus.push({ id, ebene: 'gebaeude', art: 'flaeche', ringe: flaechen, loecher, tiefe,
 				// `building:part` gewinnt, auch wenn `building` mitgetaggt ist. An
@@ -344,13 +348,6 @@ export function lesen(roh: { elements: RohElement[] }, gitter: Gitter, kasten?: 
 }
 
 /** Gauss'sche Trapezformel. Vorzeichen sagt den Umlaufsinn, Betrag die Flaeche. */
-export function ringflaeche(ring: [number, number][]) {
-	let s = 0;
-	for (let i = 0, j = ring.length - 1; i < ring.length; j = i++)
-		s += ring[j][0] * ring[i][1] - ring[i][0] * ring[j][1];
-	return s / 2;
-}
-
 /**
  * Woher die Hoehen kommen. Wird offengelegt, nicht versteckt.
  *
@@ -436,7 +433,7 @@ export function umrisseMitTeilen(objekte: Objekt[]): Set<string> {
 		for (const [px, py] of ring) { x += px; y += py; }
 		x /= ring.length; y /= ring.length;
 		for (const o of raster.get(`${Math.floor(x / ZELLE)}|${Math.floor(y / ZELLE)}`) ?? []) {
-			if (o.ringe.some((r) => punktIn(x, y, r))) { gedeckt.set(o.id, (gedeckt.get(o.id) ?? 0) + flaecheVon(t)); break; }
+			if (o.ringe.some((r) => drin([x, y], r))) { gedeckt.set(o.id, (gedeckt.get(o.id) ?? 0) + flaecheVon(t)); break; }
 		}
 	}
 	for (const o of koerper) {
@@ -444,15 +441,6 @@ export function umrisseMitTeilen(objekte: Objekt[]): Set<string> {
 		if (g !== undefined && g >= 0.6 * flaecheVon(o)) aus.add(o.id);
 	}
 	return aus;
-}
-
-function punktIn(x: number, y: number, ring: [number, number][]) {
-	let drin = false;
-	for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-		const [xi, yi] = ring[i], [xj, yj] = ring[j];
-		if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) drin = !drin;
-	}
-	return drin;
 }
 
 export function hoehenDeckung(objekte: Objekt[], ohneTeile = false) {

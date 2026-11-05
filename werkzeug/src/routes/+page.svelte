@@ -10,7 +10,8 @@
 	import { breiteName, BILDFORMATE, gedreht } from '$lib/geo/rahmen';
 	import { STIFTE, FAHRBAHN } from '$lib/stifte';
 	import { ebenenZaehlen } from '$lib/zeichnen';
-	import { hoehenDeckung, ringflaeche, istTeil, gebaeudeLuecke, sichtEbene, ZWEIFEL_ENTHAELT, unterkante, umrisseMitTeilen } from '$lib/osm';
+	import { hoehenDeckung, istTeil, gebaeudeLuecke, sichtEbene, ZWEIFEL_ENTHAELT, unterkante, umrisseMitTeilen } from '$lib/osm';
+	import { ringflaeche } from '$lib/schneiden';
 	import { PLACES_ZUVERSICHT } from '$lib/overture';
 	import { amRahmen } from '$lib/schneiden';
 	import { MATERIALIEN, materialFuer, materialDatei } from '$lib/material';
@@ -1258,6 +1259,7 @@
 							>{t().sicht.licht}</button>
 							{#if lichtRegler}
 								<div class="regler" role="group" aria-label={t().sicht.licht}>
+									{#if !raeumlich}<span class="unter">{t().sicht.lichtNur3d}</span>{/if}
 									<label>
 										<span>{t().sicht.helligkeit}</span>
 										<!-- Bis 250 %: Ohne Sonne bleibt nur der Himmel, und das Bild braucht mehr (Volker, 04.11.2026). -->
@@ -1338,7 +1340,7 @@
 				{#if z.schritt === 1}
 					<Karte bind:this={karte} {schema} />
 				{:else if druckAuf && r}
-					{#if z.druckBuehne === 'vorschau'}<DruckVorschau objekte={bestand} {r} />{:else}<DruckAusschnitt objekte={bestand} {r} />{/if}
+					{#if z.druckBuehne === 'vorschau'}<DruckVorschau objekte={bestand} {r} />{:else}<DruckAusschnitt objekte={bestand} {r} masse={druckJetzt!} />{/if}
 				{:else if !raeumlich}
 					<Blatt waehlbar={z.schritt === 2} />
 				{/if}
@@ -1424,6 +1426,7 @@
 						<button type="button" disabled={!!arbeitet} onclick={() => ausgeben('3mf')}>{arbeitet === '3mf' ? t().ausgeben.schreibt : '3MF'}</button>
 						<button type="button" disabled={!!arbeitet} onclick={() => ausgeben('stl')}>{arbeitet === 'stl' ? t().ausgeben.schreibt : 'STL'}</button>
 					</div>
+					<p class="hinweis leise">{t().ausgeben.druckBambu}</p>
 					<p class="hinweis leise">{t().ausgeben.druckWas}</p>
 				</div>
 			</div>
@@ -2371,7 +2374,7 @@
 		position: absolute; left: 16px; top: 16px; bottom: 16px; z-index: 5;
 		width: 312px; overflow-y: auto; padding: 14px 16px;
 		background: var(--blatt); border: 1px solid var(--linie); border-radius: var(--rund);
-		box-shadow: 0 6px 24px rgb(0 0 0 / 0.14), 0 1px 3px rgb(0 0 0 / 0.08);
+		box-shadow: var(--heben);
 	}
 	.druckkopf { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
 	.druckkopf.zwei { margin-bottom: 12px; }
@@ -2380,10 +2383,11 @@
 	.druckkopf .zurueck { border: 1px solid var(--linie); background: var(--blatt); color: var(--tinte-2); font: inherit; font-size: 11px; padding: 2px 7px; border-radius: var(--rund); cursor: pointer; }
 	.druckkopf .zu { border: 0; background: none; font-size: 18px; line-height: 1; cursor: pointer; color: var(--tinte-2); padding: 0 2px; }
 	.druckfenster .bildrahmen { margin-bottom: 0; }
-	.druckfenster .warnung { margin: 0; font-size: 11.5px; color: var(--warn); }
+	/* Wie der Urteilskasten: Mahnung auf ihrer Fläche, ohne Rand (DESIGN.md). */
+	.druckfenster .warnung { margin: 0; padding: 8px 10px; font-size: 11.5px; line-height: 1.45; color: var(--warn); background: var(--warn-flor); border-radius: var(--rund); }
 	/* Regler im 3D-Druck: dieselbe Zeile wie in den Aufklappfeldern der Leiste. */
 	.bildrahmen .regelzeile {
-		display: grid; grid-template-columns: 96px 1fr 56px; align-items: center; gap: 8px;
+		display: grid; grid-template-columns: 118px 1fr 56px; align-items: center; gap: 8px;
 		font-size: 12px; color: var(--tinte-2);
 	}
 	.bildrahmen .regelzeile input { width: 100%; accent-color: var(--tinte); }

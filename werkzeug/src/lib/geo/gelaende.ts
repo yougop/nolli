@@ -21,6 +21,7 @@
  */
 import type { Rahmen } from './rahmen';
 import { nachGrad } from './utm';
+import { drin } from '../schneiden';
 
 const KACHELN = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium';
 /** Feinste Stufe, die es gibt. 15 heißt am 44. Breitengrad rund 3,4 m je Pixel. */
@@ -261,19 +262,10 @@ export function tiefsteUnter(g: Gelaende, ringe: [number, number][][]): number {
 		for (let j = Math.max(0, j0); j <= Math.min(g.ny - 1, j1); j++)
 			for (let i = Math.max(0, i0); i <= Math.min(g.nx - 1, i1); i++) {
 				const x = g.x0 + i * g.dx, y = g.y0 + j * g.dy;
-				if (innen(x, y, aussen)) tief = Math.min(tief, g.z[j * g.nx + i]);
+				if (drin([x, y], aussen)) tief = Math.min(tief, g.z[j * g.nx + i]);
 			}
 	}
 	return Number.isFinite(tief) ? tief : 0;
-}
-
-function innen(x: number, y: number, ring: [number, number][]) {
-	let drin = false;
-	for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-		const [xi, yi] = ring[i], [xj, yj] = ring[j];
-		if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) drin = !drin;
-	}
-	return drin;
 }
 
 /** Ein Raster genau auf dem Rahmen, für Netz und Höhenlinien. Ursprung: linke untere Rahmenecke. */

@@ -19,6 +19,7 @@
  * Meer statt eines falschen. Ein falsch gefülltes Meer überdeckt eine Stadt;
  * ein fehlendes ist nur weiß.
  */
+import { drin as imRing } from '../schneiden';
 
 type P = [number, number];
 export type Kasten = { x0: number; y0: number; x1: number; y1: number };
@@ -108,15 +109,6 @@ function ecken(k: Kasten): { s: number; p: P }[] {
 	];
 }
 
-function innen(p: P, ring: P[]) {
-	let c = false;
-	for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-		const [xi, yi] = ring[i], [xj, yj] = ring[j];
-		if ((yi > p[1]) !== (yj > p[1]) && p[0] < ((xj - xi) * (p[1] - yi)) / (yj - yi) + xi) c = !c;
-	}
-	return c;
-}
-
 /** Die Meeresflächen im Kasten, jede mit ihren Inseln als Löchern. */
 export function meer(linien: P[][], k: Kasten): { ring: P[]; loecher: P[][] }[] {
 	if (!linien.length) return [];
@@ -168,5 +160,5 @@ export function meer(linien: P[][], k: Kasten): { ring: P[]; loecher: P[][] }[] 
 			if (ring.length >= 3) ringe.push(ring);
 		}
 	}
-	return ringe.map((ring) => ({ ring, loecher: inseln.filter((i) => innen(i[0], ring)) }));
+	return ringe.map((ring) => ({ ring, loecher: inseln.filter((i) => imRing(i[0], ring)) }));
 }

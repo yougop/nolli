@@ -23,13 +23,15 @@
  * einer heruntergerechneten Textur beantwortete, und der `vite preview`, der
  * die Dateiliste von vor dem Build auslieferte.
  *
- * Es wird dabei nichts aufgeschrieben. Nolli wird von hier aus nicht
- * ausgeliefert, und wer nicht ausliefert, soll ueber die Auslieferung keine
- * Datei fuehren — aber nachsehen darf er.
+ * `live` schreibt nichts auf. Nolli wird von hier aus nicht ausgeliefert;
+ * `merken` haelt nur fest, was hier gebaut war, als die Website-Sitzung
+ * lieferte — mit Commit und ob der Arbeitsbaum sauber war, damit sich der
+ * Quellstand hinter einem Vermerk spaeter nachpruefen laesst.
  */
 import { createHash } from 'node:crypto';
-import { readdirSync, statSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { execSync } from 'node:child_process';
 
 const hier = new URL('.', import.meta.url).pathname;
 const bau = join(hier, '..', 'build');
@@ -46,19 +48,32 @@ function sammeln(ordner, unter = '') {
 		const p = join(ordner, e.name);
 		const name = unter ? `${unter}/${e.name}` : e.name;
 		if (e.isDirectory()) Object.assign(aus, sammeln(p, name));
-		else aus[name] = { bytes: statSync(p).size, hash: createHash('sha256').update(readFileSync(p)).digest('hex').slice(0, 12) };
+		else {
+			const inhalt = readFileSync(p);
+			aus[name] = { bytes: inhalt.length, hash: createHash('sha256').update(inhalt).digest('hex').slice(0, 12) };
+		}
 	}
 	return aus;
 }
 
-const jetzt = sammeln(bau);
-const namen = Object.keys(jetzt).sort();
-const gesamt = createHash('sha256')
-	.update(namen.map((n) => `${n} ${jetzt[n].hash}`).join('\n'))
-	.digest('hex').slice(0, 12);
-const bytes = namen.reduce((s, n) => s + jetzt[n].bytes, 0);
-
 const befehl = process.argv[2];
+
+/** Erst hashen, wenn es gebraucht wird: `live` liest nur die Einstiegsseiten, nicht 14 MB Build. */
+function fingerabdruck() {
+	const jetzt = sammeln(bau);
+	const namen = Object.keys(jetzt).sort();
+	const gesamt = createHash('sha256')
+		.update(namen.map((n) => `${n} ${jetzt[n].hash}`).join('\n'))
+		.digest('hex').slice(0, 12);
+	const bytes = namen.reduce((s, n) => s + jetzt[n].bytes, 0);
+	return { jetzt, namen, gesamt, bytes };
+}
+/** Lokale Zeit mit Zone, damit sich der Vermerk mit dem Git-Log vergleichen laesst. */
+function jetztLokal() {
+	const d = new Date(), v = -d.getTimezoneOffset(), z = (n) => String(n).padStart(2, '0');
+	return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())} ${v >= 0 ? '+' : '-'}${z(Math.floor(Math.abs(v) / 60))}:${z(Math.abs(v) % 60)}`;
+}
+const git = (arg) => { try { return execSync(`git ${arg}`, { encoding: 'utf8', cwd: hier }).trim(); } catch { return null; } };
 
 /** Wohin `live` sieht. Ein zweites Argument ueberschreibt es — damit sich die
  *  Fehlerausgaenge an einer echten fremden Seite pruefen lassen und nicht nur
@@ -66,8 +81,10 @@ const befehl = process.argv[2];
 const LIVE = process.argv[3] || 'https://zinssmeister.info/app/nolli/';
 
 if (befehl === 'live') {
+	// Skripte und Stile aus dem HTML; die Rhino-Bibliothek (.wasm) nennt das
+	// HTML nicht, sie wird unten eigens abgefragt.
 	const buendel = (text) =>
-		[...new Set(text.match(/_app\/immutable\/[a-z]+\/[A-Za-z0-9._-]+\.js/g) ?? [])].sort();
+		[...new Set(text.match(/_app\/immutable\/[a-z]+\/[A-Za-z0-9._-]+\.(?:js|css)/g) ?? [])].sort();
 	let antwort;
 	try {
 		// Am Zwischenspeicher vorbei. Die Seite trägt `max-age=600`, und der
@@ -132,7 +149,31 @@ if (befehl === 'live') {
 	if (treffer) {
 		console.log(`  ${draussen.length} Buendel, alle gleich — der ausgelieferte Stand ist dieser Stand.`);
 		console.log(`  (verglichen gegen ${treffer.name})`);
-		process.exit(0);
+		/**
+		 * Die grossen Beilagen eigens: die Rhino-Bibliothek (2,7 MB .wasm) steht
+		 * in keinem HTML, nur ein Chunk laedt sie nach. Fehlt sie oder liefert
+		 * der Hoster sie als text/html, schlug bisher erst der erste Klick auf
+		 * den 3DM-Export fehl (Fund der Fehlersuche, 05.11.2026).
+		 */
+		const beilagen = readdirSync(join(bau, '_app/immutable/assets')).filter((n) => n.endsWith('.wasm'));
+		let schlecht = 0;
+		for (const n of beilagen) {
+			const pfad = `_app/immutable/assets/${n}`;
+			const hier2 = readFileSync(join(bau, pfad)).length;
+			try {
+				const kopf = await fetch(new URL(pfad, LIVE), { method: 'HEAD', signal: AbortSignal.timeout(20000) });
+				const laenge = Number(kopf.headers.get('content-length'));
+				const typ = kopf.headers.get('content-type') ?? '';
+				if (!kopf.ok || typ.includes('text/html') || (laenge && laenge !== hier2)) {
+					schlecht++;
+					console.log(`  Beilage ${n}: Status ${kopf.status}, ${typ || 'ohne Typ'}, ${laenge || '?'} B (hier ${hier2} B)`);
+				} else console.log(`  Beilage ${n}: da, ${hier2} B`);
+			} catch (e) {
+				schlecht++;
+				console.log(`  Beilage ${n}: nicht abrufbar (${e.message})`);
+			}
+		}
+		process.exit(schlecht ? 5 : 0);
 	}
 	const naechste = seiten.reduce((a, b2) =>
 		draussen.filter((n) => b2.b.includes(n)).length > draussen.filter((n) => a.b.includes(n)).length ? b2 : a
@@ -151,6 +192,7 @@ if (befehl === 'seither') {
 		process.exit(1);
 	}
 	const alt = JSON.parse(readFileSync(merkzettel, 'utf8'));
+	const { jetzt, namen, gesamt } = fingerabdruck();
 	if (alt.gesamt === gesamt) {
 		console.log(`Unveraendert seit ${alt.wann} · ${gesamt}`);
 		process.exit(0);
@@ -171,10 +213,13 @@ if (befehl === 'seither') {
 	process.exit(0);
 }
 
+const { jetzt, namen, gesamt, bytes } = fingerabdruck();
 console.log(`${namen.length} Dateien · ${(bytes / 1024 / 1024).toFixed(2)} MB · ${gesamt}`);
 
 if (befehl === 'merken') {
-	const wann = new Date().toISOString().slice(0, 16).replace('T', ' ');
-	writeFileSync(merkzettel, JSON.stringify({ wann, gesamt, dateien: jetzt }, null, 1));
-	console.log(`Als ausgeliefert vermerkt: ${wann}`);
+	const wann = jetztLokal();
+	const commit = git('rev-parse --short HEAD');
+	const sauber = git('status --porcelain') === '';
+	writeFileSync(merkzettel, JSON.stringify({ wann, commit, sauber, gesamt, dateien: jetzt }, null, 1));
+	console.log(`Als ausgeliefert vermerkt: ${wann} · ${commit}${sauber ? '' : ' (Arbeitsbaum nicht sauber)'}`);
 }

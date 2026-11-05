@@ -263,7 +263,6 @@
 			onwheel={rad}
 			oncontextmenu={(e) => { if (z.werkzeug === 'polygon') { e.preventDefault(); z.letztenPunktZurueck(); } }}
 			onpointerleave={() => (zeigerM = null)}
-			role="presentation"
 		></canvas>
 		{#if zeigerM && schirmRahmen}
 			<p class="zeiger mono">

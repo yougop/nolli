@@ -27,7 +27,7 @@ import { unterkante, umrisseMitTeilen, type Objekt } from '../osm';
 import { hatDach, dachKoerper, DACH_NAME } from '../dach';
 import type { Rahmen } from '../geo/rahmen';
 import { type Gelaende, tiefsteUnter, feldImRahmen, hoeheBei } from '../geo/gelaende';
-import { amRahmen, drin } from '../schneiden';
+import { amRahmen, drin, gegenUhr, mitUhr, verschoben } from '../schneiden';
 import { MATERIALIEN, materialFuer } from '../material';
 import { planZuege } from './dxf';
 import { dxfEbene, objName, WERTE } from '../vertrag';
@@ -47,11 +47,6 @@ export function rhinoLaden(): Promise<Rh> {
 }
 
 type P = [number, number];
-const flaeche = (r: P[]) => {
-	let s = 0;
-	for (let i = 0, j = r.length - 1; i < r.length; j = i++) s += r[j][0] * r[i][1] - r[i][0] * r[j][1];
-	return s / 2;
-};
 const farbe = (hex: string) => {
 	const n = parseInt(hex.slice(1), 16);
 	return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255, a: 255 };
@@ -153,14 +148,7 @@ export async function als3dm(e: Rhino3dmEingabe): Promise<Uint8Array> {
 	const DRAUSSEN = 'outside';
 
 	// ---- Körper -------------------------------------------------------------
-	const ring = (roh: P[]) => {
-		const p = roh.map(([x, y]) => [x - r.x0, y - r.y0] as P);
-		if (p.length > 1) {
-			const a = p[0], b = p[p.length - 1];
-			if (Math.abs(a[0] - b[0]) < 1e-9 && Math.abs(a[1] - b[1]) < 1e-9) p.pop();
-		}
-		return p;
-	};
+	const ring = (roh: P[]) => verschoben(roh, r.x0, r.y0);
 	/** Ein Teil mit Höfen als Netz: Wände und Dach, wie im OBJ. */
 	const netzMitHoefen = (aussen: P[], loecher: P[][], fuss: number, h: number) => {
 		const m = new rh.Mesh();
@@ -245,8 +233,7 @@ export async function als3dm(e: Rhino3dmEingabe): Promise<Uint8Array> {
 		const fuss = (gelaende ? tiefsteUnter(gelaende, o.ringe) : 0) + u;
 		const zer = o.ringe.map((x) => amRahmen(x, r.x0, r.y0, r.x1, r.y1));
 		const lzer = (o.loecher ?? []).map((x) => amRahmen(x, r.x0, r.y0, r.x1, r.y1));
-		const ccw = (a: P[]) => (flaeche(a) < 0 ? a.slice().reverse() : a);
-		const cw = (a: P[]) => (flaeche(a) > 0 ? a.slice().reverse() : a);
+		const ccw = gegenUhr, cw = mitUhr;
 		const innen = zer.filter((t) => t.innen.length >= 3).map((t) => ccw(ring(t.innen))).filter((a) => a.length >= 3);
 		const linnen = lzer.filter((t) => t.innen.length >= 3).map((t) => cw(ring(t.innen))).filter((a) => a.length >= 3);
 		const mat = materialFuer(o);

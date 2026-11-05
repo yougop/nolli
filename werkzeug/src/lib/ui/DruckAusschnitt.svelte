@@ -3,7 +3,7 @@
 	import { t, zahl } from '$lib/sprache.svelte';
 	import { Rahmen } from '$lib/geo/rahmen';
 	import { zeichneBlatt } from '$lib/zeichnen';
-	import { druckMasse } from '$lib/export/druck';
+	import type { druckMasse } from '$lib/export/druck';
 	import type { Objekt } from '$lib/osm';
 
 	/**
@@ -12,7 +12,8 @@
 	 * ein Rechteck: in der Mitte ziehen verschiebt es, an den Ecken ziehen
 	 * ändert die Größe. Im Rechteck steht, wie groß der Druck wird.
 	 */
-	let { objekte, r }: { objekte: Objekt[]; r: Rahmen } = $props();
+	/** `masse` kommt von der Seite, die sie ohnehin rechnet; eine zweite Zählung je Mausbewegung wäre zu teuer. */
+	let { objekte, r, masse }: { objekte: Objekt[]; r: Rahmen; masse: ReturnType<typeof druckMasse> } = $props();
 
 	let bild = $state('');
 	$effect(() => {
@@ -28,7 +29,6 @@
 	});
 
 	const a = $derived(z.druck.ausschnitt);
-	const masse = $derived(druckMasse(objekte, r, z.druck));
 	let flaeche = $state<HTMLDivElement | null>(null);
 	/** Der Plan passt ganz in die Bühne: Größe aus dem freien Platz und dem Seitenverhältnis. */
 	let platz = $state<HTMLDivElement | null>(null);
@@ -115,8 +115,6 @@
 	}
 	/** Pfeiltasten schieben das Rechteck, mit Umschalt in größeren Schritten. */
 	function taste(e: KeyboardEvent) {
-		const t = (e.target as HTMLElement | null)?.tagName;
-		if (t === 'INPUT' || t === 'TEXTAREA') return;
 		const d = e.shiftKey ? 0.05 : 0.01;
 		const [dx, dy] = e.key === 'ArrowLeft' ? [-d, 0] : e.key === 'ArrowRight' ? [d, 0] : e.key === 'ArrowUp' ? [0, d] : e.key === 'ArrowDown' ? [0, -d] : [0, 0];
 		if (!dx && !dy) return;
@@ -143,7 +141,7 @@
 
 <!-- Am Fenster, nicht am Griff: Mit Pointer Capture riss das Ziehen nach
      zwei Bewegungen ab (gemessen 05.11.2026). -->
-<svelte:window onpointermove={bewegen} onpointerup={hoch} onpointercancel={hoch} onkeydown={taste} />
+<svelte:window onpointermove={bewegen} onpointerup={hoch} onpointercancel={hoch} />
 
 <div class="buehne-druck">
 	<div class="platz" bind:this={platz} onwheel={rad} onpointerdown={planRunter} oncontextmenu={(e) => e.preventDefault()} role="presentation" class:zieht={zieht?.art === 'plan'}>
@@ -156,10 +154,15 @@
 		<div class="maske" style:left="0" style:top="{(1 - a.y0) * 100}%" style:width="100%" style:height="{a.y0 * 100}%"></div>
 		<div class="maske" style:left="0" style:top="{(1 - a.y1) * 100}%" style:width="{a.x0 * 100}%" style:height="{(a.y1 - a.y0) * 100}%"></div>
 		<div class="maske" style:left="{a.x1 * 100}%" style:top="{(1 - a.y1) * 100}%" style:width="{(1 - a.x1) * 100}%" style:height="{(a.y1 - a.y0) * 100}%"></div>
-		<div class="auswahl" role="presentation"
+		<!-- Fokussierbar: Pfeiltasten schieben nur, wenn das Rechteck den Fokus hat,
+		     nicht während man die Leiste mit Tab durchläuft. Ein eigenes Werkzeug
+		     ohne passende ARIA-Rolle; die Beschriftung sagt, was es tut. -->
+		<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+		<div class="auswahl" role="group" tabindex="0" aria-label={t().ausgeben.druckRechteckWas}
 			style:left="{a.x0 * 100}%" style:width="{(a.x1 - a.x0) * 100}%"
 			style:top="{(1 - a.y1) * 100}%" style:height="{(a.y1 - a.y0) * 100}%"
-			onpointerdown={(e) => runter(e, 'mitte')}>
+			onpointerdown={(e) => runter(e, 'mitte')} onkeydown={taste}>
 			<span class="mass mono">{zahl(Math.round(masse.breiteMm))} × {zahl(Math.round(masse.hoeheMm))} mm · 1:{zahl(masse.massstab)}</span>
 			{#each ['nw', 'ne', 'sw', 'se'] as ecke}
 				<span class="griff {ecke}" role="presentation" onpointerdown={(e) => runter(e, ecke as 'nw')}></span>
@@ -243,14 +246,16 @@
 		position: absolute; right: 18px; top: 18px; z-index: 2; width: 248px;
 		display: grid; gap: 7px; padding: 12px;
 		background: var(--blatt); border: 1px solid var(--linie); border-radius: var(--rund); box-shadow: var(--heben);
-		font-size: 12px; color: var(--tinte-2);
+		font-size: 12.5px; color: var(--tinte-2);
 	}
-	.tafel .unter { font-size: 10.5px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--tinte-3); }
+	/* Dieselben Maße wie die Wahlknöpfe der Seite, damit beide Tafeln eine Sprache sprechen. */
+	.tafel .unter { font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--tinte-3); }
 	.tafel .wahl { display: flex; gap: 4px; flex-wrap: wrap; }
 	.tafel .wahl button {
-		flex: 1; padding: 5px 6px; font: inherit; font-size: 11.5px; cursor: pointer;
-		background: var(--blatt); color: var(--tinte); border: 1px solid var(--linie); border-radius: var(--rund);
+		flex: 1; padding: 7px 4px; font: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer;
+		background: var(--grund); color: var(--tinte-2); border: 1px solid var(--linie); border-radius: var(--rund);
 	}
+	.tafel .wahl button:hover:not(:disabled):not(.an) { color: var(--tinte); }
 	.tafel .wahl button.an { background: var(--tinte); color: var(--blatt); border-color: var(--tinte); }
 	.tafel .wahl button:disabled { opacity: 0.42; cursor: default; }
 	.tafel .zeile { display: grid; grid-template-columns: 74px 1fr 52px; align-items: center; gap: 6px; }

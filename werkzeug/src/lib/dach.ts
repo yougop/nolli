@@ -1,5 +1,6 @@
 import earcut from 'earcut';
 import type { Objekt } from './osm';
+import { drin, ringflaeche, gegenUhr } from './schneiden';
 
 /**
  * Dachformen aus OpenStreetMap (04.11.2026, nach dem Vergleich mit f4map).
@@ -101,21 +102,26 @@ export function dachAusTags(t: Record<string, string>, ring: P[]):
 	if (!form || ring.length < 3) return null;
 	const r = rechteck(ring);
 	const stufen = meter(t['roof:levels']);
-	const vorgabe = form === 'pult' ? 2 * r.hv * 0.21 : form === 'zelt' ? r.hv * 0.84 : form === 'kuppel' ? r.hv : r.hv * 0.62;
+	const ri = richtung(t['roof:direction']);
+	// Ein Pultdach fällt über seinen ganzen Lauf; der ist die Ausdehnung in
+	// `roof:direction`, ohne Angabe die kurze Seite. Sonst stimmte die Neigung
+	// nicht, sobald die Richtung die lange Seite ist (Fehlersuche, 05.11.2026).
+	let lauf = 2 * r.hv;
+	if (form === 'pult' && ri !== undefined) {
+		const a = (ri * Math.PI) / 180, qx = Math.sin(a), qy = Math.cos(a);
+		let t0 = Infinity, t1 = -Infinity;
+		for (const [x, y] of ring) { const v = x * qx + y * qy; t0 = Math.min(t0, v); t1 = Math.max(t1, v); }
+		lauf = Math.max(0.1, t1 - t0);
+	}
+	const vorgabe = form === 'pult' ? lauf * 0.21 : form === 'zelt' ? r.hv * 0.84 : form === 'kuppel' ? r.hv : r.hv * 0.62;
 	const hoeheM = Math.min(40, Math.max(0.5, meter(t['roof:height']) ?? (stufen ? stufen * 3 : vorgabe)));
 	return {
 		form, hoeheM,
-		...(richtung(t['roof:direction']) !== undefined ? { richtung: richtung(t['roof:direction']) } : {}),
+		...(ri !== undefined ? { richtung: ri } : {}),
 		...(t['roof:orientation'] === 'across' ? { quer: true } : {})
 	};
 }
 
-const flaeche2 = (r: P[]) => {
-	let s = 0;
-	for (let i = 0, j = r.length - 1; i < r.length; j = i++) s += r[j][0] * r[i][1] - r[i][0] * r[j][1];
-	return s / 2;
-};
-const ccw = (r: P[]) => (flaeche2(r) < 0 ? r.slice().reverse() : r);
 
 /** Sutherland–Hodgman: beliebiges Vieleck gegen ein konvexes, gegen den Uhrzeigersinn. */
 function schneiden(subjekt: P[], fenster: P[]): P[] {
@@ -140,15 +146,6 @@ function schneiden(subjekt: P[], fenster: P[]): P[] {
 	return aus;
 }
 
-function punktIn(p: P, ring: P[]) {
-	let drin = false;
-	for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-		const [xi, yi] = ring[i], [xj, yj] = ring[j];
-		if (yi > p[1] !== yj > p[1] && p[0] < ((xj - xi) * (p[1] - yi)) / (yj - yi) + xi) drin = !drin;
-	}
-	return drin;
-}
-
 /** Parameter in (0, 1), an denen die Strecke a–b die Strecke c–d kreuzt. */
 function kreuzung(a: P, b: P, c: P, d: P): number | null {
 	const r: P = [b[0] - a[0], b[1] - a[1]], s: P = [d[0] - c[0], d[1] - c[1]];
@@ -167,11 +164,12 @@ export const hatDach = (o: Objekt) => !!o.dachform && !(o.loecher && o.loecher.l
  * `teile` sind die Außenringe, schon am Rahmen geschnitten; `ganz` sagt, ob
  * der Körper ungeschnitten ist (dann bekommen Zelt und Kuppel ihre Spitze
  * über der Mitte des Grundrisses, auch auf runden Türmen). `boden` ist das
- * Gelände unter dem Körper, `unter` seine Unterkante darüber. Dreiecke
+ * Gelände unter dem Körper, `unter` seine Unterkante darüber; `mitBoden`
+ * erzwingt die Bodenfläche auch am Boden stehend. Dreiecke
  * zeigen nach außen, gegen den Uhrzeigersinn von außen gesehen.
  */
 export function dachKoerper(o: Objekt, teile: P[][], boden: number, unter: number, ganz: boolean,
-	knickGrad = 20): { dreiecke: number[]; kanten: number[] } {
+	knickGrad = 20, mitBoden = unter > 0): { dreiecke: number[]; kanten: number[] } {
 	const dreiecke: number[] = [], kanten: number[] = [];
 	const form = o.dachform!;
 	const oben = boden + (o.hoeheM ?? 8), fuss = boden + unter;
@@ -228,7 +226,7 @@ export function dachKoerper(o: Objekt, teile: P[][], boden: number, unter: numbe
 			[[0, 0], [(-M * L) / W, -M], [(M * L) / W, -M]],
 			[[0, 0], [M, (-M * W) / L], [M, (M * W) / L]],
 			[[0, 0], [-M, (M * W) / L], [-M, (-M * W) / L]]];
-	const felder = felderST.map((f) => ccw(f.map(([s, t]) => xy(s, t))));
+	const felder = felderST.map((f) => gegenUhr(f.map(([s, t]) => xy(s, t))));
 	// Grate und First als Strecken (in s, t), für die Kanten.
 	const grateST: [P, P][] =
 		form === 'sattel' ? [[[-M, 0], [M, 0]]]
@@ -241,7 +239,7 @@ export function dachKoerper(o: Objekt, teile: P[][], boden: number, unter: numbe
 	const radial = ganz && (form === 'zelt' || form === 'kuppel');
 
 	for (const roh of teile) {
-		const teil = ccw(roh);
+		const teil = gegenUhr(roh);
 		if (teil.length < 3) continue;
 		const n = teil.length;
 		let mx = 0, my = 0, a6 = 0;
@@ -283,12 +281,12 @@ export function dachKoerper(o: Objekt, teile: P[][], boden: number, unter: numbe
 			if (lu > 1e-6 && lw > 1e-6 && (ux * wx + uy * wy) / (lu * lw) < knick) linie(a, fuss, a, zw(a));
 		}
 
-		// Boden, wenn der Körper schwebt
-		if (unter > 0) {
+		// Boden, wenn der Körper schwebt oder der Abnehmer ihn geschlossen braucht (3D-Druck)
+		if (mitBoden) {
 			const idx = earcut(rand.flat());
 			for (let k = 0; k < idx.length; k += 3) {
 				const A = rand[idx[k]], B = rand[idx[k + 1]], C = rand[idx[k + 2]];
-				const rechts = flaeche2([A, B, C]) > 0;
+				const rechts = ringflaeche([A, B, C]) > 0;
 				tri([A[0], A[1], fuss], rechts ? [C[0], C[1], fuss] : [B[0], B[1], fuss], rechts ? [B[0], B[1], fuss] : [C[0], C[1], fuss]);
 			}
 		}
@@ -327,14 +325,14 @@ export function dachKoerper(o: Objekt, teile: P[][], boden: number, unter: numbe
 		// konvexes Feld ist exakt.
 		const idx = earcut(teil.flat());
 		for (let k = 0; k < idx.length; k += 3) {
-			const grund = ccw([teil[idx[k]], teil[idx[k + 1]], teil[idx[k + 2]]]);
+			const grund = gegenUhr([teil[idx[k]], teil[idx[k + 1]], teil[idx[k + 2]]]);
 			for (const f of felder) {
 				const stueck = schneiden(grund, f);
-				if (stueck.length < 3 || Math.abs(flaeche2(stueck)) < 1e-6) continue;
+				if (stueck.length < 3 || Math.abs(ringflaeche(stueck)) < 1e-6) continue;
 				// konvex: als Fächer
 				for (let j = 1; j + 1 < stueck.length; j++) {
 					const A = stueck[0], B = stueck[j], C = stueck[j + 1];
-					if (Math.abs(flaeche2([A, B, C])) < 1e-9) continue;
+					if (Math.abs(ringflaeche([A, B, C])) < 1e-9) continue;
 					tri([A[0], A[1], z(A)], [B[0], B[1], z(B)], [C[0], C[1], z(C)]);
 				}
 			}
@@ -351,7 +349,7 @@ export function dachKoerper(o: Objekt, teile: P[][], boden: number, unter: numbe
 			for (let k = 0; k + 1 < ts.length; k++) {
 				const tm2 = (ts[k] + ts[k + 1]) / 2;
 				const m: P = [a[0] + (b[0] - a[0]) * tm2, a[1] + (b[1] - a[1]) * tm2];
-				if (!punktIn(m, teil)) continue;
+				if (!drin(m, teil)) continue;
 				const p0: P = [a[0] + (b[0] - a[0]) * ts[k], a[1] + (b[1] - a[1]) * ts[k]];
 				const p1: P = [a[0] + (b[0] - a[0]) * ts[k + 1], a[1] + (b[1] - a[1]) * ts[k + 1]];
 				linie(p0, z(p0), p1, z(p1));

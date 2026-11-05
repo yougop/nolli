@@ -147,13 +147,22 @@
 		zeichnen();
 	};
 	const hoch = () => (zieht = null);
+	const taste = (e: KeyboardEvent) => {
+		const s = e.shiftKey ? 0.3 : 0.1;
+		if (e.key === 'ArrowLeft') winkel -= s; else if (e.key === 'ArrowRight') winkel += s;
+		else if (e.key === 'ArrowUp') neigung = Math.min(1.5, neigung + s); else if (e.key === 'ArrowDown') neigung = Math.max(0.1, neigung - s);
+		else if (e.key === '+' || e.key === '=') abstand = Math.max(0.2, abstand * 0.9); else if (e.key === '-') abstand = Math.min(3, abstand * 1.1);
+		else return;
+		e.preventDefault(); zeichnen();
+	};
 	const rad = (e: WheelEvent) => { e.preventDefault(); abstand = Math.min(3, Math.max(0.2, abstand * (e.deltaY > 0 ? 1.1 : 0.9))); zeichnen(); };
 </script>
 
 <svelte:window onpointermove={bewegen} onpointerup={hoch} onpointercancel={hoch} />
 
 <div class="vorschau">
-	<canvas bind:this={leinwand} onpointerdown={runter} onwheel={rad}
+	<!-- Pfeiltasten drehen und kippen, +/− zoomen, damit die Vorschau auch ohne Maus geht. -->
+	<canvas bind:this={leinwand} tabindex="0" onpointerdown={runter} onwheel={rad} onkeydown={taste}
 		oncontextmenu={(e) => e.preventDefault()}
 		aria-label={t().ausgeben.druckVorschau}></canvas>
 	<p class="wink">{t().raum.wink}</p>

@@ -1,34 +1,24 @@
 {
- "wann": "2026-11-05 12:44",
- "gesamt": "5041c71f6e3b",
+ "wann": "2026-11-05 16:13 +01:00",
+ "commit": "a9c3c1a",
+ "sauber": true,
+ "gesamt": "26dc4f1a9bbc",
  "dateien": {
   "200.html": {
-   "bytes": 3244,
-   "hash": "364becd5cadd"
+   "bytes": 3245,
+   "hash": "952fd7da9f70"
   },
   "_app/immutable/assets/0.ECumOKm-.css": {
    "bytes": 2774,
    "hash": "8aeba599f3ae"
   },
-  "_app/immutable/assets/2.5zZyzTgO.css": {
-   "bytes": 116633,
-   "hash": "9202306f7506"
+  "_app/immutable/assets/2.CrsXkkHP.css": {
+   "bytes": 115555,
+   "hash": "c961ddaf3a4a"
   },
   "_app/immutable/assets/rhino3dm.CWOyICcB.wasm": {
    "bytes": 2670316,
    "hash": "18cb4b663cda"
-  },
-  "_app/immutable/chunks/3gLM3ms_.js": {
-   "bytes": 7959,
-   "hash": "8798701b8848"
-  },
-  "_app/immutable/chunks/3oFrnKv_.js": {
-   "bytes": 26650,
-   "hash": "67ecbc4a897c"
-  },
-  "_app/immutable/chunks/BcHPbPbc.js": {
-   "bytes": 25155,
-   "hash": "2913bf8af0f0"
   },
   "_app/immutable/chunks/Bjy-W4x2.js": {
    "bytes": 1365,
@@ -42,17 +32,29 @@
    "bytes": 75339,
    "hash": "82788d3f8e17"
   },
-  "_app/immutable/chunks/CCiUeTwy.js": {
-   "bytes": 106,
-   "hash": "68649de4118a"
+  "_app/immutable/chunks/CMeGOZ4B.js": {
+   "bytes": 45593,
+   "hash": "3ccdc5bc0e6e"
+  },
+  "_app/immutable/chunks/CNnI6Vcq.js": {
+   "bytes": 25150,
+   "hash": "dbc89ab84931"
+  },
+  "_app/immutable/chunks/CoO1JURA.js": {
+   "bytes": 7681,
+   "hash": "bf13a9d73ec9"
   },
   "_app/immutable/chunks/DKJmJbVV.js": {
    "bytes": 47678,
    "hash": "684de6e9bd31"
   },
-  "_app/immutable/chunks/N1Zdto2W.js": {
-   "bytes": 45880,
-   "hash": "a58402302d11"
+  "_app/immutable/chunks/DQ31rklH.js": {
+   "bytes": 106,
+   "hash": "d4fecbe1ed7b"
+  },
+  "_app/immutable/chunks/Di5zM6W5.js": {
+   "bytes": 26648,
+   "hash": "dbfa9d555505"
   },
   "_app/immutable/chunks/uBIymjUX.js": {
    "bytes": 1233,
@@ -62,33 +64,33 @@
    "bytes": 65,
    "hash": "0214edcff772"
   },
-  "_app/immutable/entry/app.BivMwSV_.js": {
+  "_app/immutable/entry/app.3BCXPM_n.js": {
    "bytes": 2955,
-   "hash": "aa60a13805d6"
+   "hash": "25a630b9886c"
   },
-  "_app/immutable/entry/start.DU8uXiAh.js": {
+  "_app/immutable/entry/start.D-ofH-3y.js": {
    "bytes": 77,
-   "hash": "234b1dc6d25e"
+   "hash": "0f89c1c9a34b"
   },
   "_app/immutable/nodes/0.CxCDDfdI.js": {
    "bytes": 238,
    "hash": "14cb9ba6397c"
   },
-  "_app/immutable/nodes/1.Bfz63jez.js": {
+  "_app/immutable/nodes/1.C4Z9XXMZ.js": {
    "bytes": 576,
-   "hash": "939ca2087a5f"
+   "hash": "0ccbef849007"
   },
-  "_app/immutable/nodes/2.DE0URV-r.js": {
-   "bytes": 2081645,
-   "hash": "3661291388f0"
+  "_app/immutable/nodes/2.CRFrynAQ.js": {
+   "bytes": 2081680,
+   "hash": "18fa5361b3df"
   },
   "_app/immutable/workers/maplibre-gl-worker-B71oqUJw.js": {
    "bytes": 506998,
    "hash": "759b81758dc3"
   },
   "_app/version.json": {
-   "bytes": 27,
-   "hash": "132e5b887da0"
+   "bytes": 21,
+   "hash": "c8462bd6e6bb"
   },
   "beispiele/hafencity.json": {
    "bytes": 3708497,
@@ -103,8 +105,8 @@
    "hash": "5032bcab02e3"
   },
   "index.html": {
-   "bytes": 3660,
-   "hash": "2557fddd8b40"
+   "bytes": 3661,
+   "hash": "ae211a9bb8e5"
   },
   "robots.txt": {
    "bytes": 63,
@@ -115,8 +117,8 @@
    "hash": "83c005d49d8a"
   },
   "schrift/jetbrains-500.woff2": {
-   "bytes": 31432,
-   "hash": "83c005d49d8a"
+   "bytes": 21832,
+   "hash": "cb182feeed4d"
   },
   "schrift/satoshi-400.woff2": {
    "bytes": 25516,

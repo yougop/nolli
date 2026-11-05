@@ -1,0 +1,253 @@
+import earcut from 'earcut';
+import { zipSync, strToU8 } from 'fflate';
+import { unterkante, umrisseMitTeilen, type Objekt } from '../osm';
+import { hatDach, dachKoerper } from '../dach';
+import { amRahmen } from '../schneiden';
+import { type Gelaende, tiefsteUnter, feldImRahmen, netzHoehe, type Feld } from '../geo/gelaende';
+import type { Rahmen } from '../geo/rahmen';
+
+/**
+ * Ein Modell für den 3D-Druck (Volker, 05.11.2026).
+ *
+ * Anders als `model.obj` muss jeder Körper geschlossen sein, sonst weiß der
+ * Slicer nicht, was innen ist. Deshalb:
+ *
+ * - **Grundplatte** als eigener Körper: unten eben auf null, oben das
+ *   Gelände (überhöht, wenn gewünscht) oder eben, dazwischen die Seiten.
+ *   Oben und unten dasselbe Raster, damit jede Kante genau zwei Dreiecke hat.
+ * - **Häuser** mit Boden, einen halben Millimeter in die Platte versenkt,
+ *   damit sie beim Druck mit ihr verschmelzen. Die Höhe der Häuser wird nicht
+ *   überhöht, nur das Gelände, auf dem sie stehen.
+ * - **Schwebende Teile** (London Eye, Brücken, Auskragungen) brauchten
+ *   Stützen. Ab Werk werden sie bis zum Boden durchgezogen, wahlweise
+ *   weggelassen.
+ * - **Kacheln:** Ist der Rahmen im gewählten Maßstab größer als das
+ *   Druckbett, wird er in gleich große Kacheln geteilt, je Kachel ein Satz
+ *   Körper. Häuser über einer Kachelgrenze werden dort geschnitten.
+ *
+ * Einheit ist der Millimeter. Ursprung ist die linke untere Ecke der Kachel.
+ */
+export type Druckwahl = {
+	/** `massstab`: fester Maßstab, `bett`: längere Seite genau `bettMm`. */
+	groesse: 'massstab' | 'bett';
+	massstab: number;
+	bettMm: number;
+	sockelMm: number;
+	ueberhoehung: number;
+	schwebend: 'durchziehen' | 'weglassen';
+};
+export const DRUCK_VORGABE: Druckwahl = {
+	groesse: 'bett', massstab: 1000, bettMm: 200, sockelMm: 3, ueberhoehung: 1, schwebend: 'durchziehen'
+};
+/** Was ein Drucker mit 0,4-mm-Düse noch sauber legt. */
+export const MINDEST_MM = 0.8;
+const VERSENKT_MM = 0.5;
+
+type Netz = number[];
+
+/**
+ * Ein Ring ohne doppelte Punkte. OSM schließt Ringe mit dem ersten Punkt,
+ * und manche Wege tragen denselben Punkt zweimal hintereinander. Daraus
+ * würden Wände der Länge null, und der Körper wäre für den Slicer offen.
+ */
+function sauber(ring: [number, number][]): [number, number][] {
+	const aus: [number, number][] = [];
+	for (const p of ring) {
+		const q = aus[aus.length - 1];
+		if (!q || Math.hypot(p[0] - q[0], p[1] - q[1]) > 1e-3) aus.push(p);
+	}
+	while (aus.length > 1 && Math.hypot(aus[0][0] - aus[aus.length - 1][0], aus[0][1] - aus[aus.length - 1][1]) <= 1e-3) aus.pop();
+	return aus;
+}   // x y z je Ecke, drei Ecken je Dreieck, außen gegen den Uhrzeigersinn
+
+/** Maße vorab, für die Anzeige: Millimeter je Meter, Gesamtgröße, Kacheln, zu kleine Häuser. */
+export function druckMasse(objekte: Objekt[], r: Rahmen, w: Druckwahl) {
+	const B = r.x1 - r.x0, H = r.y1 - r.y0;
+	const k = w.groesse === 'bett' ? w.bettMm / Math.max(B, H) : 1000 / w.massstab;
+	const breiteMm = B * k, hoeheMm = H * k;
+	const nx = w.groesse === 'bett' ? 1 : Math.max(1, Math.ceil(breiteMm / w.bettMm - 1e-6));
+	const ny = w.groesse === 'bett' ? 1 : Math.max(1, Math.ceil(hoeheMm / w.bettMm - 1e-6));
+	let klein = 0;
+	for (const o of objekte) {
+		if ((o.ebene !== 'gebaeude' && o.ebene !== 'erhalt') || o.zustand === 'gestrichen' || !o.ringe.length) continue;
+		let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+		for (const [x, y] of o.ringe[0]) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+		if (Math.min(x1 - x0, y1 - y0) * k < MINDEST_MM) klein++;
+	}
+	return { k, breiteMm, hoeheMm, nx, ny, massstab: Math.round(1000 / k), klein };
+}
+
+/** Die Körper je Kachel, in Millimetern. */
+export function druckModell(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | null, w: Druckwahl) {
+	const m = druckMasse(objekte, r, w);
+	const feld = gelaende ? feldImRahmen(gelaende, r) : null;
+	const zRef = feld ? feld.min : 0;
+	const ue = feld ? w.ueberhoehung : 1;
+	/** Geländehöhe in mm über der Plattenunterseite. */
+	const plattenZ = (zGelaende: number) => w.sockelMm + (zGelaende - zRef) * m.k * ue;
+	const ersetzt = umrisseMitTeilen(objekte);
+	const B = r.x1 - r.x0, H = r.y1 - r.y0;
+	const kb = B / m.nx, kh = H / m.ny;
+	const kacheln: { name: string; platte: Netz; haeuser: Netz }[] = [];
+
+	for (let j = 0; j < m.ny; j++)
+		for (let i = 0; i < m.nx; i++) {
+			const x0 = r.x0 + i * kb, y0 = r.y0 + j * kh, x1 = x0 + kb, y1 = y0 + kh;
+			const mm = (x: number, y: number): [number, number] => [(x - x0) * m.k, (y - y0) * m.k];
+			const platte = grundplatte(feld, r, x0, y0, x1, y1, m.k, plattenZ);
+			const haeuser: Netz = [];
+			for (const roh of objekte) {
+				if (roh.ebene !== 'gebaeude' && roh.ebene !== 'erhalt') continue;
+				if (roh.zustand === 'gestrichen' || !roh.ringe.length || ersetzt.has(roh.id)) continue;
+				const schwebt = unterkante(roh) > 0;
+				if (schwebt && w.schwebend === 'weglassen') continue;
+				const o: Objekt = schwebt ? { ...roh, unterM: undefined } : roh;
+				const teile = o.ringe.map((x) => sauber(amRahmen(x, x0, y0, x1, y1).innen)).filter((x) => x.length >= 3);
+				if (!teile.length) continue;
+				const boden = gelaende ? tiefsteUnter(gelaende, o.ringe) : 0;
+				// Fuß in mm, versenkt; darüber zählen die Meter des Hauses unverzerrt.
+				const fussMm = plattenZ(boden) - VERSENKT_MM;
+				const hinein = (q: number[]) => {
+					for (let a = 0; a < q.length; a += 3) {
+						const [x, y] = mm(q[a], q[a + 1]);
+						haeuser.push(x, y, fussMm + q[a + 2] * m.k);
+					}
+				};
+				const ganz = o.ringe.length === 1 && teile.length === 1 && amRahmen(o.ringe[0], x0, y0, x1, y1).aussen.length === 0;
+				const hMm = Math.max(VERSENKT_MM + 0.4, (o.hoeheM ?? 8) * m.k + VERSENKT_MM);
+				if (hatDach(o)) {
+					// Boden über eine winzige Unterkante, damit `dachKoerper` ihn mitbaut.
+					const eps = 1e-3 / m.k;
+					hinein(dachKoerper({ ...o, hoeheM: hMm / m.k }, teile, -eps, eps, ganz).dreiecke);
+				} else {
+					const loecher = (o.loecher ?? []).map((x) => sauber(amRahmen(x, x0, y0, x1, y1).innen)).filter((x) => x.length >= 3);
+					hinein(quader(teile, loecher, hMm / m.k));
+				}
+			}
+			kacheln.push({ name: m.nx * m.ny > 1 ? `kachel_${String.fromCharCode(65 + j)}${i + 1}` : 'modell', platte, haeuser });
+		}
+	return { kacheln, masse: m };
+}
+
+/** Die Platte: Raster oben (Gelände) und unten (null), Seiten dazwischen. Alles geschlossen. */
+function grundplatte(feld: Feld | null, r: Rahmen, x0: number, y0: number, x1: number, y1: number,
+	k: number, plattenZ: (z: number) => number): Netz {
+	const aus: Netz = [];
+	const weite = feld ? feld.dx : Infinity;
+	const nx = Math.max(1, Math.ceil((x1 - x0) / weite)), ny = Math.max(1, Math.ceil((y1 - y0) / weite));
+	const P = (i: number, j: number) => {
+		const x = x0 + ((x1 - x0) * i) / nx, y = y0 + ((y1 - y0) * j) / ny;
+		const z = feld ? plattenZ(netzHoehe(feld, x - r.x0, y - r.y0)) : plattenZ(0);
+		return [(x - x0) * k, (y - y0) * k, z];
+	};
+	const oben: number[][][] = [];
+	for (let j = 0; j <= ny; j++) { oben.push([]); for (let i = 0; i <= nx; i++) oben[j].push(P(i, j)); }
+	const unten = (p: number[]) => [p[0], p[1], 0];
+	const tri = (a: number[], b: number[], c: number[]) => aus.push(...a, ...b, ...c);
+	for (let j = 0; j < ny; j++)
+		for (let i = 0; i < nx; i++) {
+			const a = oben[j][i], b = oben[j][i + 1], c = oben[j + 1][i + 1], d = oben[j + 1][i];
+			tri(a, b, c); tri(a, c, d);                                   // oben, nach oben
+			tri(unten(a), unten(c), unten(b)); tri(unten(a), unten(d), unten(c));   // unten, nach unten
+		}
+	// Seiten: der Rand gegen den Uhrzeigersinn, je Stück eine Wand nach außen.
+	const rand: number[][] = [];
+	for (let i = 0; i < nx; i++) rand.push(oben[0][i]);
+	for (let j = 0; j < ny; j++) rand.push(oben[j][nx]);
+	for (let i = nx; i > 0; i--) rand.push(oben[ny][i]);
+	for (let j = ny; j > 0; j--) rand.push(oben[j][0]);
+	for (let n = 0; n < rand.length; n++) {
+		const a = rand[n], b = rand[(n + 1) % rand.length];
+		tri(unten(a), unten(b), b); tri(unten(a), b, a);
+	}
+	return aus;
+}
+
+/** Ein flacher Körper mit Boden und Höfen, im Ortsgitter, Fuß auf null. */
+function quader(teile: [number, number][][], loecher: [number, number][][], h: number): Netz {
+	const aus: Netz = [];
+	const flaeche = (q: [number, number][]) => { let s = 0; for (let i = 0, j = q.length - 1; i < q.length; j = i++) s += q[j][0] * q[i][1] - q[i][0] * q[j][1]; return s / 2; };
+	const drin = (p: [number, number], q: [number, number][]) => {
+		let d = false;
+		for (let i = 0, j = q.length - 1; i < q.length; j = i++) if (q[i][1] > p[1] !== q[j][1] > p[1] && p[0] < ((q[j][0] - q[i][0]) * (p[1] - q[i][1])) / (q[j][1] - q[i][1]) + q[i][0]) d = !d;
+		return d;
+	};
+	for (const roh of teile) {
+		const aussen = flaeche(roh) < 0 ? roh.slice().reverse() : roh;
+		const hoefe = loecher.filter((l) => drin(l[0], aussen)).map((l) => (flaeche(l) > 0 ? l.slice().reverse() : l));
+		for (const kette of [aussen, ...hoefe])
+			for (let i = 0; i < kette.length; i++) {
+				const [ax, ay] = kette[i], [bx, by] = kette[(i + 1) % kette.length];
+				aus.push(ax, ay, 0, bx, by, 0, bx, by, h, ax, ay, 0, bx, by, h, ax, ay, h);
+			}
+		const flach: number[] = [], grenzen: number[] = [];
+		for (const [x, y] of aussen) flach.push(x, y);
+		for (const l of hoefe) { grenzen.push(flach.length / 2); for (const [x, y] of l) flach.push(x, y); }
+		const alle = [aussen, ...hoefe].flat();
+		const idx = earcut(flach, grenzen);
+		for (let k = 0; k < idx.length; k += 3) {
+			const A = alle[idx[k]], B = alle[idx[k + 1]], C = alle[idx[k + 2]];
+			const ccw = (B[0] - A[0]) * (C[1] - A[1]) - (B[1] - A[1]) * (C[0] - A[0]) > 0;
+			const [P, Q] = ccw ? [B, C] : [C, B];
+			aus.push(A[0], A[1], h, P[0], P[1], h, Q[0], Q[1], h);   // Dach nach oben
+			aus.push(A[0], A[1], 0, Q[0], Q[1], 0, P[0], P[1], 0);   // Boden nach unten
+		}
+	}
+	return aus;
+}
+
+/** Binäres STL, alle Körper zusammen. */
+export function alsStl(netze: Netz[], kopf = 'Nolli 3D print, mm'): Uint8Array {
+	const n = netze.reduce((s, q) => s + q.length / 9, 0);
+	const buf = new ArrayBuffer(84 + n * 50), dv = new DataView(buf);
+	const k = strToU8(kopf.slice(0, 79));
+	new Uint8Array(buf, 0, 80).set(k);
+	dv.setUint32(80, n, true);
+	let o = 84;
+	for (const q of netze)
+		for (let i = 0; i < q.length; i += 9) {
+			const ux = q[i + 3] - q[i], uy = q[i + 4] - q[i + 1], uz = q[i + 5] - q[i + 2];
+			const wx = q[i + 6] - q[i], wy = q[i + 7] - q[i + 1], wz = q[i + 8] - q[i + 2];
+			const nx = uy * wz - uz * wy, ny = uz * wx - ux * wz, nz = ux * wy - uy * wx, l = Math.hypot(nx, ny, nz) || 1;
+			dv.setFloat32(o, nx / l, true); dv.setFloat32(o + 4, ny / l, true); dv.setFloat32(o + 8, nz / l, true);
+			for (let j = 0; j < 9; j++) dv.setFloat32(o + 12 + j * 4, q[i + j], true);
+			o += 50;
+		}
+	return new Uint8Array(buf);
+}
+
+/**
+ * 3MF: Platte und Häuser als zwei Objekte, damit sie sich in zwei Farben
+ * drucken lassen. Die Ecken werden zusammengelegt (auf 1 µm), sonst sieht
+ * der Slicer keine geschlossenen Kanten.
+ */
+export function als3mf(objekte: { name: string; netz: Netz }[]): Uint8Array {
+	const teile: string[] = [];
+	objekte.forEach((ob, n) => {
+		const index = new Map<string, number>(), ecken: string[] = [], dreiecke: string[] = [];
+		const ecke = (x: number, y: number, z: number) => {
+			const s = `${x.toFixed(3)} ${y.toFixed(3)} ${z.toFixed(3)}`;
+			let i = index.get(s);
+			if (i === undefined) { i = ecken.length; index.set(s, i); const [a, b, c] = s.split(' '); ecken.push(`<vertex x="${a}" y="${b}" z="${c}"/>`); }
+			return i;
+		};
+		for (let i = 0; i < ob.netz.length; i += 9) {
+			const a = ecke(ob.netz[i], ob.netz[i + 1], ob.netz[i + 2]);
+			const b = ecke(ob.netz[i + 3], ob.netz[i + 4], ob.netz[i + 5]);
+			const c = ecke(ob.netz[i + 6], ob.netz[i + 7], ob.netz[i + 8]);
+			if (a !== b && b !== c && a !== c) dreiecke.push(`<triangle v1="${a}" v2="${b}" v3="${c}"/>`);
+		}
+		teile.push(`<object id="${n + 1}" name="${ob.name}" type="model"><mesh><vertices>${ecken.join('')}</vertices><triangles>${dreiecke.join('')}</triangles></mesh></object>`);
+	});
+	const modell = `<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xml:lang="en" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+<metadata name="Application">Nolli</metadata>
+<resources>${teile.join('\n')}</resources>
+<build>${objekte.map((_, n) => `<item objectid="${n + 1}"/>`).join('')}</build>
+</model>`;
+	return zipSync({
+		'[Content_Types].xml': strToU8(`<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>`),
+		'_rels/.rels': strToU8(`<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>`),
+		'3D/3dmodel.model': strToU8(modell)
+	});
+}

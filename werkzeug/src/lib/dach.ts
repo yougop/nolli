@@ -253,6 +253,10 @@ export function dachKoerper(o: Objekt, teile: P[][], boden: number, unter: numbe
 		const zw = (p: P) => (radial ? traufe : z(p));
 
 		// Wände: jede Kante an den Feldgrenzen geteilt, oben dem Dach folgend.
+		// `rand` sammelt die Teilungspunkte, damit der Boden dieselben Ecken hat:
+		// Sonst trifft eine geteilte Wandkante auf eine ungeteilte Bodenkante,
+		// und für den 3D-Druck ist der Körper nicht geschlossen.
+		const rand: P[] = [];
 		for (let i = 0; i < n; i++) {
 			const a = teil[i], b = teil[(i + 1) % n];
 			const ts = [0, 1];
@@ -266,6 +270,7 @@ export function dachKoerper(o: Objekt, teile: P[][], boden: number, unter: numbe
 				const p0: P = [a[0] + (b[0] - a[0]) * ts[k], a[1] + (b[1] - a[1]) * ts[k]];
 				const p1: P = [a[0] + (b[0] - a[0]) * ts[k + 1], a[1] + (b[1] - a[1]) * ts[k + 1]];
 				const z0 = zw(p0), z1 = zw(p1);
+				rand.push(p0);
 				tri([p0[0], p0[1], fuss], [p1[0], p1[1], fuss], [p1[0], p1[1], z1]);
 				tri([p0[0], p0[1], fuss], [p1[0], p1[1], z1], [p0[0], p0[1], z0]);
 				linie(p0, z0, p1, z1);
@@ -280,9 +285,9 @@ export function dachKoerper(o: Objekt, teile: P[][], boden: number, unter: numbe
 
 		// Boden, wenn der Körper schwebt
 		if (unter > 0) {
-			const idx = earcut(teil.flat());
+			const idx = earcut(rand.flat());
 			for (let k = 0; k < idx.length; k += 3) {
-				const A = teil[idx[k]], B = teil[idx[k + 1]], C = teil[idx[k + 2]];
+				const A = rand[idx[k]], B = rand[idx[k + 1]], C = rand[idx[k + 2]];
 				const rechts = flaeche2([A, B, C]) > 0;
 				tri([A[0], A[1], fuss], rechts ? [C[0], C[1], fuss] : [B[0], B[1], fuss], rechts ? [B[0], B[1], fuss] : [C[0], C[1], fuss]);
 			}

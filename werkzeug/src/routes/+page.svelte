@@ -3,6 +3,7 @@
 	import Blatt from '$lib/ui/Blatt.svelte';
 	import Raum from '$lib/ui/Raum.svelte';
 	import { DACH_NAME } from '$lib/dach';
+	import { druckMasse } from '$lib/export/druck';
 	import { z, VERHAELTNISSE, AUSGABEBREITEN, KANTEN_VORGABE, SONNE_VORGABE } from '$lib/zustand.svelte';
 	import { breiteName, BILDFORMATE, gedreht } from '$lib/geo/rahmen';
 	import { STIFTE, FAHRBAHN } from '$lib/stifte';
@@ -952,7 +953,29 @@
 		}));
 	}
 
-	async function ausgeben(art: 'bild' | 'dxf' | 'obj' | 'vertrag' | 'paket' | '3dm') {
+	/** Maße des Druckmodells für die Anzeige, ohne es zu bauen. */
+	const druckJetzt = $derived(r ? druckMasse(bestand, r, z.druck) : null);
+	/**
+	 * Das Druckmodell: je Kachel eine Datei, bei mehreren Kacheln zusammen im ZIP.
+	 * Die Bibliothek kommt erst beim ersten Druck, wie Rhino.
+	 */
+	async function druckDatei(rr: Rahmen, art: '3mf' | 'stl', basis: string) {
+		const { druckModell, als3mf, alsStl } = await import('$lib/export/druck');
+		const { kacheln } = druckModell(bestand, rr, z.gelaendeJetzt, z.druck);
+		const datei = (k: (typeof kacheln)[number]) => art === '3mf'
+			? als3mf([{ name: 'base', netz: k.platte }, { name: 'buildings', netz: k.haeuser }])
+			: alsStl([k.platte, k.haeuser], `Nolli ${basis} ${k.name}, mm`);
+		if (kacheln.length === 1) {
+			laden(datei(kacheln[0]) as BlobPart, `${basis}_print.${art}`, art === '3mf' ? 'model/3mf' : 'model/stl');
+			return;
+		}
+		const { zipSync } = await import('fflate');
+		const inhalt: Record<string, Uint8Array> = {};
+		for (const k of kacheln) inhalt[`${basis}_print_${k.name}.${art}`] = datei(k);
+		laden(zipSync(inhalt) as BlobPart, `${basis}_print_${art}.zip`, 'application/zip');
+	}
+
+	async function ausgeben(art: 'bild' | 'dxf' | 'obj' | 'vertrag' | 'paket' | '3dm' | '3mf' | 'stl') {
 		if (!r) return;
 		arbeitet = art;
 		// Ohne diese Zeile bliebe die Beschriftung stehen: das Zeichnen von
@@ -974,6 +997,8 @@
 				laden(await paket(await modellTeile(r, false)), `${basis}_model.zip`, 'application/zip');
 			} else if (art === '3dm') {
 				laden(await rhinoDatei(r) as BlobPart, `${basis}.3dm`, 'application/octet-stream');
+			} else if (art === '3mf' || art === 'stl') {
+				await druckDatei(r, art, basis);
 			} else if (art === 'paket') {
 				laden(await paketSchnueren(basis), `${basis}.zip`, 'application/zip');
 			} else {
@@ -1732,6 +1757,61 @@
 					</div>
 				{/if}
 
+				<!--
+					3D-Druck als eigene Karte (Volker, 05.11.2026): eigene Größe, eigener
+					Sockel, eigene Überhöhung. Die Datei selbst steht unten mit den
+					anderen Ausgängen.
+				-->
+				{#if druckJetzt}
+					<div class="teil">
+						<span class="feld feldzeile">{t().ausgeben.druck}<em class="mono">{t().ausgeben.druckMass(druckJetzt.breiteMm, druckJetzt.hoeheMm, druckJetzt.massstab)}</em></span>
+						<div class="bildrahmen">
+							<span class="unter">{t().ausgeben.druckGroesse}</span>
+							<div class="wahl schmal" role="group" aria-label={t().ausgeben.druckGroesse}>
+								<button type="button" class:an={z.druck.groesse === 'bett'} aria-pressed={z.druck.groesse === 'bett'} onclick={() => (z.druck.groesse = 'bett')}>{t().ausgeben.druckBett}</button>
+								<button type="button" class:an={z.druck.groesse === 'massstab'} aria-pressed={z.druck.groesse === 'massstab'} onclick={() => (z.druck.groesse = 'massstab')}>{t().ausgeben.druckMassstab}</button>
+							</div>
+							{#if z.druck.groesse === 'massstab'}
+								<div class="wahl breiten" role="group" aria-label={t().ausgeben.druckMassstab}>
+									{#each [500, 1000, 2000, 5000] as m}
+										<button type="button" class:an={z.druck.massstab === m} aria-pressed={z.druck.massstab === m}
+											onclick={() => (z.druck.massstab = m)}>1:{zahl(m)}</button>
+									{/each}
+								</div>
+							{/if}
+							<label class="regelzeile">
+								<span>{t().ausgeben.druckBettMm}</span>
+								<input type="range" min="100" max="400" step="10" bind:value={z.druck.bettMm} />
+								<em class="mono">{z.druck.bettMm} mm</em>
+							</label>
+							<label class="regelzeile">
+								<span>{t().ausgeben.druckSockel}</span>
+								<input type="range" min="1" max="10" step="0.5" bind:value={z.druck.sockelMm} />
+								<em class="mono">{zahl(z.druck.sockelMm)} mm</em>
+							</label>
+							{#if z.gelaendeJetzt}
+								<label class="regelzeile" title={t().ausgeben.druckUeberWas}>
+									<span>{t().ausgeben.druckUeber}</span>
+									<input type="range" min="1" max="5" step="0.5" bind:value={z.druck.ueberhoehung} />
+									<em class="mono">{zahl(z.druck.ueberhoehung)}×</em>
+								</label>
+							{/if}
+							<span class="unter">{t().ausgeben.druckSchwebend}</span>
+							<div class="wahl schmal" role="group" aria-label={t().ausgeben.druckSchwebend}>
+								<button type="button" class:an={z.druck.schwebend === 'durchziehen'} aria-pressed={z.druck.schwebend === 'durchziehen'} onclick={() => (z.druck.schwebend = 'durchziehen')}>{t().ausgeben.druckDurch}</button>
+								<button type="button" class:an={z.druck.schwebend === 'weglassen'} aria-pressed={z.druck.schwebend === 'weglassen'} onclick={() => (z.druck.schwebend = 'weglassen')}>{t().ausgeben.druckWeg}</button>
+							</div>
+							{#if druckJetzt.nx * druckJetzt.ny > 1}<p class="hinweis leise">{t().ausgeben.druckKacheln(druckJetzt.nx, druckJetzt.ny)}</p>{/if}
+							{#if druckJetzt.klein}<p class="hinweis leise">{t().ausgeben.druckKlein(druckJetzt.klein)}</p>{/if}
+							<div class="wahl schmal" role="group" aria-label={t().ausgeben.druck}>
+								<button type="button" disabled={!!arbeitet} onclick={() => ausgeben('3mf')}>{arbeitet === '3mf' ? t().ausgeben.schreibt : '3MF'}</button>
+								<button type="button" disabled={!!arbeitet} onclick={() => ausgeben('stl')}>{arbeitet === 'stl' ? t().ausgeben.schreibt : 'STL'}</button>
+							</div>
+							<p class="hinweis leise">{t().ausgeben.druckWas}</p>
+						</div>
+					</div>
+				{/if}
+
 				<div class="teil">
 					<span class="feld">{t().ausgeben.weitere}</span>
 					<ul class="ausgaben">
@@ -2220,6 +2300,13 @@
 	.bildrahmen .wahl.formate:not(.breiten3d) button { padding: 4px 4px; font-size: 11px; }
 	.bildrahmen .wahl.formate button { padding: 5px 8px; }
 	.bildrahmen p { margin: 0; font-size: 11px; color: var(--tinte-3); }
+	/* Regler im 3D-Druck: dieselbe Zeile wie in den Aufklappfeldern der Leiste. */
+	.bildrahmen .regelzeile {
+		display: grid; grid-template-columns: 96px 1fr 56px; align-items: center; gap: 8px;
+		font-size: 12px; color: var(--tinte-2);
+	}
+	.bildrahmen .regelzeile input { width: 100%; accent-color: var(--tinte); }
+	.bildrahmen .regelzeile em { font-style: normal; font-size: 11px; text-align: right; color: var(--tinte); }
 	.bildrahmen .grund { display: flex; gap: 6px; align-items: center; }
 	.bildrahmen .grund input[type='color'] { width: 38px; height: 30px; padding: 0; border: 1px solid var(--linie); border-radius: var(--rund); background: none; cursor: pointer; }
 	.bildrahmen .grund button {

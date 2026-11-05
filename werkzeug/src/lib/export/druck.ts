@@ -106,7 +106,21 @@ export function druckMasse(objekte: Objekt[], r: Rahmen, w: Druckwahl) {
 export function druckModell(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | null, w: Druckwahl) {
 	const m = druckMasse(objekte, r, w);
 	const feld = gelaende ? feldImRahmen(gelaende, r) : null;
-	const zRef = feld ? feld.min : 0;
+	const g0 = druckBereich(r, w);
+	/**
+	 * Bezug ist der tiefste Punkt im Ausschnitt, nicht im ganzen Rahmen.
+	 * Sonst stand ein kleiner Ausschnitt über einem tiefen Flussufer auf einer
+	 * Platte von mehreren Zentimetern (Volker, 1:500, 05.11.2026). Gemeinsam
+	 * für alle Kacheln, damit sie aneinanderpassen.
+	 */
+	let zRef = 0;
+	if (feld) {
+		zRef = Infinity;
+		const n = Math.max(2, Math.ceil(Math.max(g0.x1 - g0.x0, g0.y1 - g0.y0) / feld.dx) + 1);
+		for (let j = 0; j < n; j++)
+			for (let i = 0; i < n; i++)
+				zRef = Math.min(zRef, netzHoehe(feld, g0.x0 - r.x0 + ((g0.x1 - g0.x0) * i) / (n - 1), g0.y0 - r.y0 + ((g0.y1 - g0.y0) * j) / (n - 1)));
+	}
 	const ue = feld ? w.ueberhoehung : 1;
 	/** Geländehöhe in mm über der Plattenunterseite. */
 	const plattenZ = (zGelaende: number) => w.sockelMm + (zGelaende - zRef) * m.k * ue;

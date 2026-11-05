@@ -1895,9 +1895,10 @@
 					</button>
 					<!-- 3D-Druck als zweiter Knopf, das Fenster öffnet links daneben (Volker, 05.11.2026). -->
 					{#if druckJetzt}
-						<button type="button" class="zweit" class:an={druckOffen} aria-expanded={druckOffen}
+						<!-- Dieselbe Schrift wie „Bild ausgeben“, nur hell: Der Hauptknopf bleibt der Hauptknopf. -->
+						<button type="button" class="haupt zweit" class:an={druckOffen} aria-expanded={druckOffen}
 							onclick={() => (druckOffen = !druckOffen)}>
-							<span>{t().ausgeben.druck}</span><em class="mono">{t().ausgeben.druckMass(druckJetzt.breiteMm, druckJetzt.hoeheMm, druckJetzt.massstab)}</em>
+							{t().ausgeben.druckKnopf(Math.round(druckJetzt.breiteMm), Math.round(druckJetzt.hoeheMm))}
 						</button>
 					{/if}
 				</div>
@@ -2344,14 +2345,8 @@
 	.bildrahmen .wahl.formate button { padding: 5px 8px; }
 	.bildrahmen p { margin: 0; font-size: 11px; color: var(--tinte-3); }
 	/* Zweiter Knopf unter „Bild ausgeben“: 3D-Druck. */
-	.fuss .zweit {
-		width: 100%; margin-top: 8px; display: flex; justify-content: space-between; align-items: center;
-		padding: 10px 14px; font: inherit; font-size: 13px; cursor: pointer;
-		background: var(--blatt); color: var(--tinte); border: 1px solid var(--tinte); border-radius: var(--rund);
-	}
-	.fuss .zweit em { font-style: normal; font-size: 11px; color: var(--tinte-2); }
+	.fuss .zweit { margin-top: 8px; background: var(--blatt); color: var(--tinte); }
 	.fuss .zweit.an { background: var(--tinte); color: var(--blatt); }
-	.fuss .zweit.an em { color: var(--blatt); }
 	.flaeche { position: relative; }
 	.druckfenster {
 		/* Schwebend, links bündig, oben, unten und links derselbe Abstand (Volker, 05.11.2026). */

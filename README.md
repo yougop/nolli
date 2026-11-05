@@ -63,7 +63,7 @@ not a rendering.
   saturation, contrast and brightness, and the weight of the map's lines, are
   set under **Map**. A grey, desaturated ground gives a plain context in Rhino.
 
-![3D model with terrain and trees, Prato (Tuscany)](docs/terrain-3d-light.png)
+![Rothenburg ob der Tauber on its terrain: gabled and hipped roofs from roof:shape, green areas, the frame of the 3D image](docs/roofs-3d.png)
 
 ### Terrain
 
@@ -82,6 +82,8 @@ them measure the surface, not the bare ground. That is good for slope, valley
 form and river position at masterplan scale — not for embankments, quay walls
 or steps. For more accuracy, bring in an official terrain model (see below).
 Terrain is off by default; then everything stands on z = 0.
+
+![3D model with terrain and trees, Prato (Tuscany)](docs/terrain-3d-light.png)
 
 ## 3D print
 
@@ -110,7 +112,7 @@ Studio reports “invalid configuration, only geometry is loaded” for every
 3MF it did not write itself — that is expected; printer settings belong in the
 slicer.
 
-![3D print preview of the old town of Rothenburg ob der Tauber at 1:1,000, with the print panel on the left](docs/print-preview.png)
+![3D print preview of Rothenburg ob der Tauber at 1:2,000, 250 × 250 mm on its terrain, multicolour, with the print panel on the left](docs/print-preview.png)
 
 ## Gaps in OpenStreetMap: Overture
 

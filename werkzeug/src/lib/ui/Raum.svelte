@@ -460,8 +460,8 @@
 		 * Kante darf nicht verschatten, wo ein Haus an derselben Stelle es
 		 * nicht tut.
 		 */
-		if (z.baeume && z.baumpunkte.length) {
-			const drin = z.baumpunkte.filter(
+		if (z.baeume && z.baeumeStehend.length) {
+			const drin = z.baeumeStehend.filter(
 				(b) => b.x >= r.x0 && b.x <= r.x1 && b.y >= r.y0 && b.y <= r.y1
 			);
 			if (drin.length) {
@@ -903,7 +903,7 @@
 		// zu Haaren.
 		kantenStoff.resolution.set(b, h);
 		kantenStoff.linewidth = z.kanten.dicke * Math.max(1, b / Math.max(1, ausgabe ? ausgabe.aus.w : b));
-		kantenStoff.color.set(z.kanten.hell ? 0xf4f4f2 : 0x3a3a37);
+		kantenStoff.color.set((z.kanten.hell ?? false) ? 0xf4f4f2 : 0x3a3a37);
 		const deck = z.kanten.deckkraft ?? 1;
 		if (kantenStoff.transparent !== deck < 1) { kantenStoff.transparent = deck < 1; kantenStoff.needsUpdate = true; }
 		kantenStoff.opacity = deck;
@@ -988,7 +988,7 @@
 		};
 	});
 	$effect(() => {
-		z.objekte; z.sichtbar; z.bereinigt; z.plangebiet; z.kasten; z.baeume; z.baumpunkte; feld;
+		z.objekte; z.sichtbar; z.bereinigt; z.plangebiet; z.kasten; z.baeume; z.baumpunkte; z.baumGestrichen; feld;
 		z.kanten.an; z.ausgabeBreite; z.rahmen; z.gelaendeJetzt; schema;
 		if (!renderer) return;
 		if (!untrack(() => aktiv)) { veraltet = true; return; }

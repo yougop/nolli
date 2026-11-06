@@ -47,7 +47,10 @@ export type Darstellung = {
  */
 const GRAU = {
 	gruen: '#EFEFEF', wasser: '#CDCDCD', bahn: '#9D9D9D', strasse: '#DCDCDC',
-	bau: '#C3C3C3', gebaeude: '#111111', erhalt: '#111111', gestrichen: '#CACACA'
+	bau: '#C3C3C3', gebaeude: '#111111', erhalt: '#111111', gestrichen: '#CACACA',
+	// Bäume in den Plänen ohne Farbe grau, nicht grün (Volker, 06.11.2026):
+	// Schwarzplan, Invertiert, Linie und Weißmodell sind Grauwertpläne.
+	baum: '#A6A6A6'
 };
 
 export const DARSTELLUNGEN: Darstellung[] = [
@@ -58,6 +61,8 @@ export const DARSTELLUNGEN: Darstellung[] = [
 		bauweise: 'flaeche',
 		grund: '#FFFFFF',
 		farbe: { ...GRAU },
+		// Kronenrand weiß, damit er über den schwarzen Häusern liest (06.11.2026).
+		kante: { baum: 'rgba(255,255,255,.5)' },
 		schrift: '#4A4A4A', schriftFlor: 'rgba(255,255,255,.85)'
 	},
 	{
@@ -68,8 +73,10 @@ export const DARSTELLUNGEN: Darstellung[] = [
 		grund: '#111111',
 		farbe: {
 			gruen: '#212121', wasser: '#313131', bahn: '#545454', strasse: '#2A2A2A',
-			bau: '#424242', gebaeude: '#FFFFFF', erhalt: '#FFFFFF', gestrichen: '#3A3A3A'
+			bau: '#424242', gebaeude: '#FFFFFF', erhalt: '#FFFFFF', gestrichen: '#3A3A3A',
+			baum: '#5E5E5E'
 		},
+		kante: { baum: 'rgba(17,17,17,.4)' },
 		schrift: '#9A9A9A', schriftFlor: 'rgba(17,17,17,.85)'
 	},
 	{
@@ -80,8 +87,10 @@ export const DARSTELLUNGEN: Darstellung[] = [
 		grund: '#FFFFFF',
 		farbe: {
 			gruen: '#C3C3C3', wasser: '#9B9B9B', bahn: '#828282', strasse: '#BABABA',
-			bau: '#AAAAAA', gebaeude: '#111111', erhalt: '#111111', gestrichen: '#C8C8C8'
+			bau: '#AAAAAA', gebaeude: '#111111', erhalt: '#111111', gestrichen: '#C8C8C8',
+			baum: '#8C8C8C'
 		},
+		kante: { baum: 'rgba(17,17,17,.4)' },
 		schrift: '#6A6A6A', schriftFlor: 'rgba(255,255,255,.9)'
 	},
 	{
@@ -130,8 +139,10 @@ export const DARSTELLUNGEN: Darstellung[] = [
 		grund: '#F4F4F2',
 		farbe: {
 			gruen: '#E8E8E3', wasser: '#D4D4D2', bahn: '#B0B0AC', strasse: '#EBEBE8',
-			bau: '#D5D5D1', gebaeude: '#FCFCFB', erhalt: '#FCFCFB', gestrichen: '#CECECA'
+			bau: '#D5D5D1', gebaeude: '#FCFCFB', erhalt: '#FCFCFB', gestrichen: '#CECECA',
+			baum: '#C4C4BF'
 		},
+		kante: { baum: 'rgba(17,17,17,.4)' },
 		schrift: '#6A6A66', schriftFlor: 'rgba(244,244,242,.85)'
 	},
 	{

@@ -135,8 +135,16 @@
 			style: { version: 8, sources: {}, layers: [] },
 			center: [STARTORT.lon, STARTORT.lat],
 			zoom: 13.2,
-			attributionControl: false
+			attributionControl: false,
+			// Die Karte bleibt flach und genordet (Volker, 06.11.2026): Mit der
+			// rechten Maustaste ließ sie sich kippen und drehen, und das Rechteck
+			// stand dann schräg über einer Karte, die nicht mehr nach Norden zeigt.
+			// Der Rahmen ist immer ein genordetes Rechteck im Ortsgitter.
+			dragRotate: false, pitchWithRotate: false, touchPitch: false,
+			maxPitch: 0, bearing: 0, pitch: 0
 		});
+		karte.touchZoomRotate.disableRotation();
+		karte.keyboard.disableRotation();
 		karte.addControl(new NavigationControl({ showCompass: false }), 'bottom-right');
 		stil(schema === 'dunkel').then((s) => karte?.setStyle(s as never));
 		karte.on('style.load', async () => {
@@ -174,6 +182,54 @@
 			const p = karte!.project([g.lon, g.lat]);
 			return [p.x, p.y] as [number, number];
 		});
+	});
+
+	/**
+	 * Wie weit die geholten Daten reichen (06.11.2026). Innerhalb dieser Linie
+	 * lässt sich der Rahmen ohne Abruf ändern. Nur im selben Gitter und nur,
+	 * wenn sie vom Rahmen abweicht — sonst läge sie bei den Beispielen genau
+	 * auf ihm.
+	 */
+	const datenEcken = $derived.by(() => {
+		takt;
+		const d = z.datenFlaeche, k = z.kasten;
+		if (!d || !k || !karte || !bereit || !z.geladenFuer || Math.abs(d.lon0 - k.lon0) > 1e-5) return null;
+		if (Math.abs(d.x0 - k.x0) < 1 && Math.abs(d.y0 - k.y0) < 1 && Math.abs(d.x1 - k.x1) < 1 && Math.abs(d.y1 - k.y1) < 1) return null;
+		const gi = ortsgitter(d.lon0);
+		return ([[d.x0, d.y1], [d.x1, d.y1], [d.x1, d.y0], [d.x0, d.y0]] as [number, number][]).map(([x, y]) => {
+			const g = nachGrad(x, y, gi);
+			const p = karte!.project([g.lon, g.lat]);
+			return p.x + ',' + p.y;
+		}).join(' ');
+	});
+
+	/**
+	 * Die Beschriftung zum Datenrand, als Planbeschriftung an der Linie, die
+	 * sie erklärt (Volker, 06.11.2026; vorher stand sie als Kasten bei den
+	 * Knöpfen und sah aus wie einer). Oben links: innen an der gestrichelten
+	 * Linie, ohne Rand über dem Rahmen — unten liegen die Knöpfe.
+	 */
+	/**
+	 * Und im Rahmen selbst, unten rechts an der Kante, die man zieht: dass er
+	 * kleiner werden kann, ohne neu zu holen (Volker, 06.11.2026).
+	 */
+	const rahmenSchrift = $derived(
+		!z.laden && ecken && z.datenAktuell ? { x: ecken[2][0] - 12, y: ecken[2][1] - 12 } : null
+	);
+	const datenSchrift = $derived.by(() => {
+		if (z.laden || !ecken) return null;
+		if (z.datenAktuell) {
+			const rand = z.datenRand;
+			if (rand >= 5 && datenEcken) {
+				const [x, y] = datenEcken.split(' ')[0].split(',').map(Number);
+				// Innen im Streifen zwischen Linie und Rahmen: Die Linie liegt nach
+				// dem Einpassen oft am Bildrand, darüber wäre kein Platz.
+				return { x: x + 6, y: y + 16, text: t().karte.datenLinie(Math.floor(rand / 10) * 10 || Math.floor(rand)), warn: false };
+			}
+			return null;
+		}
+		if (z.datenNachholbar) return { x: ecken[0][0] + 10, y: ecken[0][1] - 13, text: t().karte.datenRaus, warn: true };
+		return null;
 	});
 
 	/**
@@ -269,7 +325,14 @@
 	{#if ecken && rahmenSichtbar}
 		{@const d = ecken.map((p) => p.join(',')).join(' ')}
 		<path class="schleier" d="M0,0 H4000 V4000 H0 Z M{ecken.map((p) => p.join(' ')).join(' L')} Z" fill-rule="evenodd" />
+		{#if datenEcken}<polygon class="daten" points={datenEcken} />{/if}
 		<polygon class="rahmen" points={d} />
+		{#if rahmenSchrift}
+			<text class="datenschrift" text-anchor="end" x={rahmenSchrift.x} y={rahmenSchrift.y}>{t().karte.datenKleiner}</text>
+		{/if}
+		{#if datenSchrift}
+			<text class="datenschrift" class:warn={datenSchrift.warn} x={datenSchrift.x} y={datenSchrift.y}>{datenSchrift.text}</text>
+		{/if}
 		<polygon
 			class="griff-flaeche"
 			points={d}
@@ -337,7 +400,9 @@
 
 	.schleier { fill: rgba(15, 17, 19, 0.34); pointer-events: none; }
 	.rahmen { fill: none; stroke: var(--akzent); stroke-width: 2; pointer-events: none; }
-	.kreuz { stroke: var(--akzent); stroke-width: 1; stroke-dasharray: 3 5; opacity: 0.55; pointer-events: none; }
+	.daten { fill: none; stroke: var(--akzent); stroke-width: 1.5; stroke-dasharray: 6 4; pointer-events: none; }
+	/* Stärker seit 06.11.2026 (Volker): Die Mitte hilft, den Ort zu finden. */
+	.kreuz { stroke: var(--akzent-tief); stroke-width: 1.25; stroke-dasharray: 3 4; opacity: 0.85; pointer-events: none; }
 	.griff-flaeche { fill: transparent; pointer-events: auto; cursor: grab; }
 	.griff-flaeche:active { cursor: grabbing; }
 	.griff {
@@ -365,7 +430,9 @@
 
 	.werkzeuge {
 		position: absolute; left: 16px; bottom: 16px; z-index: 2;
-		display: flex; gap: 6px;
+		display: flex; align-items: flex-end; gap: 6px;
+		/* Platz lassen für die Zoomknöpfe rechts unten. */
+		max-width: calc(100% - 80px);
 	}
 	.werkzeuge > * {
 		font-size: 12px; font-weight: 500;
@@ -378,6 +445,13 @@
 	.werkzeuge button:hover { border-color: var(--linie-stark); }
 	.werkzeuge button.aus { color: var(--tinte-3); }
 	.wink { pointer-events: none; color: var(--tinte-2); }
+	/* Planbeschriftung zum Datenrand: wie eine Maßangabe an der Linie, in der
+	   Schrift der Feldbeschriftungen, direkt auf dem Schleier. */
+	.datenschrift {
+		font-size: 10.5px; font-weight: 500; letter-spacing: 0.11em; text-transform: uppercase;
+		fill: var(--tinte); pointer-events: none; user-select: none;
+	}
+	.datenschrift.warn { fill: var(--warn); }
 
 	:global(.maplibregl-ctrl-group) {
 		border: 1px solid var(--linie) !important;

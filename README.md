@@ -33,9 +33,13 @@ Overture Maps.
 
 | | |
 |---|---|
-| **1 · Frame** | Search a place or drag a rectangle. The aspect ratio snaps; width, height, area and metres per pixel update live. Nolli checks whether a 12 m deep row of buildings is still at least 12 px wide at the chosen output size — below that, building edges merge. Fetching can be cancelled. |
-| **2 · Clean up** | Click objects or draw a polygon to remove them or keep them. Removed objects stay visible as ghosts and are listed by ID in the contract. A site area clears everything inside and cuts streets at its boundary. Nolli removes buildings that cannot be buildings on its own, and offers to fill gaps from Overture (see below). |
+| **1 · Frame** | Search a place or drag a rectangle. The aspect ratio snaps; width, height, area and metres per pixel update live. Nolli checks whether a 12 m deep row of buildings is still at least 12 px wide at the chosen output size — below that, building edges merge. Fetching can be cancelled. Once data is fetched, a dashed line shows how far it reaches: drag the frame smaller within it and nothing is fetched again. The map stays flat and north-up. |
+| **2 · Clean up** | Click objects or draw a polygon to remove them or keep them; a click on a building part takes the whole house. Trees can be removed too. Removed objects stay visible as ghosts and are listed by ID in the contract. While drawing a polygon, the right mouse button takes back the last point and the view can still be panned. A site area clears everything inside and cuts streets at its boundary. Nolli removes buildings that cannot be buildings on its own, and offers to fill gaps from Overture (see below). |
 | **3 · Export** | One image, the drawing, the model, the 3D print, the data contract, or the complete package. |
+
+The row above the sheet is the same in steps 2 and 3: the styles, three switches (labels, trees, terrain) and the menus for map, buildings and light. Labels grow with the sheet, so a 4K image carries the same lettering as the screen, at any zoom.
+
+**Project file.** **Save** writes everything — frame, data, clean-up, terrain, settings — into one `.nolli` file; **Open** reads it back without fetching. Saving again overwrites the open file; with Shift held it asks for a new name. (Chrome and Edge; other browsers download a copy.)
 
 ![Step 1: frame, Prato (Tuscany)](docs/1-frame.png)
 ![Step 2: figure-ground with the clean-up tools](docs/2-figure-ground.png)
@@ -94,10 +98,18 @@ Terrain is off by default; then everything stands on z = 0.
   the coarsest scale at which fewer than 5 % of the buildings are too narrow
   to print. **Choose area** shows the frame as a plan with a rectangle: drag
   it, pull its corners, zoom with the wheel, or move it with the arrow keys.
-  If the area is larger than the bed, Nolli splits it into tiles, one file
-  each.
-- **Preview** shows the print on the stage, all tiles in place, before a file
-  is written.
+  Format presets (free, 1:1, 4:3, 3:2, 16:9, portrait or landscape) hold
+  their ratio while the corners are pulled. Centre lines help to find the
+  place, and the tile seams are drawn in.
+- **Tiles.** If the area is larger than the bed, Nolli splits it into equal
+  tiles. Up to 36 tiles go into one 3MF, each tile an object on the plate
+  grid of Bambu Studio and OrcaSlicer; select all and **Arrange** (A) puts
+  each on its own plate. Beyond 36, and for STL, one file per tile in a ZIP.
+  For multicolour prints keep the bed at about 200 mm on the X1 Carbon to
+  leave room for the prime tower.
+- **Preview** shows the print on the stage, all tiles in place with their
+  name and size, before a file is written. **Problems only** fades
+  everything except the parts that will not print.
 - **Multicolour** writes one object of five parts — base, buildings, streets,
   green, water — so each part gets its own spool. With the four slots of a
   Bambu Lab AMS, give base and buildings the same one. **Single colour**
@@ -105,14 +117,20 @@ Terrain is off by default; then everything stands on z = 0.
   0.8 mm below it, so both still read.
 - **Base thickness** below the lowest point of the area, **terrain
   exaggeration** for flat places (only the ground, never the buildings),
-  floating parts **to the ground** or **left out**.
-- **Parts too small:** cut pieces at the edge, antennas and slender towers,
-  and buildings narrower than 0.8 mm are counted, shown in red in the
-  preview, and kept or left out.
+  floating parts **to the ground**, **kept** at their height (the slicer adds
+  supports) or **left out**.
+- **Parts too small** are counted, shown in red in the preview and in the
+  area, and kept or left out: cut pieces at a tile seam or the edge that are
+  narrower than 2 mm or tall and thin, slender towers, masts and slabs, and
+  buildings narrower than 0.8 mm. A part that leans on a solid neighbour
+  prints with it and counts only by what sticks out above it. Against cut
+  pieces, nudge the area until no seam clips a building.
+- **Leave out by hand:** in **Choose area**, a click on a building leaves it
+  out of the print only; image, Rhino and package keep it.
 
 Every part is a closed solid in millimetres; buildings sit half a millimetre
-into the plate so they fuse with it. The file lies centred on the bed. Bambu
-Studio reports “invalid configuration, only geometry is loaded” for every
+into the plate so they fuse with it. A single tile lies centred on the bed of
+the X1 Carbon. Bambu Studio reports “invalid configuration, only geometry is loaded” for every
 3MF it did not write itself — that is expected; printer settings belong in the
 slicer.
 

@@ -40,6 +40,9 @@ await new Promise(r => setTimeout(r, 6000));
 await s.screenshot({ path: ziel + '/3d-baeume.png' });
 console.log('zur Ausgabe:', await klick('Weiter zur Ausgabe'));
 await new Promise(r => setTimeout(r, 2000));
+// Seit 06.11.2026 stehen Modell und Paket unter „Weitere Dateien“, ab Werk zugeklappt.
+console.log('Weitere Dateien:', await klick('Weitere Dateien', true));
+await new Promise(r => setTimeout(r, 500));
 console.log('Modell-ZIP:', await klick('Modell', true));
 for (let i = 0; i < 24; i++) {
   await new Promise(r => setTimeout(r, 2500));

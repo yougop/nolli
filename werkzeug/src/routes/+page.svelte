@@ -41,10 +41,20 @@
 	 * nicht bei jeder Bewegung ein Höhenmodell geladen werden.
 	 */
 	$effect(() => {
-		if (z.gelaende && z.datenAktuell && !z.gelaendeJetzt && !z.gelaendeLaedt) z.gelaendeHolen();
+		if (z.gelaende && z.schritt > 1 && z.datenAktuell && !z.gelaendeJetzt && !z.gelaendeLaedt) z.gelaendeHolen();
 	});
 
 	let suche = $state('HafenCity, Hamburg');
+	/**
+	 * Das Suchfeld zeigt den Ort, für den der Rahmen steht: nach einem
+	 * Beispiel, nach dem Wiederherstellen einer Sitzung. Vorher blieb dort
+	 * „HafenCity, Hamburg" stehen, auch über Rothenburg (06.11.2026).
+	 * Getippt wird weiter frei; erst eine Auswahl setzt `z.ort` neu.
+	 */
+	$effect(() => {
+		const name = z.ort?.name;
+		if (name) untrack(() => (suche = name));
+	});
 	let treffer = $state<any[]>([]);
 	let suchtGerade = $state(false);
 	let karte = $state<Karte | null>(null);
@@ -64,7 +74,7 @@
 	$effect(() => {
 		z.schritt; z.ort; z.kasten; z.verhaeltnis; z.ausgabeBreite;
 		z.objekte; z.sichtbar; z.plangebiet; z.darstellung;
-		z.beschriftung; z.bereinigt; z.geladenFuer; z.gelaende; z.gelaendeFuer; z.ergaenzung; z.placesInfo;
+		z.beschriftung; z.bereinigt; z.geladenFuer; z.datenFlaeche; z.vorrat; z.datenStand; z.gelaende; z.gelaendeFuer; z.ergaenzung; z.placesInfo;
 		z.karte.saettigung; z.karte.kontrast; z.karte.helligkeit;
 		z.sichern();
 	});
@@ -129,7 +139,7 @@
 	const deckungHaeuser = $derived(hoehenDeckung(bestand, true));
 	/** Nur die Kronen im Rahmen — `rest.json` reicht darüber hinaus. */
 	const imRahmenBaeume = $derived(
-		r ? z.baumpunkte.filter((b) => b.x >= r.x0 && b.x <= r.x1 && b.y >= r.y0 && b.y <= r.y1).length : 0
+		r ? z.baeumeStehend.filter((b) => b.x >= r.x0 && b.x <= r.x1 && b.y >= r.y0 && b.y <= r.y1).length : 0
 	);
 	/**
 	 * Die Kronen, die ins Modell gehen. Volker am 19.10.2026: Das Modell
@@ -343,8 +353,8 @@
 		const t = textur ?? await bodenTextur(rr);
 		const v = rr.vertrag({}) as Record<string, any>;
 		return als3dm({
-			objekte: bestand, r: rr, gelaende: z.gelaendeJetzt, baeume: modellKronen ? z.baumpunkte : [],
-			textur: new Uint8Array(await t.arrayBuffer()), kantenHell: z.kanten.hell,
+			objekte: bestand, r: rr, gelaende: z.gelaendeJetzt, baeume: modellKronen ? z.baeumeStehend : [],
+			textur: new Uint8Array(await t.arrayBuffer()), kantenHell: z.kanten.hell ?? false,
 			ecke: { lat: v.bbox_wgs84.sued, lon: v.bbox_wgs84.west },
 			kopf: {
 				contract: VERTRAG_NAME, contract_version: VERTRAG_VERSION,
@@ -360,7 +370,7 @@
 		const bodenbild = await bodenTextur(rr);
 		const teile: { name: string; inhalt: Blob | string }[] = [
 			{ name: pfadV2('modell.obj'), inhalt: obj(bestand, rr, z.gelaendeJetzt, 'model.mtl', 'innen',
-				modellKronen ? z.baumpunkte : []) },
+				modellKronen ? z.baeumeStehend : []) },
 			{ name: 'model.mtl', inhalt: alsMtl(textur) },
 			{ name: textur, inhalt: bodenbild }
 		];
@@ -387,11 +397,14 @@
 		for (const d of flach) {
 			arbeitet = `paket:${t().ausgeben.paketBild(++n, flach.length)}`;
 			await anstrich();
+			// Die eigene Kantenwahl gilt für die Darstellung, in der sie getroffen
+			// wurde; die übrigen Bilder nehmen ihre Vorgabe.
+			const kantenD = d.id === z.darstellung ? z.kanten : { ...z.kanten, hell: null };
 			const b = await bild(bestand, rr, d.id, z.bereinigt, z.beschriftung, z.plangebiet, z.sichtbar,
-				false, WEBP, z.baeume ? z.baumpunkte : undefined, z.karte, z.kanten, z.sonne);
+				false, WEBP, z.baeume ? z.baeumeStehend : undefined, z.karte, kantenD, z.sonne);
 			teile.push({ name: pfadV2(`bilder/${d.id}.webp`), inhalt: b });
 			bilder.push({ datei: `bilder/${d.id}.webp`, darstellung: d.id, was: englisch.darstellungen[d.id].zweck,
-				baeume: !!z.baeume && !!z.baumpunkte.length });
+				baeume: !!z.baeume && !!z.baeumeStehend.length });
 			{
 				/**
 				 * Zu jeder Darstellung die Fassung ohne Baukörper und ohne Bäume.
@@ -418,7 +431,7 @@
 				 * die als Grund taugt.
 				 */
 				const g = await bild(bestand, rr, d.id, z.bereinigt, z.beschriftung, z.plangebiet, z.sichtbar,
-					true, WEBP, undefined, z.karte, z.kanten, z.sonne);
+					true, WEBP, undefined, z.karte, kantenD, z.sonne);
 				teile.push({ name: pfadV2(`bilder/${d.id}_grund.webp`), inhalt: g });
 				bilder.push({ datei: `bilder/${d.id}_grund.webp`, darstellung: d.id,
 					was: 'The same extent without buildings and without trees, as a ground texture under a model of your own',
@@ -432,7 +445,7 @@
 			teile.push({ name: pfadV2('bilder/3d-modell.webp'), inhalt: await raum.alsBild(z.bild3d.breite, WEBP) });
 			bilder.push({ datei: 'bilder/3d-modell.webp', darstellung: 'modell3d',
 				was: 'The 3D view as it currently stands',
-				baeume: !!z.baeume && !!z.baumpunkte.length });
+				baeume: !!z.baeume && !!z.baeumeStehend.length });
 		}
 
 		arbeitet = `paket:${t().ausgeben.paketDaten}`;
@@ -529,7 +542,7 @@
 	/** Die Bäume im Rahmen, in Gittermetern wie alles andere. */
 	function baumliste() {
 		const rr = r!;
-		return z.baumpunkte
+		return z.baeumeStehend
 			.filter((b) => b.x >= rr.x0 && b.x <= rr.x1 && b.y >= rr.y0 && b.y <= rr.y1)
 			.map((b) => ({
 				x: b.x, y: b.y,
@@ -987,11 +1000,12 @@
 	$effect(() => { if (!druckOffen) z.druckBuehne = null; });
 
 	/**
-	 * Das Druckmodell: je Kachel eine Datei, bei mehreren Kacheln zusammen im ZIP.
+	 * Das Druckmodell. 3MF: eine Datei, bei mehreren Kacheln eine Platte je
+	 * Kachel. STL: je Kachel eine Datei, bei mehreren Kacheln zusammen im ZIP.
 	 * Die Bibliothek kommt erst beim ersten Druck, wie Rhino.
 	 */
 	async function druckDatei(rr: Rahmen, art: '3mf' | 'stl', basis: string) {
-		const { druckModell, als3mf, alsStl } = await import('$lib/export/druck');
+		const { druckModell, als3mf, als3mfPlatten, alsStl } = await import('$lib/export/druck');
 		const { kacheln } = druckModell(bestand, rr, z.gelaendeJetzt, $state.snapshot(z.druck));
 		const mehr = z.druck.farben === 'mehr';
 		/**
@@ -1001,13 +1015,26 @@
 		 * eine. STL kennt keine Objekte, dort werden es einzelne Dateien, die
 		 * man im Slicer als Teile eines Modells lädt.
 		 */
-		const dateien = (k: (typeof kacheln)[number], vor: string): Record<string, Uint8Array> => {
-			const teile = [{ name: 'base', netz: k.platte }, { name: 'buildings', netz: [...k.haeuser, ...k.kleine] }, { name: 'streets', netz: k.strassen }, { name: 'green', netz: k.gruen }, { name: 'water', netz: k.see }]
+		const teileVon = (k: (typeof kacheln)[number]) =>
+			[{ name: 'base', netz: k.platte }, { name: 'buildings', netz: [...k.haeuser, ...k.kleine] }, { name: 'streets', netz: k.strassen }, { name: 'green', netz: k.gruen }, { name: 'water', netz: k.see }]
 				.filter((x) => x.netz.length);
+		const dateien = (k: (typeof kacheln)[number], vor: string): Record<string, Uint8Array> => {
+			const teile = teileVon(k);
 			if (art === '3mf') return { [`${vor}.3mf`]: als3mf(mehr ? teile : [{ name: 'model', netz: teile.flatMap((x) => x.netz) }]) };
 			if (!mehr) return { [`${vor}.stl`]: alsStl(teile.map((x) => x.netz), `Nolli ${basis} ${k.name}, mm`) };
 			return Object.fromEntries(teile.map((x) => [`${vor}_${x.name}.stl`, alsStl([x.netz], `Nolli ${basis} ${k.name} ${x.name}, mm`)]));
 		};
+		// Mehrere Kacheln im 3MF: eine Datei, eine Platte je Kachel (06.11.2026).
+		// Nur STL bleibt bei einer Datei je Kachel im ZIP.
+		// Bambu Studio fasst höchstens 36 Platten (`MAX_PLATE_COUNT`); darüber bleibt es beim ZIP.
+		if (art === '3mf' && kacheln.length > 1 && kacheln.length <= 36) {
+			const platten = kacheln.map((k) => {
+				const t = teileVon(k);
+				return { name: k.name.replace(/^kachel_/, ''), teile: mehr ? t : [{ name: 'model', netz: t.flatMap((x) => x.netz) }] };
+			});
+			laden(als3mfPlatten(platten) as BlobPart, `${basis}_print_${kacheln.length}_plates.3mf`, 'model/3mf');
+			return;
+		}
 		const inhalt: Record<string, Uint8Array> = {};
 		for (const k of kacheln) Object.assign(inhalt, dateien(k, kacheln.length === 1 ? `${basis}_print` : `${basis}_print_${k.name}`));
 		const namen = Object.keys(inhalt);
@@ -1017,6 +1044,92 @@
 		}
 		const { zipSync } = await import('fflate');
 		laden(zipSync(inhalt) as BlobPart, `${basis}_print_${art}.zip`, 'application/zip');
+	}
+
+	// ---- Projektdatei ------------------------------------------------------
+	let projektWahl = $state<HTMLInputElement | null>(null);
+	let weitereOffen = $state(false);
+	let vertragOffen = $state(false);
+	let projektArbeit = $state<null | 'speichern' | 'oeffnen'>(null);
+	/**
+	 * Die Datei, aus der das Projekt kam oder in die es zuletzt ging
+	 * (06.11.2026). Wo der Browser Dateizugriff kennt (Chrome, Edge),
+	 * schreibt „Speichern" dorthin zurück, statt eine neue Datei herunter-
+	 * zuladen (Volker: „speichert eine neue Datei und überschreibt nicht die
+	 * alte"). Umschalt+Klick speichert unter neuem Namen. Firefox und Safari
+	 * kennen das nicht und laden weiter eine neue Datei herunter.
+	 */
+	let projektGriff: FileSystemFileHandle | null = null;
+	$effect(() => { if (!z.projektName) projektGriff = null; });
+	type DateiFenster = Window & {
+		showOpenFilePicker?: (o: object) => Promise<FileSystemFileHandle[]>;
+		showSaveFilePicker?: (o: object) => Promise<FileSystemFileHandle>;
+	};
+	const dateiArten = [{ description: 'Nolli', accept: { 'application/zip': ['.nolli'] } }];
+	const abgebrochen = (e: unknown) => e instanceof DOMException && e.name === 'AbortError';
+	const ohneEndung = (n: string) => n.replace(/\.nolli$/i, '');
+
+	async function schreibeIn(griff: FileSystemFileHandle, inhalt: Uint8Array) {
+		const g = griff as FileSystemFileHandle & { requestPermission?: (o: object) => Promise<string> };
+		if (g.requestPermission && (await g.requestPermission({ mode: 'readwrite' })) !== 'granted')
+			throw new Error(t().projekt.keinZugriff);
+		const w = await griff.createWritable();
+		await w.write(inhalt as BlobPart);
+		await w.close();
+	}
+
+	async function projektSpeichern(e?: MouseEvent) {
+		const fenster = window as DateiFenster;
+		const unter = !!e?.shiftKey;
+		projektArbeit = 'speichern';
+		await anstrich();
+		try {
+			const inhalt = await z.projektDatei();
+			if (projektGriff && !unter) {
+				await schreibeIn(projektGriff, inhalt);
+				z.projektGespeichert(ohneEndung(projektGriff.name));
+			} else if (fenster.showSaveFilePicker) {
+				const griff = await fenster.showSaveFilePicker({
+					suggestedName: `${z.projektName ?? `${ortImNamen(z.ort?.name)}_${stempel()}`}.nolli`, types: dateiArten
+				});
+				await schreibeIn(griff, inhalt);
+				projektGriff = griff;
+				z.projektGespeichert(ohneEndung(griff.name));
+			} else {
+				const name = z.projektName ?? `${ortImNamen(z.ort?.name)}_${stempel()}`;
+				laden(inhalt as BlobPart, `${name}.nolli`, 'application/zip');
+				z.projektGespeichert(name);
+			}
+		} catch (e) {
+			if (!abgebrochen(e)) z.fehler = e instanceof Error ? e.message : t().ausgeben.fehlgeschlagen;
+		} finally { projektArbeit = null; }
+	}
+
+	async function projektOeffnenKnopf() {
+		const fenster = window as DateiFenster;
+		if (!fenster.showOpenFilePicker) { projektWahl?.click(); return; }
+		let griff: FileSystemFileHandle;
+		try { [griff] = await fenster.showOpenFilePicker({ types: dateiArten, multiple: false }); }
+		catch (e) { if (!abgebrochen(e)) z.fehler = e instanceof Error ? e.message : t().projekt.keinProjekt; return; }
+		await projektLesen(await griff.getFile(), griff);
+	}
+	async function projektGewaehlt(e: Event) {
+		const feld = e.currentTarget as HTMLInputElement;
+		const datei = feld.files?.[0];
+		feld.value = '';
+		if (datei) await projektLesen(datei, null);
+	}
+	async function projektLesen(datei: File, griff: FileSystemFileHandle | null) {
+		if (z.objekte.length && !confirm(t().projekt.ersetzt)) return;
+		projektArbeit = 'oeffnen';
+		z.fehler = null;
+		await anstrich();
+		try {
+			await z.projektOeffnen(new Uint8Array(await datei.arrayBuffer()), ohneEndung(datei.name));
+			projektGriff = griff;
+		} catch (err) {
+			z.fehler = err instanceof Error ? err.message : t().projekt.keinProjekt;
+		} finally { projektArbeit = null; }
 	}
 
 	async function ausgeben(art: 'bild' | 'dxf' | 'obj' | 'vertrag' | 'paket' | '3dm' | '3mf' | 'stl') {
@@ -1033,7 +1146,7 @@
 				const b = raeumlich && raum
 					? await raum.alsBild()
 					: await bild(bestand, r, z.darstellung, z.bereinigt, z.beschriftung, z.plangebiet, z.sichtbar,
-						false, 'image/png', z.baeume ? z.baumpunkte : undefined, z.karte, z.kanten, z.sonne);
+						false, 'image/png', z.baeume ? z.baeumeStehend : undefined, z.karte, z.kanten, z.sonne);
 				laden(b, `${basis}_${darstellungV2(z.darstellung)}_${raeumlich ? z.bild3d.breite : r.pixelBreite}px.png`, 'image/png');
 			} else if (art === 'dxf') {
 				laden(dxf(bestand, r, z.gelaendeJetzt), `${basis}.dxf`, 'application/dxf');
@@ -1089,20 +1202,36 @@
 	<header class="kopf">
 		<h1>nolli</h1>
 
+		<!-- Projektdatei (06.11.2026): Speichern schreibt `.nolli`, Öffnen liest sie. -->
+		<div class="projekt" role="group" aria-label={t().projekt.gruppe}>
+			{#if z.projektName}
+				<span class="projektname" title={t().projekt.offenTitel(z.projektName)}>{z.projektName}</span>
+				{#if z.projektGeaendert}<span class="geaendert" title={t().projekt.geaendertTitel}>{t().projekt.geaendert}</span>{/if}
+			{/if}
+			<button type="button" disabled={!!projektArbeit || z.laden} title={t().projekt.oeffnenTitel} onclick={projektOeffnenKnopf}>
+				{projektArbeit === 'oeffnen' ? t().projekt.oeffnet : t().projekt.oeffnen}</button>
+			<button type="button" disabled={!z.kasten || !!projektArbeit} title={t().projekt.speichernTitel} onclick={(e) => projektSpeichern(e)}>
+				{projektArbeit === 'speichern' ? t().ausgeben.schreibt : t().projekt.speichern}</button>
+			<input bind:this={projektWahl} type="file" accept=".nolli,application/zip" hidden onchange={projektGewaehlt} />
+		</div>
+
 		<nav class="schritte" aria-label={t().kopf.schritteLabel}>
 			{#each SCHRITTE as n}
 				<button
 					type="button"
 					class="schritt"
 					class:jetzt={z.schritt === n}
+					class:erledigt={z.schritt !== n && (n < z.schritt || (n === 1 && z.datenAktuell))}
 					disabled={n > 1 && !z.datenAktuell}
 					onclick={() => (z.schritt = n)}
 					title={n > 1 && !z.datenAktuell ? t().kopf.erstRahmen : t().schritte[n].was}
 				>
-					<span class="ziffer mono">{n}</span>{t().schritte[n].name}
+					<!-- Erledigt: ein Häkchen im Akzent statt der Ziffer, ein lebender Zustand. -->
+					<span class="ziffer mono">{#if z.schritt !== n && (n < z.schritt || (n === 1 && z.datenAktuell))}<svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M2.6 6.3l2.3 2.3 4.5-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>{:else}{n}{/if}</span>{t().schritte[n].name}
 				</button>
 			{/each}
 		</nav>
+
 
 		<a class="anleitung" href="https://github.com/yougop/nolli#readme" target="_blank" rel="noopener"
 			title={t().kopf.anleitungTitel}>{t().kopf.anleitung}</a>
@@ -1133,19 +1262,44 @@
 					<div class="gruppe" role="group" aria-label={t().sicht.darstellung}>
 						{#each DARSTELLUNGEN.filter((d) => d.bauweise !== 'raum') as d}
 							<button type="button" class:an={z.darstellung === d.id} aria-pressed={z.darstellung === d.id}
-								onclick={() => { z.darstellung = d.id; z.druckBuehne = null; }} title={t().darstellungen[d.id].zweck}>{t().darstellungen[d.id].name}</button>
+								onclick={() => { z.darstellungWaehlen(d.id); z.druckBuehne = null; }} title={t().darstellungen[d.id].zweck}>{t().darstellungen[d.id].name}</button>
+						{/each}
+						<!-- Das 3D-Modell ist eine Darstellung wie die Blätter, nur räumlich; der
+						     doppelte Strich setzt es ab, die Wahl bleibt eine (Volker, 06.11.2026). -->
+						{#each DARSTELLUNGEN.filter((d) => d.bauweise === 'raum') as d}
+							<button type="button" class="nachsatz" class:an={z.darstellung === d.id} aria-pressed={z.darstellung === d.id}
+								onclick={() => { z.darstellungWaehlen(d.id); z.druckBuehne = null; }} title={t().darstellungen[d.id].zweck}>{t().darstellungen[d.id].name}</button>
 						{/each}
 					</div>
 					<!--
-						Das 3D-Modell mit dem, was nur dort gilt: Gelände und Bodenbild
-						(Volker, 03.11.2026). Darin kann man nicht auswählen, deshalb steht
-						es nicht bei den Blättern.
+						Drei Zonen, in Bereinigen und Ausgeben gleich (Volker, 06.11.2026):
+						was man sieht (eine Wahl, schwarz), was drin ist (Häkchen, nie
+						schwarz) und wie es aussieht (leise, rechtsbündig). Karte, Gebäude
+						und Licht standen bis dahin nur in Schritt 3; Kanten und Sonne
+						wirken aber schon beim Bereinigen aufs Blatt.
 					-->
-					<div class="gruppe" role="group" aria-label={t().sicht.raum}>
-						{#each DARSTELLUNGEN.filter((d) => d.bauweise === 'raum') as d}
-							<button type="button" class:an={z.darstellung === d.id} aria-pressed={z.darstellung === d.id}
-								onclick={() => { z.darstellung = d.id; z.druckBuehne = null; }} title={t().darstellungen[d.id].zweck}>{t().darstellungen[d.id].name}</button>
-						{/each}
+					<div class="gruppe schalter" role="group" aria-label={t().sicht.ebenen}>
+						<button type="button" class="einzeln" class:an={z.beschriftung} aria-pressed={z.beschriftung} disabled={raeumlich}
+							onclick={() => (z.beschriftung = !z.beschriftung)}
+							title={t().sicht.beschriftungTitel}
+						>{t().sicht.beschriftung}</button>
+						<!--
+							Anders als die Beschriftung gilt dieser Schalter auch im Modell: Dort
+							stehen die Kronen als Körper. Ein Schalter, der beim Wechsel der
+							Darstellung stumm wird, lässt den Zustand stehen, den er zuletzt
+							hatte, und man kann ihn genau dort nicht mehr ändern, wo man ihn
+							sieht. Schrift dagegen gibt es im Modell nicht, deshalb bleibt
+							„Beschriftung" dort aus.
+						-->
+						<button type="button" class="einzeln" class:an={z.baeume} aria-pressed={z.baeume}
+							disabled={!z.baumpunkte.length}
+							onclick={() => (z.baeume = !z.baeume)}
+							title={z.baumpunkte.length
+								? (raeumlich
+									? t().sicht.baeumeRaum(imRahmenBaeume)
+									: t().sicht.baeumeFlach(imRahmenBaeume))
+								: t().sicht.keineBaeume}
+						>{t().sicht.baeume}</button>
 						<!--
 							Das Gelände ist nur im 3D-Modell zu sehen; die flachen Darstellungen
 							sind Aufsichten und kennen keine Höhe. Dort ist der Schalter aus und
@@ -1163,14 +1317,7 @@
 								: t().gelaende.titelAus}
 						>{z.gelaendeLaedt ? t().gelaende.laedt(z.gelaendeLaedt) : t().gelaende.schalter}</button>
 					</div>
-					<!--
-						Karte und Gebäude anpassen: eine eigene Gruppe, weil beide in jeder
-						Darstellung wirken, flach wie räumlich. Nur in Schritt 3, wo das
-						Ergebnis ausgegeben wird; Schritt 2 ist zum Bereinigen da (Volker,
-						04.11.2026). Die Einstellungen bleiben, auch wenn sie nicht zu sehen sind.
-					-->
-					{#if z.schritt === 3}
-					<div class="gruppe" role="group" aria-label={t().sicht.anpassen}>
+					<div class="gruppe anpassen" role="group" aria-label={t().sicht.anpassen}>
 						<!--
 							Sättigung, Kontrast und Helligkeit der Karte: im 3D-Modell auf dem
 							Boden, in den Blättern auf dem ganzen Blatt, und in jedem Bild, das
@@ -1224,7 +1371,7 @@
 						-->
 						<div class="klapp" bind:this={kantenKlapp}>
 							<button type="button" class="einzeln klappknopf" class:offen={kantenRegler}
-								class:veraendert={!z.kanten.an || z.kanten.hell || z.kanten.flaeche != null || z.kanten.dicke !== KANTEN_VORGABE.dicke || z.kanten.deckkraft !== KANTEN_VORGABE.deckkraft}
+								class:veraendert={!z.kanten.an || z.kanten.hell != null || z.kanten.flaeche != null || z.kanten.dicke !== KANTEN_VORGABE.dicke || z.kanten.deckkraft !== KANTEN_VORGABE.deckkraft}
 								aria-expanded={kantenRegler}
 								onclick={() => (kantenRegler = !kantenRegler)}
 								title={t().sicht.geoTitel}
@@ -1237,8 +1384,8 @@
 										<button type="button" class:an={!z.kanten.an} aria-pressed={!z.kanten.an} onclick={() => (z.kanten.an = false)}>{t().sicht.kantenAus}</button>
 									</div>
 									<div class="wahl schmal">
-										<button type="button" class:an={!z.kanten.hell} aria-pressed={!z.kanten.hell} disabled={!z.kanten.an} onclick={() => (z.kanten.hell = false)}>{t().sicht.kantenDunkel}</button>
-										<button type="button" class:an={z.kanten.hell} aria-pressed={z.kanten.hell} disabled={!z.kanten.an} onclick={() => (z.kanten.hell = true)}>{t().sicht.kantenHell}</button>
+										<button type="button" class:an={!z.kantenHell} aria-pressed={!z.kantenHell} disabled={!z.kanten.an} onclick={() => (z.kanten.hell = false)}>{t().sicht.kantenDunkel}</button>
+										<button type="button" class:an={z.kantenHell} aria-pressed={z.kantenHell} disabled={!z.kanten.an} onclick={() => (z.kanten.hell = true)}>{t().sicht.kantenHell}</button>
 									</div>
 									<label>
 										<span>{t().sicht.kantenDicke}</span>
@@ -1311,30 +1458,6 @@
 							{/if}
 						</div>
 					</div>
-					{/if}
-					<div class="gruppe" role="group" aria-label={t().sicht.ebenen}>
-						<button type="button" class="einzeln" class:an={z.beschriftung} aria-pressed={z.beschriftung} disabled={raeumlich}
-							onclick={() => (z.beschriftung = !z.beschriftung)}
-							title={t().sicht.beschriftungTitel}
-						>{t().sicht.beschriftung}</button>
-						<!--
-							Anders als die Beschriftung gilt dieser Schalter auch im Modell: Dort
-							stehen die Kronen als Körper. Ein Schalter, der beim Wechsel der
-							Darstellung stumm wird, lässt den Zustand stehen, den er zuletzt
-							hatte, und man kann ihn genau dort nicht mehr ändern, wo man ihn
-							sieht. Schrift dagegen gibt es im Modell nicht, deshalb bleibt
-							„Beschriftung" dort aus.
-						-->
-						<button type="button" class="einzeln" class:an={z.baeume} aria-pressed={z.baeume}
-							disabled={!z.baumpunkte.length}
-							onclick={() => (z.baeume = !z.baeume)}
-							title={z.baumpunkte.length
-								? (raeumlich
-									? t().sicht.baeumeRaum(imRahmenBaeume)
-									: t().sicht.baeumeFlach(imRahmenBaeume))
-								: t().sicht.keineBaeume}
-						>{t().sicht.baeume}</button>
-					</div>
 				</div>
 			{/if}
 			<div class="buehne" class:karte={z.schritt === 1}>
@@ -1393,7 +1516,7 @@
 							onclick={() => (z.druckBuehne = z.druckBuehne === 'ausschnitt' ? null : 'ausschnitt')}>{t().ausgeben.druckAusschnitt}</button>
 					</div>
 					<!-- Größe, Maßstab und Rechteck hier statt auf einer zweiten Tafel rechts (Impeccable, 05.11.2026). -->
-					<span class="unter">{t().ausgeben.druckGroesse}</span>
+					<span class="band">{t().ausgeben.druckGroesse}</span>
 					<div class="wahl schmal" role="group" aria-label={t().ausgeben.druckGroesse}>
 						<button type="button" class:an={z.druck.groesse === 'bett'} aria-pressed={z.druck.groesse === 'bett'} onclick={() => (z.druck.groesse = 'bett')}>{t().ausgeben.druckBett}</button>
 						<button type="button" class:an={z.druck.groesse === 'massstab'} aria-pressed={z.druck.groesse === 'massstab'} onclick={() => massstabSetzen(z.druck.massstab)}>{t().ausgeben.druckMassstab}</button>
@@ -1410,6 +1533,7 @@
 						<input type="range" min="100" max="400" step="10" bind:value={z.druck.bettMm} />
 						<em class="mono">{z.druck.bettMm} mm</em>
 					</label>
+					{#if z.druck.farben === 'mehr' && z.druck.bettMm > 200}<p class="hinweis leise">{t().ausgeben.druckTurm}</p>{/if}
 					{#if z.druck.groesse === 'massstab'}
 						<div class="masse">
 							<label><span>{t().ausgeben.druckBreite}</span>
@@ -1424,7 +1548,7 @@
 						{#if z.druck.groesse === 'massstab'}<button type="button" onclick={() => { if (r) z.druck.ausschnitt = ausschnittGroesse(r, z.druck, z.druck.bettMm, z.druck.bettMm); }}>{t().ausgeben.druckAufsBett}</button>{/if}
 						<button type="button" disabled={druckGanz} onclick={() => (z.druck.ausschnitt = { x0: 0, y0: 0, x1: 1, y1: 1 })}>{t().ausgeben.druckGanz}</button>
 					</div>
-					<span class="unter">{t().ausgeben.druckFarben}</span>
+					<span class="band">{t().ausgeben.druckFarben}</span>
 					<div class="wahl schmal" role="group" aria-label={t().ausgeben.druckFarben}>
 						<button type="button" class:an={z.druck.farben === 'ein'} aria-pressed={z.druck.farben === 'ein'} onclick={() => (z.druck.farben = 'ein')}>{t().ausgeben.druckEin}</button>
 						<button type="button" class:an={z.druck.farben === 'mehr'} aria-pressed={z.druck.farben === 'mehr'} onclick={() => (z.druck.farben = 'mehr')}>{t().ausgeben.druckMehr}</button>
@@ -1444,6 +1568,7 @@
 						<button type="button" class:an={z.druck.strassen} aria-pressed={z.druck.strassen} onclick={() => (z.druck.strassen = true)}>{t().sicht.kantenAn}</button>
 						<button type="button" class:an={!z.druck.strassen} aria-pressed={!z.druck.strassen} onclick={() => (z.druck.strassen = false)}>{t().sicht.kantenAus}</button>
 					</div>
+					<span class="band">{t().ausgeben.druckPlatte}</span>
 					<label class="regelzeile">
 						<span>{t().ausgeben.druckSockel}</span>
 						<input type="range" min="1" max="10" step="0.5" bind:value={z.druck.sockelMm} />
@@ -1461,8 +1586,10 @@
 					<span class="unter">{t().ausgeben.druckSchwebend}</span>
 					<div class="wahl schmal" role="group" aria-label={t().ausgeben.druckSchwebend}>
 						<button type="button" class:an={z.druck.schwebend === 'durchziehen'} aria-pressed={z.druck.schwebend === 'durchziehen'} onclick={() => (z.druck.schwebend = 'durchziehen')}>{t().ausgeben.druckDurch}</button>
+						<button type="button" class:an={z.druck.schwebend === 'belassen'} aria-pressed={z.druck.schwebend === 'belassen'} onclick={() => (z.druck.schwebend = 'belassen')}>{t().ausgeben.druckBelassen}</button>
 						<button type="button" class:an={z.druck.schwebend === 'weglassen'} aria-pressed={z.druck.schwebend === 'weglassen'} onclick={() => (z.druck.schwebend = 'weglassen')}>{t().ausgeben.druckWeg}</button>
 					</div>
+					{#if z.druck.schwebend === 'belassen'}<p class="hinweis leise">{t().ausgeben.druckBelassenWas}</p>{/if}
 					{#if druckJetzt.nx * druckJetzt.ny > 1}<p class="hinweis leise">{t().ausgeben.druckKacheln(druckJetzt.nx, druckJetzt.ny)}</p>{/if}
 					<!-- Zu kleine Teile: was, wie viele, und behalten oder weglassen. -->
 				{#if druckJetzt.klein}
@@ -1471,6 +1598,10 @@
 						<button type="button" class:an={z.druck.klein === 'behalten'} aria-pressed={z.druck.klein === 'behalten'} onclick={() => (z.druck.klein = 'behalten')}>{t().ausgeben.druckBehalten}</button>
 						<button type="button" class:an={z.druck.klein === 'weglassen'} aria-pressed={z.druck.klein === 'weglassen'} onclick={() => (z.druck.klein = 'weglassen')}>{t().ausgeben.druckWeg}</button>
 					</div>
+				{/if}
+				{#if z.druck.weglassen?.length}
+					<p class="hinweis leise">{t().ausgeben.druckWegZahl(z.druck.weglassen.length)}</p>
+					<div class="wahl schmal"><button type="button" onclick={() => (z.druck.weglassen = [])}>{t().ausgeben.druckWegAlle}</button></div>
 				{/if}
 					<p class="hinweis leise">{t().ausgeben.druckWas}</p>
 					<!-- Die Datei ist die Hauptaktion des Fensters und sieht auch so aus (Impeccable, 05.11.2026). -->
@@ -1590,14 +1721,22 @@
 
 				<div class="fuss">
 					{@render meldung()}
-					<button class="haupt" class:arbeitet={z.laden} type="button" disabled={!r || z.laden} onclick={async () => { await z.holen(); if (z.datenAktuell) z.schritt = 2; }}>
+					{#if !z.laden && z.rahmenGeaendert}
+						<p class="hinweis">{z.datenAktuell ? t().rahmen.drin : t().rahmen.raus}</p>
+					{/if}
+					<!-- Liegt der Rahmen in den geholten Daten, geht es ohne Abruf weiter
+					     (06.11.2026); neu holen bleibt daneben möglich. -->
+					<button class="haupt" class:arbeitet={z.laden} type="button" disabled={!r || z.laden}
+						onclick={async () => { if (!z.datenAktuell) await z.holen(); if (z.datenAktuell) z.schritt = 2; }}>
 						<span class="ring" aria-hidden="true"></span>
 						{z.laden
 							? (z.fortschritt || t().rahmen.holt) + ' …'
-							: z.datenAktuell ? t().rahmen.erneut : t().rahmen.holen}
+							: z.datenAktuell ? t().rahmen.weiter : z.datenNachholbar ? t().rahmen.nachholen : t().rahmen.holen}
 					</button>
 					{#if z.laden}
 						<button class="abbrechen" type="button" onclick={() => z.abbrechen()}>{t().rahmen.abbrechen}</button>
+					{:else if z.datenAktuell}
+						<button class="abbrechen" type="button" onclick={async () => { await z.holen(); if (z.datenAktuell) z.schritt = 2; }}>{t().rahmen.neuHolen}</button>
 					{/if}
 				</div>
 
@@ -1633,7 +1772,7 @@
 					</div>
 				{/if}
 				<div class="teil">
-					<span class="feld">{t().bereinigen.ebenen}</span>
+					<span class="feld">{t().bereinigen.ebenen}<em class="mono">{zahl(z.objekte.length)}</em></span>
 					<ul class="ebenen">
 						{#each STIFTE.filter((s) => !['rahmen', 'gestrichen'].includes(s.id) && (s.id !== 'overture' || !!z.ergaenzung)) as s}
 							{@const n = zaehler.get(s.id) ?? 0}
@@ -1699,7 +1838,7 @@
 				</div>
 
 				<div class="teil">
-					<span class="feld">{t().bereinigen.auswahl}</span>
+					<span class="feld">{t().bereinigen.auswahl}{#if z.ausgewaehlt.size}<em class="mono lebt">{z.ausgewaehlt.size}</em>{/if}</span>
 					<p class="hinweis">
 						{#if z.ausgewaehlt.size}
 							{t().bereinigen.gewaehlt(z.ausgewaehlt.size)}
@@ -1923,8 +2062,13 @@
 				{/if}
 
 
-				<div class="teil">
-					<span class="feld">{t().ausgeben.weitere}</span>
+				<!-- Eingeklappt ab Werk: So passt Schritt 3 auf eine Bildschirmhöhe, und
+				     „Bild ausgeben" bleibt im Blick (Volker, 06.11.2026). -->
+				<div class="teil" class:zu={!weitereOffen}>
+					<button type="button" class="feld klappkopf" aria-expanded={weitereOffen} onclick={() => (weitereOffen = !weitereOffen)}>
+						{t().ausgeben.weitere}<em class="mono">5</em>
+					</button>
+					{#if weitereOffen}
 					<ul class="ausgaben">
 						<li><button type="button" disabled={!!arbeitet} onclick={() => ausgeben('paket')}>
 							<strong>{t().ausgeben.paket}</strong><em class="mono">
@@ -1949,12 +2093,13 @@
 							<span>{t().ausgeben.vertragWas}</span>
 						</button></li>
 					</ul>
+					{/if}
 				</div>
 
 				{#if r}
-					<div class="teil">
-						<span class="feld">frame.json</span>
-						<pre class="vertrag mono">{JSON.stringify(vertragV2(r.vertrag({ objekte: bestand.length, gestrichen: z.gestrichene, erhalt: z.erhaltene })), null, 1)}</pre>
+					<div class="teil" class:zu={!vertragOffen}>
+						<button type="button" class="feld klappkopf" aria-expanded={vertragOffen} onclick={() => (vertragOffen = !vertragOffen)}>frame.json</button>
+						{#if vertragOffen}<pre class="vertrag mono">{JSON.stringify(vertragV2(r.vertrag({ objekte: bestand.length, gestrichen: z.gestrichene, erhalt: z.erhaltene })), null, 1)}</pre>{/if}
 					</div>
 				{/if}
 
@@ -1999,6 +2144,9 @@
 				{t().fuss.nord(Math.abs(r.konvergenz) < 0.005 ? '0' : zahl(Math.abs(r.konvergenz), { minimumFractionDigits: 3, maximumFractionDigits: 3 }))}
 			</span>
 			<span>{t().fuss.objekte(z.objekte.length)}</span>
+			{#if z.datenStand}
+				<span title={t().fuss.datenVomTitel}>{t().fuss.datenVom(new Date(z.datenStand).toLocaleDateString(sprache.jetzt === 'de' ? 'de-DE' : 'en-GB'))}</span>
+			{/if}
 			{#if z.nichtGesichert}
 				<span class="warnt" title={t().fuss.nichtGesichertTitel}>{t().fuss.nichtGesichert}</span>
 			{:else if z.gesichert}
@@ -2023,13 +2171,24 @@
 	}
 
 	/* ---------- Kopf ---------- */
+	/*
+	 * Kopf hell auf Blatt, mit Haarlinie. Am 06.11.2026 kurz invertiert
+	 * (dunkles Band nach Bambu Studio) und wieder zurück: Über einem
+	 * Schwarzplan wird ein zweites schweres Dunkel zur Konkurrenz der Figur,
+	 * und im dunklen Schema stand ein heller Streifen über allem. Bambu trägt
+	 * das, weil seine Bühne selbst grau ist; bei Nolli ist das Blatt die Figur.
+	 */
 	.kopf {
+		--haken: var(--akzent-tief);
 		display: flex; align-items: center; gap: 24px;
 		padding: 0 18px;
 		border-bottom: 1px solid var(--linie);
 		background: var(--blatt);
 	}
-	h1 { font-size: 15px; letter-spacing: -0.03em; white-space: nowrap; }
+	/* Das Logo in der Akzentfarbe (Volker, 06.11.2026). Die tiefe Stufe, weil
+	   das helle Grün auf Weiß bei 15 px nur auf 2:1 Kontrast kommt; im dunklen
+	   Schema ist die tiefe Stufe die helle. */
+	h1 { font-size: 15px; letter-spacing: -0.03em; white-space: nowrap; color: var(--akzent-tief); }
 
 	.schritte { display: flex; gap: 2px; margin-inline: auto; }
 	.schritt {
@@ -2050,7 +2209,25 @@
 		color: var(--tinte-2);
 	}
 	.schritt.jetzt .ziffer { background: var(--tinte); border-color: var(--tinte); color: var(--blatt); }
+	.schritt.erledigt .ziffer { border-color: var(--haken); color: var(--haken); }
 
+	.projekt {
+		display: flex; align-items: center; gap: 2px; min-width: 0;
+		margin-left: -10px; padding-left: 14px; border-left: 1px solid var(--linie);
+	}
+	.projektname {
+		max-width: 26ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+		margin-right: 4px; font-size: 12px; color: var(--tinte);
+	}
+	.geaendert { margin-right: 6px; font-size: 11px; color: var(--tinte-3); }
+	.geaendert::before { content: '· '; }
+	.projekt button {
+		padding: 5px 9px; cursor: pointer;
+		font-size: 12px; color: var(--tinte-2);
+		background: transparent; border: 1px solid transparent; border-radius: var(--rund);
+	}
+	.projekt button:hover:not(:disabled) { color: var(--tinte); background: var(--senke); }
+	.projekt button:disabled { color: var(--tinte-3); cursor: default; }
 	.anleitung {
 		font-size: 12px; color: var(--tinte-2); white-space: nowrap;
 		text-decoration: none;
@@ -2089,7 +2266,8 @@
 	/* Sichtleiste: gehört zur Ansicht, liegt aber über ihr statt darauf,
 	   damit sie das Blatt nicht verdeckt. */
 	.sichtleiste {
-		display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+		/* Eng in der Zone, weit zwischen den Zonen: Ansicht · Einblenden · Anpassen. */
+		display: flex; flex-wrap: wrap; align-items: center; gap: 6px 22px;
 		padding: 7px 14px;
 		background: var(--blatt); border-bottom: 1px solid var(--linie);
 	}
@@ -2135,6 +2313,47 @@
 	.sichtleiste button:disabled { opacity: 0.42; cursor: default; }
 	.sichtleiste button.an { background: var(--tinte); border-color: var(--tinte); color: var(--blatt); }
 
+	/* Ansicht: eine Wahl. Das 3D-Modell steht abgesetzt am Ende — zwei Kanten
+	   mit einem Spalt dazwischen, damit es als andere Art Darstellung liest. */
+	.sichtleiste .gruppe > button:has(+ .nachsatz) { border-radius: 0 var(--rund) var(--rund) 0; }
+	.sichtleiste .gruppe > .nachsatz { margin-left: 3px; border-left: 1px solid var(--linie); border-radius: var(--rund); }
+	.sichtleiste .gruppe > .nachsatz.an { border-color: var(--tinte); }
+
+	/* Einblenden: Schalter mit Häkchen wie die Ebenenliste. Schwarz gefüllt ist
+	   in dieser Leiste nur die gewählte Ansicht, nie ein eingeschalteter Inhalt. */
+	.sichtleiste .schalter { gap: 2px; }
+	.sichtleiste .schalter > button,
+	.sichtleiste .schalter > button.an {
+		display: inline-flex; align-items: center; gap: 7px;
+		padding: 5px 8px; border: 0; border-radius: var(--rund);
+		background: transparent; color: var(--tinte-2);
+	}
+	.sichtleiste .schalter > button.an { color: var(--tinte); }
+	.sichtleiste .schalter > button:hover:not(:disabled) { background: var(--senke); color: var(--tinte); opacity: 1; }
+	.sichtleiste .schalter > button::before {
+		content: ''; flex: none; width: 12px; height: 12px; box-sizing: border-box;
+		border: 1.5px solid currentColor; border-radius: 2px;
+	}
+	.sichtleiste .schalter > button.an::before {
+		border: 0; background: var(--tinte);
+		/* Das Häkchen ist aus dem Kästchen ausgespart, damit es in hell und
+		   dunkel den Grund zeigt statt einer festen Farbe. */
+		-webkit-mask: linear-gradient(#000 0 0), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.7 6.3l2.3 2.3 4.3-4.8' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 12px 12px no-repeat;
+		mask: linear-gradient(#000 0 0), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.7 6.3l2.3 2.3 4.3-4.8' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 12px 12px no-repeat;
+		-webkit-mask-composite: xor; mask-composite: exclude;
+	}
+
+	/* Anpassen: am rechten Rand, ohne Rahmen. Seltener gebraucht als die beiden
+	   Zonen davor, also die leiseste. */
+	.sichtleiste .anpassen { margin-left: auto; gap: 2px; }
+	.sichtleiste .anpassen > .klapp > button,
+	.sichtleiste .anpassen > .klapp:first-child > button {
+		display: inline-flex; align-items: center;
+		padding: 5px 8px; border: 0; border-radius: var(--rund); background: transparent;
+	}
+	.sichtleiste .anpassen > .klapp > button:hover:not(:disabled) { background: var(--senke); }
+	.sichtleiste .anpassen .regler { left: auto; right: 0; }
+
 	.buehne { position: relative; background: var(--radial); overflow: hidden; }
 	.buehne.karte { background: var(--senke); }
 	/* Mikrostruktur: das Feld um das Blatt soll eine Oberflaeche sein, keine leere Flaeche */
@@ -2162,6 +2381,39 @@
 		background-attachment: local, scroll;
 	}
 	.teil { padding: 16px 18px; border-bottom: 1px solid var(--linie); }
+	/*
+	 * Reiter: Der erste Titel eines Teils ist ein Kopfband über die ganze
+	 * Breite, eine Stufe dunkler als die Schiene, wie der aktuelle Schritt oben
+	 * (Volker, 06.11.2026, mit Bambu Studio als Bezug). Weitere Titel im Teil
+	 * bleiben die kleinen Feldbeschriftungen darunter. Rechts im Band darf der
+	 * Wert stehen, der gerade lebt.
+	 */
+	.teil > .feld:first-child {
+		display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+		margin: -16px -18px 14px; padding: 9px 18px;
+		background: var(--senke); border-bottom: 1px solid var(--linie);
+		font-size: 12.5px; font-weight: 600; letter-spacing: 0.01em; text-transform: none;
+		color: var(--tinte);
+	}
+	.teil > .feld:first-child em {
+		font-style: normal; font-weight: 400; font-size: 11px; letter-spacing: 0; color: var(--tinte-2);
+	}
+	.teil > .feld:first-child em.lebt { color: var(--akzent-tief); font-weight: 500; }
+	/* Aufklappbarer Kopf: dasselbe Band, als Knopf, mit Pfeil vor dem Wert. */
+	.teil > .klappkopf {
+		width: calc(100% + 36px); border: 0; border-bottom: 1px solid var(--linie);
+		font-family: inherit; text-align: left; cursor: pointer;
+	}
+	.teil > .klappkopf:hover { color: var(--tinte); background: var(--linie); }
+	.teil > .klappkopf::after {
+		content: ''; order: 3; width: 0; height: 0; margin-left: 2px; align-self: center;
+		border-left: 4px solid transparent; border-right: 4px solid transparent;
+		border-top: 5px solid currentColor; transition: transform 120ms;
+	}
+	.teil > .klappkopf[aria-expanded='false']::after { transform: rotate(-90deg); }
+	.teil > .klappkopf em { margin-left: auto; }
+	.teil.zu { padding-bottom: 0; }
+	.teil.zu > .klappkopf { margin-bottom: 0; }
 	.fuss { margin-top: auto; padding: 16px 18px; position: sticky; bottom: 0; background: var(--blatt); border-top: 1px solid var(--linie); }
 
 	.feld {
@@ -2362,6 +2614,8 @@
 		.sichtleiste { padding: 5px 12px; }
 		.sichtleiste button { padding: 4px 7px; }
 		.teil { padding: 11px 16px; }
+		.teil > .feld:first-child { margin: -11px -16px 12px; padding: 8px 16px; }
+		.teil > .klappkopf { width: calc(100% + 32px); }
 		.fuss { padding: 12px 16px; }
 		.feld { margin-bottom: 7px; }
 		.ebenen button { padding: 5px 2px; }
@@ -2395,10 +2649,13 @@
 	   Die Kante teilte sich der Knopf mit dem Nachbarn, der keine linke hat,
 	   und so wirkte er links abgeschnitten (Volker, 04.11.2026). */
 	.sichtleiste button.veraendert:not(.an) { color: var(--tinte); }
+	/* Seit 06.11.2026 hinter dem Wort und im Akzent: Davor las sich der Punkt
+	   wie ein Aufzählungszeichen oder ein Radioknopf. */
 	.sichtleiste button.veraendert::before {
-		content: ''; display: inline-block; width: 5px; height: 5px; margin-right: 6px;
-		vertical-align: 1px; border-radius: 50%; background: currentColor;
+		content: ''; order: 1; width: 5px; height: 5px; margin-left: 5px; align-self: flex-start; margin-top: 2px;
+		border-radius: 50%; background: var(--akzent);
 	}
+	.sichtleiste .klappknopf::after { order: 2; }
 	.sichtleiste .regler {
 		position: absolute; top: calc(100% + 6px); left: 0; z-index: 20;
 		display: grid; gap: 10px; width: 260px; padding: 12px 14px;
@@ -2432,6 +2689,20 @@
 		box-shadow: var(--heben);
 	}
 	.druckkopf { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+	/* Kopfbänder auch im Druckfenster, wie in der Schiene (06.11.2026). */
+	/* Der Kopf mit × bleibt beim Rollen oben stehen (Volker, 06.11.2026). Das
+	   −14px gleicht den Innenabstand des Fensters aus, sonst rutschte er erst ein Stück mit. */
+	.druckkopf:first-child {
+		position: sticky; top: -14px; z-index: 2;
+		margin: -14px -16px 10px; padding: 8px 12px 8px 16px;
+		background: var(--senke); border-bottom: 1px solid var(--linie);
+	}
+	.druckkopf:first-child .feld { font-size: 12.5px; font-weight: 600; letter-spacing: 0.01em; text-transform: none; color: var(--tinte); }
+	.druckfenster .band {
+		margin: 8px -16px 2px; padding: 8px 16px;
+		background: var(--senke); border-block: 1px solid var(--linie);
+		font-size: 12.5px; font-weight: 600; letter-spacing: 0.01em; color: var(--tinte);
+	}
 	.druckkopf.zwei { margin-bottom: 12px; }
 	.druckkopf .feld { margin: 0; }
 	.druckkopf em { font-style: normal; font-size: 11px; color: var(--tinte-2); white-space: nowrap; }

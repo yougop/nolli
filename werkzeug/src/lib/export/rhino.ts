@@ -13,6 +13,11 @@
  *   Rahmenkante (ausgeblendet) eigens.
  * - Die Kurven der Zeichnung auf ihren DXF-Ebenen, am Rahmen geschnitten und
  *   mit Gelände aufs Netz gelegt — dieselben Züge wie `drawing_terrain.dxf`.
+ * - Mit Gelände die Fußlinie jedes Hauses: wo die Wand das Geländenetz
+ *   schneidet, als Kurve auf dem Netz (Ebene `N_GEBAEUDE::foot_lines`).
+ *   Jonathan, 05.11.2026: Make2D rechnet keine Schnitte zwischen Netzen,
+ *   am Fuß der Häuser fehlte im Plan die Kante. Das Gelände bleibt ganz —
+ *   ausgeschnittene Grundrisse hinterließen beim Abriss ein Loch.
  * - Je Körper UserText: `body_id`, `osm_id`, Höhe und ihre Herkunft,
  *   Nutzung, Material. Damit findet ein Rückweg jeden Körper wieder.
  *
@@ -26,7 +31,7 @@ import earcut from 'earcut';
 import { unterkante, umrisseMitTeilen, type Objekt } from '../osm';
 import { hatDach, dachKoerper, DACH_NAME } from '../dach';
 import type { Rahmen } from '../geo/rahmen';
-import { type Gelaende, tiefsteUnter, feldImRahmen, hoeheBei } from '../geo/gelaende';
+import { type Gelaende, tiefsteUnter, feldImRahmen, hoeheBei, aufsNetz } from '../geo/gelaende';
 import { amRahmen, drin, gegenUhr, mitUhr, verschoben } from '../schneiden';
 import { MATERIALIEN, materialFuer } from '../material';
 import { planZuege } from './dxf';
@@ -146,6 +151,18 @@ export async function als3dm(e: Rhino3dmEingabe): Promise<Uint8Array> {
 	 */
 	const KANTE = e.kantenHell ? '#F4F4F2' : '#2B2B29';
 	const DRAUSSEN = 'outside';
+	/** Das Geländenetz, wie es unten geschrieben wird; die Fußlinien liegen genau darauf. */
+	const feld = gelaende ? feldImRahmen(gelaende, r) : null;
+	/** Fußlinie eines Rings im Rahmen (lokal, geschlossen), aufs Netz gelegt. */
+	const fussLinie = (o: Objekt, ringLokal: P[]) => {
+		if (!feld || ringLokal.length < 3) return;
+		const pz = aufsNetz(feld, [...ringLokal, ringLokal[0]]);
+		const a = new rh.ObjectAttributes();
+		a.layerIndex = ebene('foot_lines', { eltern: BAU, farbe: KANTE });
+		a.name = objName(`foot_${o.id}`);
+		a.setUserString('body_id', o.id);
+		f.objects().addCurve(new rh.PolylineCurve(pz), a);
+	};
 
 	// ---- Körper -------------------------------------------------------------
 	const ring = (roh: P[]) => verschoben(roh, r.x0, r.y0);
@@ -237,6 +254,8 @@ export async function als3dm(e: Rhino3dmEingabe): Promise<Uint8Array> {
 		const innen = zer.filter((t) => t.innen.length >= 3).map((t) => ccw(ring(t.innen))).filter((a) => a.length >= 3);
 		const linnen = lzer.filter((t) => t.innen.length >= 3).map((t) => cw(ring(t.innen))).filter((a) => a.length >= 3);
 		const mat = materialFuer(o);
+		// Nur was auf dem Boden steht; ein Umriss, den seine Teile ersetzen, nicht.
+		if (feld && u === 0 && !ersetzt.has(o.id)) for (const k of [...innen, ...linnen]) fussLinie(o, k);
 		const klasseEbene = ersetzt.has(o.id)
 			? ebene('outlines_with_parts', { eltern: BAU, farbe: '#6E6E6B', sichtbar: false })
 			: o.herkunft === 'overture'
@@ -283,8 +302,8 @@ export async function als3dm(e: Rhino3dmEingabe): Promise<Uint8Array> {
 		bodenStoff = f.materials().count - 1;
 	}
 	{
-		const g = gelaende ? feldImRahmen(gelaende, r)
-			: { nx: 2, ny: 2, dx: r.x1 - r.x0, dy: r.y1 - r.y0, z: new Float32Array(4) };
+		const g = feld ??
+			{ nx: 2, ny: 2, dx: r.x1 - r.x0, dy: r.y1 - r.y0, z: new Float32Array(4) };
 		if (gelaende || e.textur) {
 			const m = new rh.Mesh();
 			for (let j = 0; j < g.ny; j++) for (let i = 0; i < g.nx; i++) {

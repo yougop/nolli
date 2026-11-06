@@ -35,7 +35,12 @@ export type Druckwahl = {
 	bettMm: number;
 	sockelMm: number;
 	ueberhoehung: number;
-	schwebend: 'durchziehen' | 'weglassen';
+	/**
+	 * Schwebende Teile (Brücken, Auskragungen): bis zum Boden durchziehen,
+	 * weglassen oder in ihrer Höhe belassen (Volker, 06.11.2026); belassen
+	 * braucht im Slicer Stützen.
+	 */
+	schwebend: 'durchziehen' | 'weglassen' | 'belassen';
 	/** `ein`: ein Objekt; `mehr`: Platte, Häuser und Straßen getrennt, für mehrere Farben. */
 	farben: 'ein' | 'mehr';
 	/** Straßen als flache Streifen über der Platte, damit man sie auch einfarbig erkennt. */
@@ -51,10 +56,16 @@ export type Druckwahl = {
 	ausschnitt: { x0: number; y0: number; x1: number; y1: number };
 	/** Was mit zu kleinen Teilen geschieht (`zuKlein`): drin lassen oder weglassen. */
 	klein: 'behalten' | 'weglassen';
+	/**
+	 * Bauten, die nur im Druck fehlen (Volker, 06.11.2026: „Objekte markieren
+	 * und nicht drucken“). Anders als Streichen beim Bereinigen bleiben sie in
+	 * Bild, Rhino und Paket. Im Ausschnitt per Klick umgeschaltet.
+	 */
+	weglassen?: string[];
 };
 export const DRUCK_VORGABE: Druckwahl = {
 	groesse: 'bett', massstab: 1000, bettMm: 200, sockelMm: 3, ueberhoehung: 1, schwebend: 'durchziehen',
-	farben: 'mehr', strassen: true, gruen: true, wasser: true, ausschnitt: { x0: 0, y0: 0, x1: 1, y1: 1 }, klein: 'behalten'
+	farben: 'mehr', strassen: true, gruen: true, wasser: true, ausschnitt: { x0: 0, y0: 0, x1: 1, y1: 1 }, klein: 'behalten', weglassen: []
 };
 
 /**
@@ -62,10 +73,15 @@ export const DRUCK_VORGABE: Druckwahl = {
  * jedes Stück, wie es gedruckt wird, also nach dem Schnitt an der Kachel:
  *
  * - **Anschnitt**: ein Haus, das die Kachelkante schneidet und dort einen
- *   Rest schmaler als 0,8 mm lässt.
- * - **Antenne**: schmaler als 1,5 mm und mehr als achtmal so hoch wie breit,
- *   also Masten, Schornsteine, schlanke Türme. Bricht beim Druck oder beim
- *   Abnehmen vom Bett.
+ *   Rest schmaler als 2 mm lässt, oder einen, der mehr als achtmal so hoch
+ *   wie breit ist (ein geviertelter Turm). Bis 06.11.2026 galt 0,8 mm wie für ganze
+ *   Bauten; ein Rest von gut einem Millimeter an einer Kachelnaht stand dann
+ *   als dünne Scheibe auf der Platte und brach (Volker). Gleich große Kacheln
+ *   mit wandernden Nähten waren die andere Lösung, sie überzeugte nicht.
+ * - **Antenne**: schmaler als 3 mm und mehr als fünfmal so hoch wie breit,
+ *   oder schmaler als 1,5 mm und mehr als dreimal so hoch,
+ *   also Masten, Schornsteine, schlanke Türme und Scheiben. Bricht beim
+ *   Druck oder beim Abnehmen vom Bett.
  * - **Schmal**: sonst schmaler als 0,8 mm, das legt eine 0,4-mm-Düse nicht.
  *
  * Breite ist die kurze Seite des kleinsten umschreibenden Rechtecks.
@@ -75,10 +91,98 @@ function zuKlein(teile: [number, number][][], ganz: boolean, hoeheM: number, k: 
 	let b = Infinity;
 	for (const t of teile) b = Math.min(b, 2 * rechteck(t).hv * k);
 	if (!Number.isFinite(b)) return null;
-	if (b < 1.5 && (hoeheM * k) / Math.max(b, 1e-6) > 8) return 'antenne';
-	if (b < MINDEST_MM) return ganz ? 'schmal' : 'anschnitt';
+	// Bis 06.11.2026 schmaler als 1,5 mm und achtmal so hoch. Eine frei stehende
+	// Scheibe von 2 mm und 13 mm Höhe rutschte durch (Volker, HafenCity).
+	// Ganz dünn reicht weniger: ein Stift von 1 mm und 4 mm Höhe bricht auch (Volker).
+	const schlank = (hoeheM * k) / Math.max(b, 1e-6);
+	if ((b < 3 && schlank > 5) || (b < 1.5 && schlank > 3)) return 'antenne';
+	// Angeschnitten und hoch: Ein Turm, den zwei Nähte vierteln, steht als vier
+	// hohe Scheiben auf vier Platten (Volker, 06.11.2026: „nie zu drucken“).
+	if (!ganz && (b < ANSCHNITT_MM || (hoeheM * k) / b > 8)) return 'anschnitt';
+	if (b < MINDEST_MM) return 'schmal';
 	return null;
 }
+/**
+ * Liegt ein Stück an einem anderen Bau an oder steckt es darin? Dann druckt
+ * es mit ihm als ein Körper und ist kein freistehendes Einzelteil (Volker,
+ * 06.11.2026: ein Eingang an der Fassade war rot, obwohl er druckbar ist).
+ * Geprüft wird, ob eine Ecke des Stücks im Nachbarn liegt oder näher als
+ * `abstand` an seiner Kante. Für Antennen gilt mehr (`gestuetzt`): Ein Mast
+ * auf dem Dach bricht auch dann ab, wenn er im Haus steckt.
+ */
+type Nachbar = { id: string; huelle: [number, number, number, number]; ringe: [number, number][][]; hoeheM: number; breiteM: number };
+function nachbarn(objekte: Objekt[], ersetzt: Set<string>, weg: Set<string>, w: Druckwahl): Nachbar[] {
+	const aus: Nachbar[] = [];
+	for (const o of objekte) {
+		if ((o.ebene !== 'gebaeude' && o.ebene !== 'erhalt') || o.zustand === 'gestrichen' || !o.ringe.length || ersetzt.has(o.id) || weg.has(o.id)) continue;
+		// Was nicht gedruckt wird, stützt auch nicht (Volker, 06.11.2026: ein
+		// Turm in einem schwebenden Bauteil stand bei „Weglassen“ frei und war nicht rot).
+		if (w.schwebend === 'weglassen' && unterkante(o) > 0) continue;
+		let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+		for (const ring of o.ringe) for (const [x, y] of ring) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+		let breiteM = 0;
+		for (const ring of o.ringe) breiteM = Math.max(breiteM, 2 * rechteck(ring as [number, number][]).hv);
+		aus.push({ id: o.id, huelle: [x0, y0, x1, y1], ringe: o.ringe as [number, number][][], hoeheM: o.hoeheM ?? 8, breiteM });
+	}
+	return aus;
+}
+function abstandZurStrecke(px: number, py: number, ax: number, ay: number, bx: number, by: number) {
+	const dx = bx - ax, dy = by - ay, l = dx * dx + dy * dy;
+	const t = l ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l)) : 0;
+	return Math.hypot(px - ax - t * dx, py - ay - t * dy);
+}
+/** Die Höhe des höchsten Baus, an dem das Stück anliegt oder in dem es steckt; −∞, wenn es frei steht. */
+function angebaut(teile: [number, number][][], id: string, liste: Nachbar[], abstand: number, k: number) {
+	let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+	for (const t of teile) for (const [x, y] of t) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+	let hoch = -Infinity;
+	for (const n of liste) {
+		if (n.id === id || n.hoeheM <= hoch) continue;
+		// Stützen kann nur, wer selbst nicht schlank ist. Sonst hielten sich fünf
+		// gleiche Spitzen auf einem Dach gegenseitig, und nur eine war rot (Volker).
+		const nb = n.breiteM * k, nq = (n.hoeheM * k) / Math.max(nb, 1e-6);
+		if ((nb < 3 && nq > 5) || (nb < 1.5 && nq > 3)) continue;
+		const h = n.huelle;
+		if (h[0] > x1 + abstand || h[2] < x0 - abstand || h[1] > y1 + abstand || h[3] < y0 - abstand) continue;
+		let liegt = false;
+		for (const t of teile) { for (const p of t) { for (const ring of n.ringe) {
+			if (drin(p, ring)) { liegt = true; break; }
+			for (let i = 0, j = ring.length - 1; i < ring.length && !liegt; j = i++)
+				if (abstandZurStrecke(p[0], p[1], ring[j][0], ring[j][1], ring[i][0], ring[i][1]) < abstand) liegt = true;
+			if (liegt) break;
+		} if (liegt) break; } if (liegt) break; }
+		if (liegt) hoch = n.hoeheM;
+	}
+	return hoch;
+}
+/**
+ * Zu klein, aber angebaut? Nur, wenn das Stück an einem Bau lehnt, der fast
+ * so hoch ist wie es selbst (ein Eingang, ein Fassadenstreifen, eine Fuge
+ * zwischen zwei Flügeln). Ein Mast oder eine Scheibe, die mehr als
+ * `UEBERSTAND_MM` darüber hinausragt, bleibt zu klein.
+ */
+const UEBERSTAND_MM = 2;
+function gestuetzt(art: Klein, teile: [number, number][][], o: Objekt, liste: Nachbar[], k: number) {
+	const hoch = angebaut(teile, o.id, liste, ANLIEGEN_MM / k, k);
+	if (hoch === -Infinity) return false;
+	/**
+	 * Gestützt zählt nur, was über die Stütze hinausragt (06.11.2026). Ein
+	 * Giebel steht in OSM oft als Bauteil vom Boden bis zur Spitze im Haus;
+	 * über die ganze Höhe gerechnet war er ein schlanker Turm, frei steht aber
+	 * nur das Stück über dem Dach (Volker: ein Giebel auf dem niedrigeren Flügel
+	 * war rot, die gleichen daneben nicht). Rot bleibt, wenn dieses Stück selbst
+	 * dünn ist oder schlank wie eine Antenne.
+	 */
+	const frei = ((o.hoeheM ?? 8) - hoch) * k;
+	if (frei <= UEBERSTAND_MM) return true;
+	let b = Infinity;
+	for (const t of teile) b = Math.min(b, 2 * rechteck(t).hv * k);
+	if (b < MINDEST_MM) return false;
+	const q = frei / Math.max(b, 1e-6);
+	return !((b < 3 && q > 5) || (b < 1.5 && q > 3));
+}
+/** Anliegen heißt: näher als 0,2 mm im Druck. */
+const ANLIEGEN_MM = 0.2;
 const GRUEN_MM = 0.2;
 
 /** Der Ausschnitt im Ortsgitter. */
@@ -102,6 +206,8 @@ const WASSER_MM = 0.8;
 const WASSER_UNTER_LAND_MM = 0.3;
 /** Was ein Drucker mit 0,4-mm-Düse noch sauber legt. */
 const MINDEST_MM = 0.8;
+/** Was ein angeschnittener Rest an der Kachelkante mindestens braucht, damit er nicht abbricht. */
+const ANSCHNITT_MM = 2;
 const VERSENKT_MM = 0.5;
 
 type Netz = number[];   // x y z je Ecke, drei Ecken je Dreieck, außen gegen den Uhrzeigersinn
@@ -161,10 +267,14 @@ export function druckMasse(objekte: Objekt[], r: Rahmen, w: Druckwahl) {
 	const m = druckGroesse(r, w);
 	const { g, k, nx, ny, kb, kh } = m;
 	const zahl: Record<Klein, number> = { anschnitt: 0, antenne: 0, schmal: 0 };
+	/** Welche Bauten zu klein sind, für die rote Markierung im Ausschnitt. */
+	const kleinIds = new Set<string>();
 	let gesamt = 0;
 	const ersetzt = umrisseMitTeilen(objekte);
+	const weg = new Set(w.weglassen ?? []);
+	const nb = nachbarn(objekte, ersetzt, weg, w);
 	for (const o of objekte) {
-		if ((o.ebene !== 'gebaeude' && o.ebene !== 'erhalt') || o.zustand === 'gestrichen' || !o.ringe.length || ersetzt.has(o.id)) continue;
+		if ((o.ebene !== 'gebaeude' && o.ebene !== 'erhalt') || o.zustand === 'gestrichen' || !o.ringe.length || ersetzt.has(o.id) || weg.has(o.id)) continue;
 		if (unterkante(o) > 0 && w.schwebend === 'weglassen') continue;
 		// Hülle über alle Außenringe, nicht nur den ersten: ein Anbau als zweiter
 		// Ring läge sonst in einer Kachel, die die Zählung nie ansieht.
@@ -178,11 +288,12 @@ export function druckMasse(objekte: Objekt[], r: Rahmen, w: Druckwahl) {
 				const st = stuecke(o, tx0, ty0, tx1, ty1, k);
 				if (!st.teile.length) continue;
 				gesamt++;
-				const art = zuKlein(st.teile, st.ganz, o.hoeheM ?? 8, k);
-				if (art) zahl[art]++;
+				let art = zuKlein(st.teile, st.ganz, o.hoeheM ?? 8, k);
+				if (art && gestuetzt(art, st.teile, o, nb, k)) art = null;
+				if (art) { zahl[art]++; kleinIds.add(o.id); }
 			}
 	}
-	return { ...m, gesamt, klein: zahl.anschnitt + zahl.antenne + zahl.schmal, kleinArt: zahl };
+	return { ...m, gesamt, klein: zahl.anschnitt + zahl.antenne + zahl.schmal, kleinArt: zahl, kleinIds };
 }
 
 /** Das Rechteck auf eine Größe in Millimetern setzen, um seine Mitte; nur im Maßstab sinnvoll. */
@@ -210,7 +321,9 @@ export function druckVorschlag(objekte: Objekt[], r: Rahmen, w: Druckwahl): Druc
 		// Antennen zählen hier nicht: Sie sind eine Warnung („bricht ab“), kein
 		// Hindernis, und an der HafenCity drückten vier davon den Vorschlag auf
 		// 1:500, ein 100-m-Stück Stadt. Entscheidend ist, was die Düse nicht legt.
-		const zuEng = z.kleinArt.anschnitt + z.kleinArt.schmal;
+		// Anschnitte auch nicht (06.11.2026): Seit sie ab 2 mm zählen, hängen
+		// sie mehr an der Lage der Nähte als am Maßstab; dagegen hilft Schieben.
+		const zuEng = z.kleinArt.schmal;
 		if (!z.gesamt || zuEng / z.gesamt < 0.05 || m === 500) return probe;
 	}
 	return w;
@@ -239,9 +352,11 @@ export function druckModell(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | n
 	/** Geländehöhe in mm über der Plattenunterseite. */
 	const plattenZ = (zGelaende: number) => w.sockelMm + (zGelaende - zRef) * m.k * ue;
 	const ersetzt = umrisseMitTeilen(objekte);
+	const weg = new Set(w.weglassen ?? []);
+	const nb = nachbarn(objekte, ersetzt, weg, w);
 	const { g, kb, kh } = m;
 	/** `kleine`: zu kleine Teile, die behalten werden; gehören beim Schreiben zu den Häusern. */
-	const kacheln: { name: string; i: number; j: number; bMm: number; hMm: number; platte: Netz; wasser: Netz; see: Netz; haeuser: Netz; kleine: Netz; strassen: Netz; gruen: Netz }[] = [];
+	const kacheln: { name: string; i: number; j: number; bMm: number; hMm: number; ox: number; oy: number; platte: Netz; wasser: Netz; see: Netz; haeuser: Netz; kleine: Netz; strassen: Netz; gruen: Netz }[] = [];
 
 	for (let j = 0; j < m.ny; j++)
 		for (let i = 0; i < m.nx; i++) {
@@ -255,15 +370,17 @@ export function druckModell(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | n
 			const haeuser: Netz = [], kleine: Netz = [];
 			for (const roh of objekte) {
 				if (roh.ebene !== 'gebaeude' && roh.ebene !== 'erhalt') continue;
-				if (roh.zustand === 'gestrichen' || !roh.ringe.length || ersetzt.has(roh.id)) continue;
+				if (roh.zustand === 'gestrichen' || !roh.ringe.length || ersetzt.has(roh.id) || weg.has(roh.id)) continue;
 				const schwebt = unterkante(roh) > 0;
 				if (schwebt && w.schwebend === 'weglassen') continue;
-				const o: Objekt = schwebt ? { ...roh, unterM: undefined } : roh;
+				const lassen = schwebt && w.schwebend === 'belassen';
+				const o: Objekt = schwebt && !lassen ? { ...roh, unterM: undefined } : roh;
 				const { teile, ganz, c } = stuecke(o, x0, y0, x1, y1, m.k);
 				if (!teile.length) continue;
 				const [cx0, cy0, cx1, cy1] = c;
 				// Zu kleine Teile: weglassen, oder behalten und in der Vorschau rot.
-				const klein = zuKlein(teile, ganz, o.hoeheM ?? 8, m.k);
+				let klein = zuKlein(teile, ganz, o.hoeheM ?? 8, m.k);
+				if (klein && gestuetzt(klein, teile, o, nb, m.k)) klein = null;
 				if (klein && w.klein === 'weglassen') continue;
 				const ziel = klein ? kleine : haeuser;
 				const boden = gelaende ? tiefsteUnter(gelaende, o.ringe) : 0;
@@ -285,6 +402,8 @@ export function druckModell(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | n
 						const unten = q[a + 2] <= 0;
 						const f = flaeche(q[a], q[a + 1]) - (nass && unten ? tief : 0);
 						// Oben mindestens knapp über der Platte, auch an einem steilen Hang.
+						// Belassen: Die Unterseite schwebt in ihrer Höhe über dem Gelände.
+						if (lassen) { ziel.push(x, y, unten ? fussMm + VERSENKT_MM + unterkante(o) * m.k : fussMm + q[a + 2] * m.k); continue; }
 						ziel.push(x, y, unten ? f - VERSENKT_MM : Math.max(f + 0.2, fussMm + q[a + 2] * m.k));
 					}
 				};
@@ -310,7 +429,7 @@ export function druckModell(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | n
 				aufPlatte(seeKoerper, dreieckeAus(innen), rs, x0, y0, m.k, -Math.min(WASSER_UNTER_LAND_MM, tief / 2), tief + 0.6);
 			}
 			const gruen: Netz = w.gruen ? gruenFlaechen(objekte, x0, y0, x1, y1, m.k, rs, see && tief > 0 ? see : null) : [];
-			kacheln.push({ name: m.nx * m.ny > 1 ? `kachel_${String.fromCharCode(65 + j)}${i + 1}` : 'modell', i, j, bMm: kb * m.k, hMm: kh * m.k, platte, wasser, see: seeKoerper, haeuser, kleine, strassen, gruen });
+			kacheln.push({ name: m.nx * m.ny > 1 ? `kachel_${String.fromCharCode(65 + j)}${i + 1}` : 'modell', i, j, bMm: (x1 - x0) * m.k, hMm: (y1 - y0) * m.k, ox: (x0 - g.x0) * m.k, oy: (y0 - g.y0) * m.k, platte, wasser, see: seeKoerper, haeuser, kleine, strassen, gruen });
 		}
 	return { kacheln, masse: m };
 }
@@ -760,7 +879,33 @@ export function alsStl(netze: Netz[], kopf = 'Nolli 3D print, mm'): Uint8Array {
 }
 
 /** Die Druckplatte der Bambu Lab X1 Carbon, auf deren Mitte das Modell gelegt wird. */
-const BETT_MITTE_MM = 128;
+const BETT_MM = 256, BETT_MITTE_MM = BETT_MM / 2;
+/** Abstand der Platten in Bambu Studio und OrcaSlicer: Bettbreite plus ein Fünftel (`LOGICAL_PART_PLATE_GAP`). */
+const PLATTEN_SCHRITT_MM = BETT_MM * 1.2;
+/** Spalten des Plattenrasters, wie `compute_colum_count` in Bambu Studio. */
+const plattenSpalten = (n: number) => { const v = Math.sqrt(n), r = Math.round(v); return v > r ? r + 1 : r; };
+
+export type Druckteil = { name: string; netz: Netz };
+
+/** Ein Teil als 3MF-Netz; die Ecken werden auf 1 µm zusammengelegt. */
+function netzXml(id: number, ob: Druckteil) {
+	const index = new Map<string, number>(), ecken: string[] = [], dreiecke: string[] = [];
+	const ecke = (x: number, y: number, z: number) => {
+		const s = `${x.toFixed(3)} ${y.toFixed(3)} ${z.toFixed(3)}`;
+		let i = index.get(s);
+		if (i === undefined) { i = ecken.length; index.set(s, i); const [a, b, c] = s.split(' '); ecken.push(`<vertex x="${a}" y="${b}" z="${c}"/>`); }
+		return i;
+	};
+	for (let i = 0; i < ob.netz.length; i += 9) {
+		// Neuer Körper: gleiche Ecken nicht mit dem vorigen zusammenlegen.
+		if (istSchnitt(ob.netz, i)) { index.clear(); continue; }
+		const a = ecke(ob.netz[i], ob.netz[i + 1], ob.netz[i + 2]);
+		const b = ecke(ob.netz[i + 3], ob.netz[i + 4], ob.netz[i + 5]);
+		const c = ecke(ob.netz[i + 6], ob.netz[i + 7], ob.netz[i + 8]);
+		if (a !== b && b !== c && a !== c) dreiecke.push(`<triangle v1="${a}" v2="${b}" v3="${c}"/>`);
+	}
+	return `<object id="${id}" name="${ob.name}" type="model"><mesh><vertices>${ecken.join('')}</vertices><triangles>${dreiecke.join('')}</triangles></mesh></object>`;
+}
 
 /**
  * 3MF: ein Objekt aus Teilen (Platte, Häuser, Straßen, Grün), damit jedem
@@ -771,42 +916,57 @@ const BETT_MITTE_MM = 128;
  * werden zusammengelegt (auf 1 µm), sonst sieht der Slicer keine
  * geschlossenen Kanten.
  */
-export function als3mf(objekte: { name: string; netz: Netz }[]): Uint8Array {
-	const teile: string[] = [];
-	let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-	for (const ob of objekte) for (let i = 0; i < ob.netz.length; i += 3) {
-		if (Number.isNaN(ob.netz[i])) continue;
-		x0 = Math.min(x0, ob.netz[i]); x1 = Math.max(x1, ob.netz[i]); y0 = Math.min(y0, ob.netz[i + 1]); y1 = Math.max(y1, ob.netz[i + 1]);
-	}
-	const tx = Number.isFinite(x0) ? BETT_MITTE_MM - (x0 + x1) / 2 : 0, ty = Number.isFinite(y0) ? BETT_MITTE_MM - (y0 + y1) / 2 : 0;
-	objekte.forEach((ob, n) => {
-		const index = new Map<string, number>(), ecken: string[] = [], dreiecke: string[] = [];
-		const ecke = (x: number, y: number, z: number) => {
-			const s = `${x.toFixed(3)} ${y.toFixed(3)} ${z.toFixed(3)}`;
-			let i = index.get(s);
-			if (i === undefined) { i = ecken.length; index.set(s, i); const [a, b, c] = s.split(' '); ecken.push(`<vertex x="${a}" y="${b}" z="${c}"/>`); }
-			return i;
-		};
-		for (let i = 0; i < ob.netz.length; i += 9) {
-			// Neuer Körper: gleiche Ecken nicht mit dem vorigen zusammenlegen.
-			if (istSchnitt(ob.netz, i)) { index.clear(); continue; }
-			const a = ecke(ob.netz[i], ob.netz[i + 1], ob.netz[i + 2]);
-			const b = ecke(ob.netz[i + 3], ob.netz[i + 4], ob.netz[i + 5]);
-			const c = ecke(ob.netz[i + 6], ob.netz[i + 7], ob.netz[i + 8]);
-			if (a !== b && b !== c && a !== c) dreiecke.push(`<triangle v1="${a}" v2="${b}" v3="${c}"/>`);
+export function als3mf(teile: Druckteil[]): Uint8Array {
+	return als3mfPlatten([{ name: 'nolli', teile }]);
+}
+
+/**
+ * Mehrere Kacheln in einer 3MF (Volker, 06.11.2026), statt einer ZIP mit
+ * einer Datei je Kachel. Jede Kachel ist ein eigenes Objekt aus Teilen und
+ * liegt mittig auf ihrer Platte im Raster, das Bambu Studio und OrcaSlicer
+ * für mehrere Platten anlegen: Spalten wie dort, Abstand Bettbreite plus ein
+ * Fünftel, Reihen nach hinten ins Negative.
+ *
+ * Dazu schreibt die Datei `Metadata/model_settings.config` mit einer Platte
+ * je Kachel. Nach dem Quelltext von Bambu Studio (geprüft 06.11.2026) wird
+ * diese Plattenliste aber nur übernommen, wenn die Datei auch
+ * Projekteinstellungen eines Bambu-Druckers trägt; die schreibt Nolli
+ * bewusst nicht, sonst überschriebe die Datei Drucker, Filament und
+ * Druckprofil im Slicer. Ohne sie lädt Bambu Studio die Geometrie an ihrer
+ * Stelle, und „Anordnen“ verteilt die Kacheln auf Platten.
+ */
+export function als3mfPlatten(platten: { name: string; teile: Druckteil[] }[]): Uint8Array {
+	const res: string[] = [], items: string[] = [], objekte: string[] = [], platteXml: string[] = [];
+	const spalten = plattenSpalten(platten.length);
+	let id = 1;
+	platten.forEach((pl, n) => {
+		let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+		for (const ob of pl.teile) for (let i = 0; i < ob.netz.length; i += 3) {
+			if (Number.isNaN(ob.netz[i])) continue;
+			x0 = Math.min(x0, ob.netz[i]); x1 = Math.max(x1, ob.netz[i]); y0 = Math.min(y0, ob.netz[i + 1]); y1 = Math.max(y1, ob.netz[i + 1]);
 		}
-		teile.push(`<object id="${n + 1}" name="${ob.name}" type="model"><mesh><vertices>${ecken.join('')}</vertices><triangles>${dreiecke.join('')}</triangles></mesh></object>`);
+		const teilIds = pl.teile.map((ob) => { res.push(netzXml(id, ob)); return id++; });
+		const gesamt = id++;
+		res.push(`<object id="${gesamt}" name="${pl.name}" type="model"><components>${teilIds.map((t) => `<component objectid="${t}"/>`).join('')}</components></object>`);
+		const ox = (n % spalten) * PLATTEN_SCHRITT_MM, oy = -Math.floor(n / spalten) * PLATTEN_SCHRITT_MM;
+		const tx = ox + (Number.isFinite(x0) ? BETT_MITTE_MM - (x0 + x1) / 2 : 0), ty = oy + (Number.isFinite(y0) ? BETT_MITTE_MM - (y0 + y1) / 2 : 0);
+		items.push(`<item objectid="${gesamt}" transform="1 0 0 0 1 0 0 0 1 ${tx.toFixed(3)} ${ty.toFixed(3)} 0"/>`);
+		objekte.push(`  <object id="${gesamt}">\n    <metadata key="name" value="${pl.name}"/>\n${pl.teile.map((ob, k) => `    <part id="${teilIds[k]}" subtype="normal_part">\n      <metadata key="name" value="${ob.name}"/>\n    </part>\n`).join('')}  </object>`);
+		platteXml.push(`  <plate>\n    <metadata key="plater_id" value="${n + 1}"/>\n    <metadata key="plater_name" value="${pl.name}"/>\n    <metadata key="locked" value="false"/>\n    <model_instance>\n      <metadata key="object_id" value="${gesamt}"/>\n      <metadata key="instance_id" value="0"/>\n      <metadata key="identify_id" value="${gesamt}"/>\n    </model_instance>\n  </plate>`);
 	});
 	const modell = `<?xml version="1.0" encoding="UTF-8"?>
 <model unit="millimeter" xml:lang="en" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
 <metadata name="Application">Nolli</metadata>
-<resources>${teile.join('\n')}
-<object id="${objekte.length + 1}" name="nolli" type="model"><components>${objekte.map((_, n) => `<component objectid="${n + 1}"/>`).join('')}</components></object></resources>
-<build><item objectid="${objekte.length + 1}" transform="1 0 0 0 1 0 0 0 1 ${tx.toFixed(3)} ${ty.toFixed(3)} 0"/></build>
+<resources>${res.join('\n')}</resources>
+<build>${items.join('')}</build>
 </model>`;
-	return zipSync({
+	const dateien: Record<string, Uint8Array> = {
 		'[Content_Types].xml': strToU8(`<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>`),
 		'_rels/.rels': strToU8(`<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>`),
 		'3D/3dmodel.model': strToU8(modell)
-	});
+	};
+	if (platten.length > 1)
+		dateien['Metadata/model_settings.config'] = strToU8(`<?xml version="1.0" encoding="UTF-8"?>\n<config>\n${objekte.join('\n')}\n${platteXml.join('\n')}\n</config>\n`);
+	return zipSync(dateien);
 }
+

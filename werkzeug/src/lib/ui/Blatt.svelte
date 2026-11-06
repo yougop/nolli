@@ -2,7 +2,7 @@
 	import { untrack } from 'svelte';
 	import { mitte, filterWerte, istNeutral } from '$lib/anpassen';
 	import { zahl } from '$lib/sprache.svelte';
-	import { z } from '$lib/zustand.svelte';
+	import { z, BAUM_ID } from '$lib/zustand.svelte';
 	import { Rahmen } from '$lib/geo/rahmen';
 	import { zeichneBlatt } from '$lib/zeichnen';
 	import { trifft, sichtEbene } from '$lib/osm';
@@ -58,15 +58,22 @@
 		const r = schirmRahmen, c = leinwand;
 		if (!r || !c) return;
 		// Abhängigkeiten anmelden, damit jede Änderung neu zeichnet
-		z.objekte; z.sichtbar; z.hervorgehoben; z.ausgewaehlt; z.darstellung;
-		z.bereinigt; z.plangebiet; z.beschriftung; z.fanglinie; z.zoom; z.mitte; flott; z.baeume;
+		z.objekte; z.sichtbar; z.hervorgehoben; z.ausgewaehlt; z.darstellung; waehlbar;
+		z.bereinigt; z.plangebiet; z.beschriftung; z.fanglinie; z.zoom; z.mitte; flott; z.baeume; z.baumGestrichen;
 		const dpr = Math.min(devicePixelRatio || 1, 2);
 		const wunsch = {
 			darstellung: z.darstellung, bereinigt: z.bereinigt,
 			beschriftung: z.beschriftung, plangebiet: z.plangebiet, rahmenZeigen: true,
 			sichtbar: z.sichtbar, hervorgehoben: z.hervorgehoben,
-			ausgewaehlt: z.ausgewaehlt, fanglinie: z.fanglinie, ohneSchatten: flott,
+			// Auswahl und Fanglinie gehören zum Bereinigen; im Ausgeben ist das
+			// Blatt die Vorschau des Ergebnisses und zeigt sie nicht (06.11.2026).
+			ausgewaehlt: waehlbar ? z.ausgewaehlt : undefined,
+			fanglinie: waehlbar ? z.fanglinie : undefined, ohneSchatten: flott,
 			baeume: z.baeume ? z.baumpunkte : undefined,
+			baumGestrichen: z.baumGestrichen,
+			baumGewaehlt: waehlbar && z.ausgewaehlt.size
+				? new Set([...z.ausgewaehlt].filter((id) => id.startsWith(BAUM_ID)).map((id) => id.slice(BAUM_ID.length)))
+				: undefined,
 			kanten: { ...z.kanten },
 			sonne: { ...z.sonne },
 			blattrand: (z.kasten ? [z.kasten.x0, z.kasten.y0, z.kasten.x1, z.kasten.y1] : null) as [number, number, number, number] | null
@@ -100,7 +107,7 @@
 	// Während ein Regler der Karte oder der Kanten bewegt wird: ohne Schatten,
 	// wie beim Zoomen. Das fertige Bild kommt, wenn er ruht.
 	$effect(() => {
-		z.kanten.dicke; z.kanten.deckkraft; z.kanten.karteDicke; z.kanten.karteDeckkraft; z.kanten.an; z.kanten.hell; z.kanten.flaeche;
+		z.kanten.dicke; z.kanten.deckkraft; z.kanten.karteDicke; z.kanten.karteDeckkraft; z.kanten.an; z.kanten.hell; z.kanten.flaeche; z.darstellung;
 		untrack(() => bewegtSich());
 	});
 
@@ -161,7 +168,8 @@
 		if (!zieht || !leinwand) return;
 		const dx = e.clientX - zieht.x, dy = e.clientY - zieht.y;
 		if (!zieht.bewegt && Math.hypot(dx, dy) < 5) return;
-		if (z.werkzeug === 'polygon') return;   // im Polygonmodus wird gesetzt, nicht geschoben
+		// Auch beim Polygon wird geschoben: Ein Punkt entsteht nur beim Klick
+		// ohne Bewegung, siehe `hoch` (06.11.2026).
 		zieht.bewegt = true;
 		bewegtSich();
 		const r = schirmRahmen, k = z.kasten;
@@ -174,10 +182,13 @@
 		klemmen();
 	}
 	function hoch(e: PointerEvent) {
-		const gezogen = zieht?.bewegt ?? false;
+		const war = zieht;
 		zieht = null;
 		try { (e.currentTarget as Element).releasePointerCapture?.(e.pointerId); } catch {}
-		if (!gezogen) tippen(e);
+		// Nur die linke Taste setzt oder wählt. Bisher setzte auch das Loslassen
+		// der rechten einen Punkt, und das Kontextmenü nahm genau diesen wieder
+		// zurück — der Punkt davor blieb stehen.
+		if (war && !war.bewegt && e.button === 0) tippen(e);
 	}
 	/** Zoomt so, dass der Punkt unter dem Zeiger stehen bleibt. */
 	function rad(e: WheelEvent) {
@@ -217,13 +228,43 @@
 		if (!p || !r) return;
 		if (z.werkzeug === 'polygon') { z.punktSetzen(p[0], p[1]); return; }
 		const tol = r.mpp * 4;
-		const treffer = z.objekte.filter((o) => z.sichtbar.has(sichtEbene(o)) && trifft(o, p[0], p[1], tol));
-		if (!treffer.length) { if (!e.shiftKey) z.ausgewaehlt = new Set(); return; }
-		// kleinstes Objekt gewinnt, damit ein Haus im Block anklickbar bleibt
-		treffer.sort((a, b) => flaeche(a) - flaeche(b));
-		const id = treffer[0].id;
-		if (e.shiftKey) z.auswahlUmschalten(id);
-		else z.ausgewaehlt = new Set([id]);
+		// Neben das Blatt geklickt: Auswahl aufheben, dort steht nichts zur Wahl.
+		const k = z.kasten;
+		const draussen = !k || p[0] < k.x0 || p[0] > k.x1 || p[1] < k.y0 || p[1] > k.y1;
+		const treffer = draussen ? [] : z.objekte.filter((o) => z.sichtbar.has(sichtEbene(o)) && trifft(o, p[0], p[1], tol));
+		// Bäume, wenn sie zu sehen sind: getroffen ist die Krone.
+		const baeume = draussen || !z.baeume ? [] : z.baumpunkte.filter((b) =>
+			b.id && Math.hypot(b.x - p[0], b.y - p[1]) <= Math.max(b.krone / 2, tol));
+		if (!treffer.length && !baeume.length) { if (!e.shiftKey) z.ausgewaehlt = new Set(); return; }
+		// kleinstes gewinnt, damit ein Haus im Block anklickbar bleibt — eine
+		// Krone zählt mit ihrer Kreisfläche
+		const kandidaten = [
+			// Eine Linie hat keine Fläche und gewönne immer; liegt der Klick in
+			// einer Krone, geht der Baum vor dem Weg darunter.
+			...treffer.map((o) => ({ id: o.id, f: baeume.length && o.art === 'linie' ? Infinity : flaeche(o) })),
+			...baeume.map((b) => ({ id: BAUM_ID + b.id, f: Math.PI * (b.krone / 2) ** 2 }))
+		].sort((a, b) => a.f - b.f);
+		const id = kandidaten[0].id;
+		// Ein Gebäudeteil bringt sein Haus mit, sonst bleibt beim Streichen der
+		// Umriss darunter stehen (`hausVon`).
+		const haus = z.hausVon([id]);
+		const alleDrin = [...haus].every((x) => z.ausgewaehlt.has(x));
+		if (e.shiftKey) {
+			const s = new Set(z.ausgewaehlt);
+			for (const x of haus) alleDrin ? s.delete(x) : s.add(x);
+			z.ausgewaehlt = s;
+		}
+		// Ein zweiter Klick auf das allein gewählte Haus hebt die Wahl auf.
+		else if (alleDrin && z.ausgewaehlt.size === haus.size) z.ausgewaehlt = new Set();
+		else z.ausgewaehlt = haus;
+	}
+
+	/** Escape hebt die Auswahl auf, solange gewählt werden kann. */
+	function taste(e: KeyboardEvent) {
+		if (e.key !== 'Escape' || !waehlbar || !z.ausgewaehlt.size || z.werkzeug === 'polygon') return;
+		const ziel = e.target as HTMLElement | null;
+		if (ziel?.closest('input, textarea, select, [contenteditable]')) return;
+		z.ausgewaehlt = new Set();
 	}
 
 	const flaeche = (o: { ringe: [number, number][][] }) => {
@@ -232,6 +273,8 @@
 		return Math.abs(s / 2);
 	};
 </script>
+
+<svelte:window onkeydown={taste} />
 
 <div class="huelle" bind:this={huelle}>
 	{#if schirmRahmen}

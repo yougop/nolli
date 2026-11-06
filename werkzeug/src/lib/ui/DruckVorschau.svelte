@@ -2,7 +2,7 @@
 	import * as THREE from 'three';
 	import { untrack } from 'svelte';
 	import { z } from '$lib/zustand.svelte';
-	import { t } from '$lib/sprache.svelte';
+	import { t, zahl } from '$lib/sprache.svelte';
 	import type { Rahmen } from '$lib/geo/rahmen';
 	import type { Objekt } from '$lib/osm';
 	import { ohneSchnitte } from '$lib/export/druck';
@@ -33,6 +33,33 @@
 	szene.add(gruppe);
 	let winkel = -0.6, neigung = 0.75, abstand = 1, mitte = new THREE.Vector3(), weite = 200;
 	let eingepasst = '';
+	/**
+	 * Schilder an den Kacheln (Volker, 06.11.2026): Name und Größe, damit man
+	 * sieht, welche Platte welches Stück ist. Der Name ist der aus der Datei.
+	 * Gesetzt wird in die Mitte der Kachel, auf Höhe der Plattenoberseite;
+	 * nachgeführt wird es bei jedem Bild.
+	 */
+	let schildPunkte: { name: string; mass: string; p: THREE.Vector3 }[] = [];
+	let schilder = $state<{ name: string; mass: string; x: number; y: number }[]>([]);
+
+	/**
+	 * Nur Problemstellen (Volker, 06.11.2026): alles außer den zu kleinen
+	 * Teilen fast durchsichtig, damit man sie über den ganzen Ausschnitt
+	 * findet. Umgeschaltet wird am Material, ohne neu zu rechnen.
+	 */
+	let probleme = $state(false);
+	let anzahlKlein = $state(0);
+	function abdunkeln() {
+		gruppe.traverse((o) => {
+			const m = o as THREE.Mesh;
+			if (!m.isMesh || m.userData.klein) return;
+			const mat = m.material as THREE.MeshLambertMaterial;
+			mat.transparent = probleme; mat.opacity = probleme ? 0.12 : 1; mat.depthWrite = !probleme;
+			mat.needsUpdate = true;
+		});
+		zeichnen();
+	}
+	$effect(() => { probleme; untrack(abdunkeln); });
 
 	const FARBEN = { platte: 0xcfcdc7, haeuser: 0xf4f3ef, strassen: 0x5f5f5c, gruen: 0x8aa874, klein: 0xd2453a, wasser: 0x8a9ba8 };
 
@@ -58,6 +85,10 @@
 		kamera.lookAt(mitte);
 		kamera.updateProjectionMatrix();
 		renderer.render(szene, kamera);
+		schilder = schildPunkte.map((s) => {
+			const v = s.p.clone().project(kamera);
+			return { name: s.name, mass: s.mass, x: ((v.x + 1) / 2) * b, y: ((1 - v.y) / 2) * h };
+		});
 	}
 
 	async function rechnen() {
@@ -73,6 +104,7 @@
 			// Vorschau den ganzen Ausschnitt und sieht man, wo geteilt wird. Bis
 			// 05.11.2026 zeigte sie nur die erste Kachel (Volker: passte nicht zum Ausschnitt).
 			const FUGE = kacheln.length > 1 ? 3 : 0;
+			schildPunkte = [];
 			for (const k of kacheln) {
 				const teil = new THREE.Group();
 				teil.add(netz(k.platte, ein ? FARBEN.haeuser : FARBEN.platte));
@@ -87,12 +119,22 @@
 				}
 				if (k.haeuser.length) teil.add(netz(k.haeuser, FARBEN.haeuser));
 				// Zu kleine Teile rot, damit man sieht, was nicht sauber druckt.
-				if (k.kleine.length) teil.add(netz(k.kleine, FARBEN.klein));
+				if (k.kleine.length) { const kl = netz(k.kleine, FARBEN.klein); kl.userData.klein = true; kl.renderOrder = 1; teil.add(kl); }
 				if (k.strassen.length) teil.add(netz(k.strassen, ein ? FARBEN.haeuser : FARBEN.strassen));
 				if (k.gruen.length) teil.add(netz(k.gruen, ein ? FARBEN.haeuser : FARBEN.gruen));
-				teil.position.set(k.i * (k.bMm + FUGE), k.j * (k.hMm + FUGE), 0);
+				teil.position.set(k.ox + k.i * FUGE, k.oy + k.j * FUGE, 0);
 				gruppe.add(teil);
+				if (kacheln.length > 1) {
+					const oben = new THREE.Box3().setFromObject(teil.children[0]).max.z;   // Oberseite der Platte
+					schildPunkte.push({
+						name: k.name.replace(/^kachel_/, ''),
+						mass: `${zahl(Math.round(k.bMm))} × ${zahl(Math.round(k.hMm))} mm`,
+						p: new THREE.Vector3(teil.position.x + k.bMm / 2, teil.position.y + k.hMm / 2, oben)
+					});
+				}
 			}
+			anzahlKlein = kacheln.reduce((n, k) => n + k.kleine.filter((v, i) => i % 9 === 0 && Number.isNaN(v)).length, 0);
+			if (probleme) abdunkeln();
 			// Neu einpassen nur, wenn sich zeigt, was zu sehen ist: Ausschnitt
 			// und Maßstab. Sonst sprang das Bild bei jeder Einstellung, etwa der
 			// Plattendicke, und Schieben und Zoomen gingen verloren (Volker, 05.11.2026).
@@ -174,6 +216,11 @@
 	<canvas bind:this={leinwand} tabindex="0" onpointerdown={runter} onwheel={rad} onkeydown={taste}
 		oncontextmenu={(e) => e.preventDefault()}
 		aria-label={t().ausgeben.druckVorschau}></canvas>
+	{#each schilder as s (s.name)}
+		<span class="schild" style:left="{s.x}px" style:top="{s.y}px"><b>{s.name}</b> {s.mass}</span>
+	{/each}
+	<button type="button" class="probleme" class:an={probleme} aria-pressed={probleme} disabled={!anzahlKlein && !probleme}
+		onclick={() => (probleme = !probleme)}>{t().ausgeben.druckProbleme}{#if anzahlKlein}<em>{anzahlKlein}</em>{/if}</button>
 	<p class="wink">{t().raum.wink}</p>
 	{#if rechnet}<span class="mono">{t().ausgeben.druckRechnet}</span>{/if}
 </div>
@@ -186,7 +233,23 @@
 		position: absolute; right: 18px; bottom: 18px; margin: 0; font-size: 11px; color: var(--tinte-2);
 		background: var(--blatt); border: 1px solid var(--linie); padding: 3px 8px; border-radius: 2px;
 	}
-	span {
+	.probleme {
+		position: absolute; right: 18px; top: 18px; display: flex; align-items: center; gap: 7px;
+		font: inherit; font-size: 11.5px; color: var(--tinte); background: var(--blatt);
+		border: 1px solid var(--linie); padding: 5px 10px; border-radius: 2px; cursor: pointer;
+	}
+	.probleme:hover:not(:disabled) { background: var(--senke); }
+	.probleme.an { background: var(--tinte); color: var(--blatt); border-color: var(--tinte); }
+	.probleme:disabled { opacity: 0.45; cursor: default; }
+	.probleme em { font-style: normal; font-variant-numeric: tabular-nums; color: #d2453a; font-weight: 600; }
+	.probleme.an em { color: #ff8a80; }
+	.schild {
+		position: absolute; transform: translate(-50%, -50%); pointer-events: none; white-space: nowrap;
+		font-size: 11px; font-variant-numeric: tabular-nums; color: var(--tinte); background: var(--blatt);
+		border: 1px solid var(--linie); padding: 2px 7px; border-radius: 2px;
+	}
+	.schild b { font-weight: 600; margin-right: 4px; }
+	span.mono {
 		position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 10.5px; color: var(--tinte-2);
 		background: var(--blatt); padding: 2px 6px; border-radius: 2px;
 	}

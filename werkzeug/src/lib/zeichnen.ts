@@ -1,4 +1,4 @@
-import type { Rahmen } from './geo/rahmen';
+import { Rahmen } from './geo/rahmen';
 import { sichtEbene, type Objekt } from './osm';
 import { STIFTE, stift, type StiftId } from './stifte';
 import { darstellung, type Darstellung } from './darstellung';
@@ -21,7 +21,7 @@ export type Zeichenwunsch = {
 	 */
 	/** Die Sonne der Darstellung (`z.sonne`), für die Schatten im Weißmodell. */
 	sonne?: { azimut: number; hoehe: number; an?: boolean };
-	kanten?: { an: boolean; dicke: number; deckkraft: number; karteDicke?: number; karteDeckkraft?: number; hell?: boolean; flaeche?: number | null };
+	kanten?: { an: boolean; dicke: number; deckkraft: number; karteDicke?: number; karteDeckkraft?: number; hell?: boolean | null; flaeche?: number | null };
 	hervorgehoben?: StiftId | null;
 	ausgewaehlt?: Set<string>;
 	fanglinie?: [number, number][] | null;   // Polygon im Entstehen
@@ -56,7 +56,11 @@ export type Zeichenwunsch = {
 	 */
 	ohneBauten?: boolean;
 	/** Baeume, wenn sie zugeschaltet sind. Ort und Kronendurchmesser in Metern. */
-	baeume?: { x: number; y: number; krone: number }[];
+	baeume?: { id?: string; x: number; y: number; krone: number }[];
+	/** Gestrichene Bäume nach Kennung; gezeichnet als Geist, bereinigt gar nicht. */
+	baumGestrichen?: Set<string>;
+	/** Gewählte Bäume nach Kennung, für die Markierung. */
+	baumGewaehlt?: Set<string>;
 };
 
 const AKZENT = '#8CA82F';
@@ -517,8 +521,10 @@ export function zeichneBlatt(
 		ctx.save();
 		ctx.globalAlpha = w.kanten.deckkraft;
 		// Hell für dunkle Häuser: Im Schwarzplan verschwände eine dunkle Kante
-		// im Schwarz, und die Häuser liefen zu einer Fläche zusammen.
-		ctx.strokeStyle = w.kanten.hell ? '#F4F4F2' : '#2B2B29';
+		// im Schwarz, und die Häuser liefen zu einer Fläche zusammen. Ohne
+		// eigene Wahl (`hell: null`) folgt die Kante der Darstellung: hell im
+		// Schwarzplan, dunkel in allen anderen (Volker, 06.11.2026).
+		ctx.strokeStyle = (w.kanten.hell ?? kantenHellFuer(d.id)) ? '#F4F4F2' : '#2B2B29';
 		ctx.lineJoin = 'round';
 		ctx.lineWidth = w.kanten.dicke * Math.max(1, W / 1200);
 		ctx.beginPath();
@@ -536,21 +542,39 @@ export function zeichneBlatt(
 	 */
 	if (w.baeume?.length) {
 		const laub = d.farbe.baum ?? (d.grund === '#111111' ? '#3E4A34' : '#9FB27E');
+		const weg = w.baumGestrichen;
+		const ist = (b: { id?: string }) => !!(weg?.size && b.id && weg.has(b.id));
+		const stehen = weg?.size ? w.baeume.filter((b) => !ist(b)) : w.baeume;
+		const radius = (b: { krone: number }) => Math.max(r.strich(0.4), b.krone / 2 / r.mpp);
+		const kreis = (b: { x: number; y: number; krone: number }) => {
+			const [px, py] = r.utmZuPixel(b.x, b.y);
+			ctx.beginPath(); ctx.arc(px, py, radius(b), 0, Math.PI * 2);
+		};
 		ctx.save();
 		ctx.fillStyle = laub;
 		ctx.globalAlpha = 0.5;
-		ctx.strokeStyle = laub;
+		ctx.strokeStyle = d.kante?.baum ?? laub;
 		ctx.lineWidth = r.strich(0.18);
-		for (const b of w.baeume) {
-			const [px, py] = r.utmZuPixel(b.x, b.y);
-			const rad = Math.max(r.strich(0.4), b.krone / 2 / r.mpp);
-			ctx.beginPath(); ctx.arc(px, py, rad, 0, Math.PI * 2); ctx.fill();
-		}
+		// In der Linie nur der Kronenrand, wie alles andere dort.
+		if (d.bauweise !== 'linie') for (const b of stehen) { kreis(b); ctx.fill(); }
 		ctx.globalAlpha = 1;
-		for (const b of w.baeume) {
-			const [px, py] = r.utmZuPixel(b.x, b.y);
-			const rad = Math.max(r.strich(0.4), b.krone / 2 / r.mpp);
-			ctx.beginPath(); ctx.arc(px, py, rad, 0, Math.PI * 2); ctx.stroke();
+		for (const b of stehen) { kreis(b); ctx.stroke(); }
+		// Gestrichene Bäume als Geist wie gestrichene Häuser: Umriss in der
+		// Farbe des Gestrichenen, gestrichelt, ohne Fläche.
+		if (weg?.size && !w.bereinigt) {
+			ctx.strokeStyle = farbe('gestrichen');
+			ctx.lineWidth = r.strich(stift('gestrichen').mm);
+			ctx.setLineDash([r.strich(1), r.strich(0.8)]);
+			for (const b of w.baeume) if (ist(b)) { kreis(b); ctx.stroke(); }
+			ctx.setLineDash([]);
+		}
+		if (w.baumGewaehlt?.size) {
+			const gew = w.baeume.filter((b) => b.id && w.baumGewaehlt!.has(b.id));
+			ctx.strokeStyle = d.grund === '#111111' ? 'rgba(17,17,17,.85)' : 'rgba(255,255,255,.85)';
+			ctx.lineWidth = r.strich(2.6);
+			for (const b of gew) { kreis(b); ctx.stroke(); }
+			ctx.strokeStyle = AKZENT; ctx.lineWidth = r.strich(1.0);
+			for (const b of gew) { kreis(b); ctx.stroke(); }
 		}
 		ctx.restore();
 	}
@@ -570,7 +594,20 @@ export function zeichneBlatt(
 	if (w.plangebiet?.length && w.sichtbar.has('plangebiet'))
 		zug(ctx, w.plangebiet, r, AKZENT, r.strich(stift('plangebiet').mm), [6, 3], true);
 	if (w.fanglinie?.length) {
-		zug(ctx, w.fanglinie, r, AKZENT, r.strich(0.5), [3, 2], false);
+		/**
+		 * Ab drei Punkten ist das Polygon geschlossen und bekommt einen Hauch
+		 * Fläche, dazu die Schlusskante: So sieht man, was die Auswahl trifft,
+		 * bevor man sie übernimmt (Volker, 06.11.2026).
+		 */
+		if (w.fanglinie.length >= 3) {
+			ctx.save();
+			ctx.beginPath();
+			w.fanglinie.forEach(([x, y], i) => { const [px, py] = r.utmZuPixel(x, y); i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); });
+			ctx.closePath();
+			ctx.globalAlpha = 0.14; ctx.fillStyle = AKZENT; ctx.fill();
+			ctx.restore();
+		}
+		zug(ctx, w.fanglinie, r, AKZENT, r.strich(0.5), [3, 2], w.fanglinie.length >= 3);
 		ctx.fillStyle = AKZENT;
 		for (const [x, y] of w.fanglinie) {
 			const [px, py] = r.utmZuPixel(x, y);
@@ -615,8 +652,36 @@ function zug(ctx: CanvasRenderingContext2D, punkte: [number, number][], r: Rahme
  */
 function beschriften(ctx: CanvasRenderingContext2D, objekte: Objekt[], r: Rahmen,
 	d: Darstellung, w: Zeichenwunsch) {
-	const grad = Math.max(9, Math.min(30, r.pixelBreite / 110));
-	const zelle = grad * 2.2;
+	/**
+	 * Schriftgröße im Verhältnis zum Blatt, nicht zum Schirm (06.11.2026).
+	 *
+	 * Bis dahin hing sie an der Breite der Leinwand und hörte bei 30 px auf.
+	 * Zwei Fehler, die sich addierten: Ein 8K-Blatt bekam halb so große Schrift
+	 * wie ein 2K-Blatt, und in der gezoomten Ansicht blieb die Schrift auf dem
+	 * Schirm gleich groß — bei dreifachem Zoom dreimal so groß wie später in
+	 * der Datei (Volker: „bei 4K sehr klein"). Jetzt zählt die Breite des
+	 * ganzen Blattes in Pixeln, in der Ansicht wie in der Ausgabe; 9 px bleibt
+	 * die Untergrenze, damit ein kleines Blatt am Schirm lesbar bleibt.
+	 */
+	const blattPx = w.blattrand ? (w.blattrand[2] - w.blattrand[0]) / r.mpp : r.pixelBreite;
+	/**
+	 * Gesetzt wird auf dem ganzen Blatt, nicht im sichtbaren Ausschnitt
+	 * (06.11.2026). Vorher suchte jeder Name seinen Platz im Ausschnitt: Lag
+	 * das längste gerade Stück einer Straße außerhalb, fiel der Name weg, und
+	 * das Belegungsraster lag bei jedem Zoom anders. Je nach Zoom fehlten
+	 * dadurch andere Namen (Volker). Jetzt rechnet die Platzwahl in einem
+	 * festen Blatt von 4096 px Breite. Weil die Schrift mit dem Blatt wächst,
+	 * ist das Ergebnis von Zoom und Ausgabebreite unabhängig, und die Ansicht
+	 * zeigt dieselben Namen wie die Datei, nur maßstäblich vergrößert.
+	 */
+	const bb = w.blattrand ?? [r.x0, r.y0, r.x1, r.y1];
+	const P0 = 4096;
+	const ganz = new Rahmen({ lon0: r.gitter.lon0, bbox: bb, pixelBreite: P0, verhaeltnis: r.verhaeltnis });
+	const grad0 = P0 / 110;
+	const s = ganz.mpp / r.mpp;                       // Blattpixel → Ansichtspixel
+	const [ox, oy] = r.utmZuPixel(bb[0], bb[3]);
+	const grad = Math.max(9, grad0 * s);
+	const zelle = grad0 * 2.2;
 	const belegt = new Set<string>();
 	const frei = (x: number, y: number, halbBreite: number) => {
 		const keys: string[] = [];
@@ -634,7 +699,6 @@ function beschriften(ctx: CanvasRenderingContext2D, objekte: Objekt[], r: Rahmen
 		.sort((a, b) => (a.rang ?? 7) - (b.rang ?? 7));
 
 	ctx.save();
-	ctx.font = `500 ${grad}px Satoshi, system-ui, sans-serif`;
 	ctx.textAlign = 'center';
 	ctx.textBaseline = 'middle';
 	ctx.lineJoin = 'round';
@@ -642,10 +706,11 @@ function beschriften(ctx: CanvasRenderingContext2D, objekte: Objekt[], r: Rahmen
 	const gesetzt = new Set<string>();
 	for (const o of kandidaten) {
 		if (gesetzt.has(o.name!)) continue;
-		const platz = o.ebene === 'strasse' ? entlang(o, r) : mitte(o, r);
+		const platz = o.ebene === 'strasse' ? entlang(o, ganz) : mitte(o, ganz);
 		if (!platz) continue;
 		const [px, py, winkel] = platz;
-		if (px < grad || py < grad || px > r.pixelBreite - grad || py > r.pixelHoehe - grad) continue;
+		if (px < grad0 || py < grad0 || px > ganz.pixelBreite - grad0 || py > ganz.pixelHoehe - grad0) continue;
+		ctx.font = `500 ${grad0}px Satoshi, system-ui, sans-serif`;
 		const breite = ctx.measureText(o.name!).width;
 		if (o.ebene === 'strasse' && breite > platz[3]!) continue;
 		const keys = frei(px, py, breite / 2);
@@ -653,8 +718,12 @@ function beschriften(ctx: CanvasRenderingContext2D, objekte: Objekt[], r: Rahmen
 		keys.forEach((k) => belegt.add(k));
 		gesetzt.add(o.name!);
 
+		// Nur zeichnen, was im Ausschnitt liegt; der Platz bleibt trotzdem belegt.
+		const vx = ox + px * s, vy = oy + py * s, rand = breite * s;
+		if (vx < -rand || vy < -rand || vx > r.pixelBreite + rand || vy > r.pixelHoehe + rand) continue;
 		ctx.save();
-		ctx.translate(px, py);
+		ctx.font = `500 ${grad}px Satoshi, system-ui, sans-serif`;
+		ctx.translate(vx, vy);
 		ctx.rotate(winkel);
 		ctx.strokeStyle = d.schriftFlor;
 		ctx.lineWidth = grad * 0.32;
@@ -712,3 +781,6 @@ export const ebenenZaehlen = (objekte: Objekt[]) => {
 	for (const o of objekte) z.set(sichtEbene(o), (z.get(sichtEbene(o)) ?? 0) + 1);
 	return z;
 };
+
+/** Ab Werk helle Gebäudekanten nur im Schwarzplan, wo die Häuser schwarz sind. */
+export const kantenHellFuer = (darstellung: string) => darstellung === 'schwarzplan';

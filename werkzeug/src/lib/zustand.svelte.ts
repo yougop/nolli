@@ -1,10 +1,11 @@
 import { t, zahl } from './sprache.svelte';
 import { Rahmen, VERHAELTNISSE, AUSGABEBREITEN, type Verhaeltnis } from './geo/rahmen';
 import { ortsgitter, nachGitter } from './geo/utm';
-import { lesen, imRahmen, sichtEbene, zweifelhafteGebaeude, ZWEIFEL_ENTHAELT, type Objekt, type Zweifel } from './osm';
+import { lesen, imRahmen, sichtEbene, istTeil, zweifelhafteGebaeude, ZWEIFEL_ENTHAELT, type Objekt, type Zweifel } from './osm';
 import { drin, beruehrt, ausserhalb, schwerpunkt } from './schneiden';
 import { NEUTRAL, type Anpassung } from './anpassen';
 import { STIFTE, type StiftId } from './stifte';
+import { kantenHellFuer } from './zeichnen';
 import { base } from '$app/paths';
 import { ablegen, abholen, wegwerfen } from './ablage';
 import { holeBestand, QuellFehler, Abgebrochen } from './quelle';
@@ -32,6 +33,28 @@ export type Kasten = { x0: number; y0: number; x1: number; y1: number; lon0: num
  */
 const atmen = () => new Promise<void>((f) => requestAnimationFrame(() => setTimeout(f, 0)));
 
+/**
+ * Wie weit eine Abfrage über den Rahmen hinaus vollständig ist. Overpass
+ * fragt 150 m Rand ab (`quelle.ts`), in Grad gerechnet; 10 m Spiel für die
+ * Umrechnung zurück ins Gitter.
+ */
+const DATEN_RAND_M = 140;
+/** Liegt `innen` ganz in `aussen`, im selben Gitter? Ein halber Meter Spiel fürs Runden. */
+export function liegtIn(innen: Kasten | null, aussen: Kasten | null): boolean {
+	// Der Schlüssel speichert lon0 auf fünf Stellen. Mit 1e-6 galt ein Rahmen
+	// bei 10,1629182° (Rothenburg) nie als gedeckt, und das Gelände wurde
+	// endlos neu geholt, das Modell neu gebaut und das Bodenbild neu geschärft
+	// (Volker, 06.11.2026). Ein Hunderttausendstel Grad ist unter einem Meter.
+	if (!innen || !aussen || Math.abs(innen.lon0 - aussen.lon0) > 1e-5) return false;
+	return innen.x0 >= aussen.x0 - 0.5 && innen.y0 >= aussen.y0 - 0.5
+		&& innen.x1 <= aussen.x1 + 0.5 && innen.y1 <= aussen.y1 + 0.5;
+}
+const kastenAus = (s: string | null): Kasten | null => {
+	if (!s) return null;
+	const [lon0, x0, y0, x1, y1] = s.split(':').map(Number);
+	return [lon0, x0, y0, x1, y1].every(Number.isFinite) ? { lon0, x0, y0, x1, y1 } : null;
+};
+
 
 /** Die Kanten im 3D-Modell, wie sie ab Werk stehen (Volker, 04.11.2026): fein und leise. */
 /**
@@ -52,13 +75,96 @@ const atmen = () => new Promise<void>((f) => requestAnimationFrame(() => setTime
 export const SONNE_VORGABE: { azimut: number; hoehe: number; an: boolean; helligkeit: number; waerme: number } =
 	{ azimut: 315, hoehe: 49, an: true, helligkeit: 1, waerme: 0 };
 
-export const KANTEN_VORGABE: { an: boolean; dicke: number; deckkraft: number; karteDicke: number; karteDeckkraft: number; hell: boolean; flaeche: number | null } =
-	{ an: true, dicke: 0.75, deckkraft: 0.75, karteDicke: 1, karteDeckkraft: 1, hell: false, flaeche: null };
+export const KANTEN_VORGABE: { an: boolean; dicke: number; deckkraft: number; karteDicke: number; karteDeckkraft: number; hell: boolean | null; flaeche: number | null } =
+	{ an: true, dicke: 0.75, deckkraft: 0.75, karteDicke: 1, karteDeckkraft: 1, hell: null, flaeche: null };
+
+/** Vor der Kennung eines Baums in der Auswahl, damit sie keinem Objekt gleicht. */
+export const BAUM_ID = 'baum:';
+
+const PROJEKT_FORMAT = 'nolli-projekt';
+/** Fassung der Projektdatei. Die Sitzung darin trägt ihre eigene, `Zustand.FASSUNG`. */
+const PROJEKT_FASSUNG = 1;
 
 class Zustand {
-	schritt = $state<1 | 2 | 3>(1);
+	private _schritt = $state<1 | 2 | 3>(1);
+	/** Wer Schritt 1 verlässt, bekommt den Bestand zum Rahmen, auch wenn der Takt von `zuschneidenBald` noch läuft. */
+	get schritt() { return this._schritt; }
+	set schritt(n: 1 | 2 | 3) { if (n > 1) this.zuschneiden(); this._schritt = n; }
 	ort = $state<Ort | null>(null);
-	kasten = $state<Kasten | null>(null);
+	private _kasten = $state<Kasten | null>(null);
+	get kasten() { return this._kasten; }
+	set kasten(k: Kasten | null) { this._kasten = k; this.zuschneidenBald(); }
+
+	/**
+	 * Wie weit die geholten Daten reichen, im Ortsgitter (Volker, 06.11.2026).
+	 *
+	 * Vorher hing der Bestand an genau einem Rahmen: Wer ihn um einen Meter
+	 * kleiner zog, musste neu holen, und alles Gestrichene war weg. Jetzt ist
+	 * der Rahmen eine Sicht auf die Daten. Liegt er in dieser Fläche, wird nur
+	 * neu einsortiert, ohne Abruf; ragt er hinaus, holt `holen` nach und
+	 * behält dabei, was bearbeitet war.
+	 */
+	datenFlaeche = $state.raw<Kasten | null>(null);
+	/** Wann die Daten geholt wurden, ISO. Ein geöffnetes Projekt sagt damit, wie alt sein Bestand ist. */
+	datenStand = $state<string | null>(null);
+	/**
+	 * Was in der Datenfläche liegt, aber den Rahmen nicht berührt. Kommt
+	 * zurück, wenn der Rahmen wächst oder wandert, mit allen Bearbeitungen.
+	 */
+	vorrat = $state.raw<Objekt[]>([]);
+	/** Places der Abfrage, die außerhalb des Rahmens liegen. Wie `vorrat`. */
+	placesVorrat = $state.raw<Place[]>([]);
+	private zugeschnittenFuer: string | null = null;
+	private schnittTakt: ReturnType<typeof setTimeout> | null = null;
+
+	/** Beim Ziehen am Rahmen nicht bei jeder Mausbewegung einsortieren. */
+	private zuschneidenBald() {
+		if (this.schnittTakt) clearTimeout(this.schnittTakt);
+		this.schnittTakt = setTimeout(() => this.zuschneiden(), 250);
+	}
+
+	/**
+	 * Den Bestand dem Rahmen anpassen, aus dem, was da ist. Ohne Abruf.
+	 *
+	 * Was den Rahmen berührt, steht in `objekte`, der Rest im `vorrat`; beide
+	 * zusammen sind immer dieselben Objekte, mit ihren Bearbeitungen. Overture
+	 * und Places gelten für den Rahmen, für den sie geholt wurden: Wächst er
+	 * darüber hinaus, fallen sie weg, denn am neuen Rand fehlten sie sonst
+	 * still.
+	 */
+	zuschneiden() {
+		if (this.schnittTakt) { clearTimeout(this.schnittTakt); this.schnittTakt = null; }
+		const k = this._kasten;
+		const key = this.schluessel();
+		if (!k || !this.datenAktuell || key === this.zugeschnittenFuer) return;
+		let alle = [...this.objekte, ...this.vorrat];
+		if (this.ergaenzung && !liegtIn(k, this.ergaenzung.fuer ?? null)) {
+			alle = alle.filter((o) => o.herkunft !== 'overture');
+			this.ergaenzung = null;
+		}
+		const drin = new Set(imRahmen(alle, k.x0, k.y0, k.x1, k.y1).map((o) => o.id));
+		this.objekte = alle.filter((o) => drin.has(o.id));
+		this.vorrat = alle.filter((o) => !drin.has(o.id));
+		if (this.ergaenzung) {
+			const quellen: Record<string, number> = {};
+			let anzahl = 0;
+			for (const x of this.objekte) if (x.herkunft === 'overture') {
+				anzahl++;
+				quellen[x.quelleGeometrie ?? 'Overture'] = (quellen[x.quelleGeometrie ?? 'Overture'] ?? 0) + 1;
+			}
+			this.ergaenzung = { ...this.ergaenzung, quellen, anzahl };
+		}
+		if (this.placesInfo && !liegtIn(k, this.placesInfo.fuer ?? null)) {
+			this.places = []; this.placesVorrat = []; this.placesInfo = null;
+		} else if (this.placesInfo) {
+			const p = [...this.places, ...this.placesVorrat];
+			const innen = (q: Place) => q.x >= k.x0 && q.x <= k.x1 && q.y >= k.y0 && q.y <= k.y1;
+			this.places = p.filter(innen);
+			this.placesVorrat = p.filter((q) => !innen(q));
+		}
+		if (this.ausgewaehlt.size) this.ausgewaehlt = new Set([...this.ausgewaehlt].filter((id) => drin.has(id) || id.startsWith(BAUM_ID)));
+		this.zugeschnittenFuer = key;
+	}
 	verhaeltnis = $state<Verhaeltnis>(VERHAELTNISSE[0]);
 	ausgabeBreite = $state(4096);
 
@@ -90,12 +196,39 @@ class Zustand {
 	rest = $state.raw<Rest[]>([]);
 	/** Die Baeume aus dem Rest, fertig zum Zeichnen. */
 	baumpunkte = $state.raw<Baum[]>([]);
+	/**
+	 * Gestrichene Bäume, nach OSM-Kennung (06.11.2026).
+	 *
+	 * Bäume sind keine Objekte mit Zustand, sie werden bei jedem Laden aus
+	 * `rest` neu gelesen. Gestrichen wird deshalb nicht am Baum, sondern in
+	 * dieser Liste; ein neues Holen am selben Ort findet dieselben Kennungen.
+	 * In der Auswahl stehen Bäume mit `BAUM_ID` davor.
+	 */
+	baumGestrichen = $state.raw(new Set<string>());
+	/** Die Bäume, die stehen bleiben: Was Modell, Bild und Paket bekommen. */
+	get baeumeStehend() {
+		const weg = this.baumGestrichen;
+		return weg.size ? this.baumpunkte.filter((b) => !b.id || !weg.has(b.id)) : this.baumpunkte;
+	}
 	sichtbar = $state(new Set<StiftId>(STIFTE.map((s) => s.id)));
 	hervorgehoben = $state<StiftId | null>(null);
 	ausgewaehlt = $state(new Set<string>());
 	plangebiet = $state.raw<[number, number][] | null>(null);
 
 	darstellung = $state('schwarzplan');
+
+	/**
+	 * Darstellung wechseln. Die Kantenfarbe springt dabei auf die Vorgabe
+	 * der neuen Darstellung zurück — hell im Schwarzplan, sonst dunkel —,
+	 * auch wenn sie vorher von Hand gewählt war (Volker, 06.11.2026).
+	 */
+	darstellungWaehlen(id: string) {
+		if (id === this.darstellung) return;
+		this.darstellung = id;
+		this.kanten.hell = null;
+	}
+	/** Die Kantenfarbe, die gerade gilt: eigene Wahl oder Vorgabe der Darstellung. */
+	get kantenHell() { return this.kanten.hell ?? kantenHellFuer(this.darstellung); }
 	beschriftung = $state(false);
 	/**
 	 * Baeume zuschaltbar, wie die Beschriftung.
@@ -141,7 +274,7 @@ class Zustand {
 	 * wirft sie weg — der Abgleich gilt nur gegen den OSM-Stand, mit dem er
 	 * gerechnet wurde.
 	 */
-	ergaenzung = $state.raw<{ release: string; quellen: Record<string, number>; anzahl: number } | null>(null);
+	ergaenzung = $state.raw<{ release: string; quellen: Record<string, number>; anzahl: number; fuer?: Kasten } | null>(null);
 
 	/**
 	 * Gebäude, die die Prüfung nach dem Holen angezweifelt hat (`zweifelhafteGebaeude`).
@@ -182,7 +315,8 @@ class Zustand {
 			const quellen: Record<string, number> = {};
 			for (const x of neu) quellen[x.quelleGeometrie ?? 'Overture'] = (quellen[x.quelleGeometrie ?? 'Overture'] ?? 0) + 1;
 			this.objekte = [...osm, ...neu];
-			this.ergaenzung = { release: o.release, quellen, anzahl: neu.length };
+			this.vorrat = this.vorrat.filter((x) => x.herkunft !== 'overture');
+			this.ergaenzung = { release: o.release, quellen, anzahl: neu.length, fuer: { ...this._kasten! } };
 			// Wer ergänzt, will sie sehen — auch wenn die Ebene zuletzt aus war.
 			if (!this.sichtbar.has('overture')) this.sichtbar = new Set([...this.sichtbar, 'overture']);
 		} catch (e) {
@@ -198,6 +332,7 @@ class Zustand {
 
 	ergaenzungEntfernen() {
 		this.objekte = this.objekte.filter((x) => x.herkunft !== 'overture');
+		this.vorrat = this.vorrat.filter((x) => x.herkunft !== 'overture');
 		this.ausgewaehlt = new Set([...this.ausgewaehlt].filter((id) => !id.startsWith('ov')));
 		this.ergaenzung = null;
 	}
@@ -207,7 +342,7 @@ class Zustand {
 	 * Städten mehrere Megabyte, deshalb nie nebenbei.
 	 */
 	places = $state.raw<Place[]>([]);
-	placesInfo = $state.raw<{ release: string } | null>(null);
+	placesInfo = $state.raw<{ release: string; fuer?: Kasten } | null>(null);
 	placesLaedt = $state<string | null>(null);
 	private placesStopper: AbortController | null = null;
 
@@ -225,7 +360,8 @@ class Zustand {
 				stopper.signal);
 			if (stopper.signal.aborted || this.schluessel() !== k) return;
 			this.places = placesAus(o.merkmale, r.gitter, r);
-			this.placesInfo = { release: o.release };
+			this.placesVorrat = [];
+			this.placesInfo = { release: o.release, fuer: { ...this._kasten! } };
 		} catch (e) {
 			if (!stopper.signal.aborted)
 				this.fehler = t().overture.fehler(e instanceof Error ? e.message : String(e));
@@ -237,7 +373,7 @@ class Zustand {
 
 	placesAbbrechen() { this.placesStopper?.abort(); }
 
-	placesEntfernen() { this.places = []; this.placesInfo = null; }
+	placesEntfernen() { this.places = []; this.placesVorrat = []; this.placesInfo = null; }
 
 	gelaende = $state(false);
 	gelaendeDaten = $state.raw<Gelaende | null>(null);
@@ -258,7 +394,7 @@ class Zustand {
 	});
 	/** Das Raster, wenn das Gelände an ist und zum Rahmen passt. Sonst null. */
 	get gelaendeJetzt(): Gelaende | null {
-		return this.gelaende && this.gelaendeFuer === this.schluessel() ? this.geebnet : null;
+		return this.gelaende && this.gelaendeDeckt ? this.geebnet : null;
 	}
 
 	/**
@@ -268,11 +404,16 @@ class Zustand {
 	 * Wer während des Ladens ausgibt, bekommt das Paket mit Gelände und nicht
 	 * eines, in dem die angekündigte Geländedatei fehlt.
 	 */
+	/**
+	 * Passt das Raster zum Rahmen? Es wurde für einen Rahmen mit 150 m Rand
+	 * geholt; liegt der jetzige darin, reicht es weiter (06.11.2026).
+	 */
+	get gelaendeDeckt() { return !!this.gelaendeDaten && liegtIn(this._kasten, kastenAus(this.gelaendeFuer)); }
 	private gelaendeLauf: Promise<void> | null = null;
 	gelaendeHolen(): Promise<void> {
 		const r = this.rahmen;
 		const k = this.schluessel();
-		if (!r || !k || (this.gelaendeFuer === k && this.gelaendeDaten)) return Promise.resolve();
+		if (!r || !k || this.gelaendeDeckt) return Promise.resolve();
 		if (this.gelaendeLauf) return this.gelaendeLauf;
 		this.gelaendeLaedt = '…';
 		this.gelaendeLauf = (async () => {
@@ -337,9 +478,24 @@ class Zustand {
 		});
 	}
 
-	get gestrichene() { return this.objekte.filter((o) => o.zustand === 'gestrichen').length; }
+	get gestrichene() { return this.objekte.filter((o) => o.zustand === 'gestrichen').length + this.baumGestrichen.size; }
 	get erhaltene() { return this.objekte.filter((o) => o.zustand === 'erhalt').length; }
-	get datenAktuell() { return !!this.kasten && this.geladenFuer === this.schluessel(); }
+	/** Wie weit die geholten Daten mindestens über den Rahmen reichen, in Metern; 0 ohne Rand. */
+	get datenRand() {
+		const k = this._kasten, d = this.datenFlaeche;
+		if (!this.datenAktuell || !k || !d) return 0;
+		return Math.max(0, Math.min(k.x0 - d.x0, k.y0 - d.y0, d.x1 - k.x1, d.y1 - k.y1));
+	}
+	/** Liegt der Rahmen in den geholten Daten? Dann braucht er keinen Abruf. */
+	get datenAktuell() { return !!this.geladenFuer && liegtIn(this._kasten, this.datenFlaeche); }
+	/** Ist der Rahmen ein anderer als der, für den geholt wurde? */
+	get rahmenGeaendert() { return !!this.geladenFuer && this.geladenFuer !== this.schluessel(); }
+	/** Ragt der Rahmen über geholte Daten im selben Gitter hinaus? Dann holt `holen` nach und behält die Bearbeitungen. */
+	get datenNachholbar() {
+		const k = this._kasten, d = this.datenFlaeche;
+		return !!k && !!d && !!this.geladenFuer && !this.datenAktuell && Math.abs(k.lon0 - d.lon0) < 1e-5
+			&& !(k.x1 < d.x0 || k.x0 > d.x1 || k.y1 < d.y0 || k.y0 > d.y1);
+	}
 
 	private schluessel() {
 		const k = this.kasten;
@@ -386,6 +542,8 @@ class Zustand {
 	async holen() {
 		const r = this.rahmen;
 		if (!r || this.laden) return;
+		const rKey = this.schluessel();
+		const lon0 = this._kasten!.lon0;
 		this.laden = true; this.fehler = null; this.fortschritt = t().laden.frage;
 		const stopper = (this.stopper = new AbortController());
 		try {
@@ -403,14 +561,35 @@ class Zustand {
 			await atmen();
 			// Das Meer wird etwas über den Rahmen hinaus gefüllt; der Rand der
 			// Abfrage ist 150 m, also liegen alle Küsten bis dorthin vor.
+			// Bearbeitet ist, was gestrichen, erhalten oder beschnitten wurde.
+			// Wer den Rahmen nur vergrößert, soll das nicht noch einmal tun
+			// müssen: Dieselbe OSM-Kennung bekommt ihren bearbeiteten Stand
+			// zurück. Im anderen Gitter heißt das: anderer Ort, nichts behalten.
+			const d = this.datenFlaeche;
+			const gleichesGitter = !!d && Math.abs(d.lon0 - lon0) < 1e-5;
+			const bearbeitet = new Map(gleichesGitter
+				? [...this.objekte, ...this.vorrat].filter((o) => !o.herkunft && (o.zustand !== 'normal' || o.urform)).map((o) => [o.id, o])
+				: []);
+			// Ein anderer Ort ist ein anderes Projekt; Nachholen am selben bleibt eines.
+			if (!gleichesGitter) { this.projektVergessen(); this.baumGestrichen = new Set(); }
+			const flaeche: Kasten = { lon0, x0: r.x0 - DATEN_RAND_M, y0: r.y0 - DATEN_RAND_M, x1: r.x1 + DATEN_RAND_M, y1: r.y1 + DATEN_RAND_M };
 			this.ergaenzung = null;
-			this.places = []; this.placesInfo = null;
-			this.objekte = imRahmen(lesen(roh, r.gitter, { x0: r.x0 - 50, y0: r.y0 - 50, x1: r.x1 + 50, y1: r.y1 + 50 }),
-				r.x0, r.y0, r.x1, r.y1);
+			this.places = []; this.placesVorrat = []; this.placesInfo = null;
+			// Gelesen wird die ganze Datenfläche, mit dem Meer bis an ihren
+			// Rand; was den Rahmen nicht berührt, wartet im Vorrat.
+			const alle = lesen(roh, r.gitter, flaeche);
+			const drin = new Set(imRahmen(alle, r.x0, r.y0, r.x1, r.y1).map((o) => o.id));
+			this.objekte = alle.filter((o) => drin.has(o.id));
+			this.vorrat = alle.filter((o) => !drin.has(o.id));
 			// Umgetaggte Gebiete gleich streichen, sonst decken sie alles zu.
 			this.zweifel = zweifelhafteGebaeude(this.objekte);
 			const weg = new Set(this.zweifel.filter((x) => x.enthaelt >= ZWEIFEL_ENTHAELT).map((x) => x.id));
 			if (weg.size) this.objekte = this.objekte.map((o) => weg.has(o.id) ? { ...o, zustand: 'gestrichen' as const } : o);
+			if (bearbeitet.size) {
+				const zurueck = (o: Objekt) => bearbeitet.get(o.id) ?? o;
+				this.objekte = this.objekte.map(zurueck);
+				this.vorrat = this.vorrat.map(zurueck);
+			}
 			this.fortschritt = t().laden.netz;
 			await atmen();
 			// Netz und Nutzungsflaechen reichen bewusst ueber den Rahmen hinaus,
@@ -438,7 +617,12 @@ class Zustand {
 			this.rest = restAus(roh, r.gitter, benutzt);
 			this.baumpunkte = baeumeAus(this.rest);
 			this.ausgewaehlt = new Set();
-			this.geladenFuer = this.schluessel();
+			this.datenFlaeche = flaeche;
+			this.datenStand = new Date().toISOString();
+			this.geladenFuer = rKey;
+			this.zugeschnittenFuer = rKey;
+			// Wurde während des Holens am Rahmen gezogen, gleich nachziehen.
+			this.zuschneiden();
 			if (!this.objekte.length)
 				this.fehler = t().laden.leer;
 		} catch (e) {
@@ -468,6 +652,14 @@ class Zustand {
 			this.ort = d.ort;
 			this.kasten = d.kasten;
 			this.objekte = d.objekte;
+			// Die Beispiele tragen nur ihren Rahmen. Kleiner ziehen geht ohne
+			// Abruf, größer holt nach.
+			this.vorrat = [];
+			this.projektVergessen(); this.baumGestrichen = new Set();
+			this.datenFlaeche = d.datenFlaeche ?? { ...d.kasten };
+			this.datenStand = d.stand ?? null;
+			this.ergaenzung = null;
+			this.places = []; this.placesVorrat = []; this.placesInfo = null;
 			this.netz = d.netz ?? null;
 			this.nutzflaechen = d.nutzflaechen ?? [];
 			this.pois = d.pois ?? [];
@@ -478,6 +670,7 @@ class Zustand {
 			this.ausgewaehlt = new Set();
 			this.plangebiet = null;
 			this.geladenFuer = this.schluessel();
+			this.zugeschnittenFuer = this.geladenFuer;
 			this.schritt = 2;
 		} catch (e) {
 			this.fehler = e instanceof Error ? e.message : t().laden.beispielFehler;
@@ -514,10 +707,58 @@ class Zustand {
 		const treffer = this.objekte
 			.filter((o) => baulich.has(o.ebene) && this.sichtbar.has(sichtEbene(o)) && this.trifftPolygon(o, p))
 			.map((o) => o.id);
-		this.ausgewaehlt = dazu ? new Set([...this.ausgewaehlt, ...treffer]) : new Set(treffer);
+		const haus = this.hausVon(treffer);
+		// Sichtbare Bäume, deren Stamm im Polygon steht, kommen mit.
+		if (this.baeume) for (const b of this.baumpunkte) if (b.id && drin([b.x, b.y], p)) haus.add(BAUM_ID + b.id);
+		this.ausgewaehlt = dazu ? new Set([...this.ausgewaehlt, ...haus]) : haus;
 		this.fanglinie = [];
 		this.werkzeug = 'zeigen';
-		return treffer.length;
+		return haus.size;
+	}
+
+	/**
+	 * Ein Haus samt seinen Teilen (06.11.2026).
+	 *
+	 * Wo ein Gebäude in `building:part` zerlegt ist, liegen die Teile über
+	 * dem Umriss — in der HafenCity 339 von 623 Körpern. Der Klick traf den
+	 * kleinsten, also einen Teil; gestrichen und ausgeblendet blieb der Umriss
+	 * darunter schwarz stehen, und es sah aus, als ginge Ausblenden nicht.
+	 * Gewählt wird deshalb immer das ganze Haus: der Umriss, in dem der
+	 * Mittelpunkt eines Teils liegt, und alle Teile, deren Mittelpunkt in ihm
+	 * liegt. Ein Teil ohne Umriss bleibt für sich.
+	 */
+	hausVon(ids: Iterable<string>): Set<string> {
+		const aus = new Set(ids);
+		const bauten = this.objekte.filter((o) => (o.ebene === 'gebaeude' || o.ebene === 'erhalt') && o.ringe.length);
+		const huelle = (o: Objekt) => {
+			let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+			for (const r of o.ringe) for (const [x, y] of r) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+			return [x0, y0, x1, y1];
+		};
+		const umrisse = bauten.filter((o) => !istTeil(o)).map((o) => ({ o, h: huelle(o) }));
+		const umfasst = (u: { o: Objekt; h: number[] }, [x, y]: [number, number]) =>
+			x >= u.h[0] && x <= u.h[2] && y >= u.h[1] && y <= u.h[3] && u.o.ringe.some((r) => drin([x, y], r));
+		const nachId = new Map(bauten.map((o) => [o.id, o]));
+		const gewaehlt = new Set<{ o: Objekt; h: number[] }>();
+		for (const id of aus) {
+			const o = nachId.get(id);
+			if (!o) continue;
+			if (istTeil(o)) {
+				const m = schwerpunkt(o.ringe);
+				for (const u of umrisse) if (umfasst(u, m)) gewaehlt.add(u);
+			} else {
+				const u = umrisse.find((x) => x.o === o);
+				if (u) gewaehlt.add(u);
+			}
+		}
+		if (!gewaehlt.size) return aus;
+		for (const u of gewaehlt) aus.add(u.o.id);
+		for (const t of bauten) {
+			if (!istTeil(t) || aus.has(t.id)) continue;
+			const m = schwerpunkt(t.ringe);
+			for (const u of gewaehlt) if (umfasst(u, m)) { aus.add(t.id); break; }
+		}
+		return aus;
 	}
 
 	private trifftPolygon(o: Objekt, p: [number, number][]) {
@@ -564,6 +805,10 @@ class Zustand {
 			flaechen++;
 			return { ...o, zustand: 'gestrichen' as const };
 		});
+		// Bäume im Gebiet gehen mit, wie die Flächen (06.11.2026).
+		const weg = new Set(this.baumGestrichen);
+		for (const b of this.baumpunkte) if (b.id && drin([b.x, b.y], p)) weg.add(b.id);
+		if (weg.size !== this.baumGestrichen.size) this.baumGestrichen = weg;
 		this.ausgewaehlt = new Set();
 		return { flaechen, linien };
 	}
@@ -581,6 +826,7 @@ class Zustand {
 			return { ...o, ringe, urform: undefined, zustand: 'normal' as const,
 				ebene: o.ebene === 'erhalt' ? ('gebaeude' as const) : o.ebene };
 		});
+		this.baumGestrichen = new Set();
 		this.ausgewaehlt = new Set();
 	}
 
@@ -605,6 +851,13 @@ class Zustand {
 		 * (gefunden von Umbra am 03.11.2026, way 25388265 in der HafenCity).
 		 */
 		const bau = (o: Objekt) => o.ebene === 'gebaeude' || o.ebene === 'erhalt';
+		// Bäume: Streichen nimmt sie in die Liste, Erhalten und Zurück heraus.
+		const baumIds = [...this.ausgewaehlt].filter((id) => id.startsWith(BAUM_ID)).map((id) => id.slice(BAUM_ID.length));
+		if (baumIds.length) {
+			const weg = new Set(this.baumGestrichen);
+			for (const id of baumIds) zu === 'gestrichen' ? weg.add(id) : weg.delete(id);
+			this.baumGestrichen = weg;
+		}
 		this.objekte = this.objekte.map((o) =>
 			this.ausgewaehlt.has(o.id)
 				? { ...o, zustand: zu, ebene: bau(o) ? (zu === 'erhalt' ? 'erhalt' : 'gebaeude') : o.ebene }
@@ -638,7 +891,7 @@ class Zustand {
 		this.bereit = this.wiederherstellen();
 	}
 
-	private packen() {
+	packen() {
 		return {
 			fassung: Zustand.FASSUNG,
 			schritt: this.schritt,
@@ -651,6 +904,10 @@ class Zustand {
 			// waere eine zweite tiefe Kopie. Gemessen an sechstausend Objekten:
 			// 19 Millisekunden so, 1.392 mit Abschrift.
 			objekte: this.objekte,
+			vorrat: this.vorrat,
+			datenFlaeche: this.datenFlaeche,
+			datenStand: this.datenStand,
+			placesVorrat: this.placesVorrat,
 			netz: this.netz,
 			nutzflaechen: this.nutzflaechen,
 			pois: this.pois,
@@ -658,6 +915,7 @@ class Zustand {
 			linien: this.linien,
 			rest: this.rest,
 			baeume: this.baeume,
+			baumGestrichen: [...this.baumGestrichen],
 			/**
 			 * Diese drei sind tiefe Zustände, also Proxys, und die kann
 			 * `indexedDB` nicht kopieren: Seit „Karte anpassen" (03.11.2026)
@@ -683,6 +941,8 @@ class Zustand {
 			beschriftung: this.beschriftung,
 			bereinigt: this.bereinigt,
 			geladenFuer: this.geladenFuer,
+			projektName: this.projektName,
+			projektAbdruck: this.projektAbdruck,
 			zeitpunkt: Date.now()
 		};
 	}
@@ -709,14 +969,27 @@ class Zustand {
 	}
 
 	private async wiederherstellen(): Promise<void> {
-		type Paket = ReturnType<Zustand['packen']>;
-		const p = await abholen<Paket>(Zustand.FACH);
+		const p = await abholen<SitzungsPaket>(Zustand.FACH);
 		if (!p || p.fassung !== Zustand.FASSUNG || !p.kasten) return;
+		this.einsetzen(p);
+	}
+
+	/** Einen gesicherten Stand übernehmen: aus der Ablage oder aus einer Projektdatei. */
+	private einsetzen(p: SitzungsPaket) {
+		if (!p.kasten) return;
+		this.ausgewaehlt = new Set();
+		this.druckBuehne = null;
+		this.fanglinie = [];
 		this.kasten = p.kasten;
 		this.ort = p.ort;
 		this.verhaeltnis = VERHAELTNISSE.find((v) => v.name === p.verhaeltnis) ?? VERHAELTNISSE[0];
 		this.ausgabeBreite = p.ausgabeBreite;
 		this.objekte = p.objekte ?? [];
+		this.vorrat = p.vorrat ?? [];
+		this.placesVorrat = p.placesVorrat ?? [];
+		// Sitzungen von vor dem 06.11.2026 kennen nur den Rahmen, für den geholt wurde.
+		this.datenFlaeche = p.datenFlaeche ?? (p.geladenFuer ? kastenAus(p.geladenFuer) : null);
+		this.datenStand = p.datenStand ?? null;
 		this.netz = p.netz ?? null;
 		this.nutzflaechen = p.nutzflaechen ?? [];
 		this.pois = p.pois ?? [];
@@ -724,16 +997,20 @@ class Zustand {
 		this.linien = p.linien ?? [];
 		this.rest = p.rest ?? [];
 		this.baeume = p.baeume ?? false;
+		this.baumGestrichen = new Set(p.baumGestrichen ?? []);
 		this.karte = { ...NEUTRAL, ...(p.karte ?? {}) };
 		this.kanten = { ...KANTEN_VORGABE, ...(p.kanten ?? {}) };
+		// Bis 06.11.2026 hieß „dunkel" `false` und war die Vorgabe; jetzt folgt
+		// die Vorgabe der Darstellung, also gilt ein altes `false` als keine Wahl.
+		if (this.kanten.hell === false) this.kanten.hell = null;
 		this.sonne = { ...SONNE_VORGABE, ...(p.sonne ?? {}) };
 		this.druck = { ...DRUCK_VORGABE, ...(p.druck ?? {}), ausschnitt: { ...DRUCK_VORGABE.ausschnitt, ...(p.druck?.ausschnitt ?? {}) } };
 		this.bild3d = { ...{ format: 'ansicht', breite: 4096, rahmen: false, hintergrund: null, transparent: false }, ...(p.bild3d ?? {}) };
 		this.baumpunkte = baeumeAus(this.rest);
-		this.ergaenzung = p.ergaenzung ?? null;
+		this.ergaenzung = p.ergaenzung ? { ...p.ergaenzung, fuer: p.ergaenzung.fuer ?? { ...p.kasten } } : null;
 		this.zweifel = p.zweifel ?? [];
 		this.places = p.places ?? [];
-		this.placesInfo = p.placesInfo ?? null;
+		this.placesInfo = p.placesInfo ? { ...p.placesInfo, fuer: p.placesInfo.fuer ?? { ...p.kasten } } : null;
 		this.gelaende = p.gelaende ?? false;
 		this.gelaendeDaten = p.gelaendeDaten ?? null;
 		this.gelaendeFuer = p.gelaendeFuer ?? null;
@@ -746,9 +1023,99 @@ class Zustand {
 		this.beschriftung = p.beschriftung;
 		this.bereinigt = p.bereinigt;
 		this.geladenFuer = p.geladenFuer;
+		this.zugeschnittenFuer = this.schluessel();
+		this.projektName = p.projektName ?? null;
+		this.projektAbdruck = p.projektAbdruck ?? null;
 		// Schritt 2 und 3 setzen Bestand voraus. Ohne ihn faengt man vorn an.
 		this.schritt = this.objekte.length ? p.schritt : 1;
 		this.gesichert = p.zeitpunkt;
+	}
+
+	// ---- Projektdatei ---------------------------------------------------
+	/**
+	 * Das Projekt als Datei, `.nolli` (Volker, 06.11.2026): ein ZIP mit
+	 * demselben Stand, den die Ablage im Browser hält — Rahmen, alle
+	 * Einstellungen bis zum Druckausschnitt, die Bearbeitungen und die Daten
+	 * selbst. Wer es öffnet, bekommt genau dasselbe Modell, auch wenn sich
+	 * OpenStreetMap inzwischen geändert hat; eine nachgedruckte Kachel passt
+	 * so an die alten. Aktuell wird es mit „Neu holen", das die
+	 * Bearbeitungen behält.
+	 *
+	 * Das Raster des Geländes liegt als `gelaende.bin` daneben (Float32,
+	 * little-endian): JSON kann kein Float32Array, und als Zahlenliste wäre
+	 * es fünfmal so groß.
+	 */
+	/**
+	 * Das geöffnete oder zuletzt gespeicherte Projekt, ohne `.nolli`. Steht
+	 * neben dem Logo, damit man sieht, woran man arbeitet (Volker, 06.11.2026).
+	 * Ein Beispiel oder ein neuer Ort ist kein Projekt, bis man speichert.
+	 */
+	projektName = $state<string | null>(null);
+	/** Der Abdruck beim Öffnen oder Speichern. Weicht der jetzige ab, ist das Projekt geändert. */
+	projektAbdruck = $state<string | null>(null);
+
+	/**
+	 * Was ein Projekt ausmacht, als kurzer Text: Rahmen, Einstellungen und
+	 * ein Zählwerk der Bearbeitungen. Schritt, Zoom und Auswahl zählen nicht.
+	 * Das Zählwerk ist bewusst grob — eines gestrichen und ein anderes
+	 * zurückgeholt fiele nicht auf —, dafür kostet es nichts.
+	 */
+	abdruck(): string {
+		let gestrichen = 0, erhalt = 0, beschnitten = 0, overture = 0;
+		for (const o of this.objekte) {
+			if (o.zustand === 'gestrichen') gestrichen++;
+			else if (o.zustand === 'erhalt') erhalt++;
+			if (o.urform) beschnitten++;
+			if (o.herkunft === 'overture') overture++;
+		}
+		gestrichen += this.baumGestrichen.size;
+		return JSON.stringify([this._kasten, this.verhaeltnis.name, this.ausgabeBreite, this.darstellung, this.beschriftung,
+			this.bereinigt, this.baeume, this.gelaende, [...this.sichtbar].sort(), this.plangebiet, this.karte, this.kanten,
+			this.sonne, this.druck, this.bild3d, this.datenStand, this.objekte.length, this.vorrat.length,
+			gestrichen, erhalt, beschnitten, overture, this.places.length]);
+	}
+	get projektGeaendert() { return !!this.projektName && this.abdruck() !== this.projektAbdruck; }
+	/** Nach Speichern unter diesem Namen. */
+	projektGespeichert(name: string) { this.projektName = name; this.projektAbdruck = this.abdruck(); }
+	private projektVergessen() { this.projektName = null; this.projektAbdruck = null; }
+
+	async projektDatei(): Promise<Uint8Array> {
+		const { zipSync, strToU8 } = await import('fflate');
+		const p = this.packen();
+		const g = p.gelaendeDaten;
+		const kopf = {
+			format: PROJEKT_FORMAT, projektFassung: PROJEKT_FASSUNG,
+			gespeichert: new Date().toISOString(),
+			...p,
+			gelaendeDaten: g ? { ...g, z: null } : null
+		};
+		const dateien: Record<string, Uint8Array> = { 'projekt.json': strToU8(JSON.stringify(kopf)) };
+		if (g) dateien['gelaende.bin'] = new Uint8Array(g.z.buffer.slice(g.z.byteOffset, g.z.byteOffset + g.z.byteLength));
+		return zipSync(dateien, { level: 6 });
+	}
+
+	/** Eine Projektdatei öffnen. Ersetzt die laufende Sitzung; die wird vorher nicht eigens gesichert. */
+	async projektOeffnen(bytes: Uint8Array, name: string) {
+		const { unzipSync, strFromU8 } = await import('fflate');
+		let p: (SitzungsPaket & { format?: string; projektFassung?: number }) | null = null;
+		let dateien: Record<string, Uint8Array>;
+		try {
+			dateien = unzipSync(bytes);
+			p = JSON.parse(strFromU8(dateien['projekt.json']));
+		} catch {
+			throw new Error(t().projekt.keinProjekt);
+		}
+		if (!p || p.format !== PROJEKT_FORMAT || !p.kasten) throw new Error(t().projekt.keinProjekt);
+		if ((p.projektFassung ?? 0) > PROJEKT_FASSUNG || p.fassung !== Zustand.FASSUNG) throw new Error(t().projekt.zuNeu);
+		if (p.gelaendeDaten) {
+			const bin = dateien['gelaende.bin'];
+			if (bin) p.gelaendeDaten = { ...p.gelaendeDaten, z: new Float32Array(bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength)) };
+			else { p.gelaendeDaten = null; p.gelaendeFuer = null; }
+		}
+		this.einsetzen(p);
+		this.projektName = name;
+		this.projektAbdruck = this.abdruck();
+		await this.sofortSichern();
 	}
 
 	/** Sitzung vergessen und bei null anfangen. */
@@ -756,6 +1123,12 @@ class Zustand {
 		if (this.takt) clearTimeout(this.takt);
 		await wegwerfen(Zustand.FACH);
 		this.objekte = [];
+		this.vorrat = [];
+		this.baumGestrichen = new Set();
+		this.placesVorrat = [];
+		this.datenFlaeche = null;
+		this.datenStand = null;
+		this.projektVergessen();
 		this.netz = null;
 		this.nutzflaechen = [];
 		this.pois = [];
@@ -776,6 +1149,8 @@ class Zustand {
 		this.schritt = 1;
 	}
 }
+
+type SitzungsPaket = ReturnType<Zustand['packen']>;
 
 export const z = new Zustand();
 export { VERHAELTNISSE, AUSGABEBREITEN };

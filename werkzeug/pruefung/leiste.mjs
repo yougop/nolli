@@ -37,11 +37,21 @@ const block = lies('lib/darstellung.ts').split('export const DARSTELLUNGEN')[1];
 if (!block) throw new Error('DARSTELLUNGEN nicht gefunden — hat die Datei sich geaendert?');
 const ids = [...block.split('export const')[0].matchAll(/id:\s*'([^']+)'/g)].map((m) => m[1]);
 
-// Die Schalter der Sichtleiste: Knöpfe der Klasse `einzeln`, deren Aufschrift
-// aus dem Wörterbuch kommt.
+// Die Schalter der Sichtleiste: Knöpfe der Klasse `einzeln` innerhalb der
+// Leiste, deren Aufschrift aus dem Wörterbuch kommt. Seit 07.11.2026 stehen
+// manche Namen in Lang- und Kurzform (`<span class="lang">`); dann zählt die
+// Langform. Knöpfe ohne Aufschrift (das Häkchen der Bäume, ↺) fallen weg.
 const seite = lies('routes/+page.svelte');
-const schalter = [...seite.matchAll(/class="einzeln[^"]*"[\s\S]*?>\{(?:[^{}]*\? [^{}]*: )?t\(\)\.([a-z]+)\.([a-zA-Z]+)\}<\/button>/g)]
-	.map((m) => [m[1], m[2]]);
+const leiste = seite.slice(seite.indexOf('<div class="sichtleiste">'), seite.indexOf('<div class="buehne"'));
+const schalter = [];
+for (const m of leiste.matchAll(/<button\b[\s\S]*?<\/button>/g)) {
+	const k = m[0];
+	if (!/class="einzeln/.test(k)) continue;
+	const lang = /class="lang">\{t\(\)\.([a-z]+)\.([a-zA-Z]+)\}/.exec(k);
+	const schluss = />\{(?:[^{}]*\? [^{}]*: )?t\(\)\.([a-z]+)\.([a-zA-Z]+)\}<\/button>$/.exec(k);
+	const tr = lang ?? schluss;
+	if (tr) schalter.push([tr[1], tr[2]]);
+}
 
 if (!ids.length) throw new Error('Keine Darstellung gelesen.');
 if (!schalter.length) throw new Error('Keinen Schalter gelesen.');

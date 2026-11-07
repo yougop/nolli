@@ -1,60 +1,60 @@
 {
- "wann": "2026-11-06 19:46 +01:00",
- "commit": "3a5d637",
- "sauber": true,
- "gesamt": "29c742473245",
+ "wann": "2026-11-07 22:03 +01:00",
+ "commit": "ace857a",
+ "sauber": false,
+ "gesamt": "a10469ba4597",
  "dateien": {
   "200.html": {
-   "bytes": 3244,
-   "hash": "dbd4017ff4b8"
+   "bytes": 3245,
+   "hash": "43dbc755c1be"
   },
   "_app/immutable/assets/0.D0xAZEDK.css": {
    "bytes": 2777,
    "hash": "c8a8a3dc604b"
   },
-  "_app/immutable/assets/2.c2PfPMry.css": {
-   "bytes": 125351,
-   "hash": "3ea710d4eb3c"
+  "_app/immutable/assets/2.GBp1dJaM.css": {
+   "bytes": 130102,
+   "hash": "b6e7f4415e53"
   },
   "_app/immutable/assets/rhino3dm.CWOyICcB.wasm": {
    "bytes": 2670316,
    "hash": "18cb4b663cda"
   },
-  "_app/immutable/chunks/BGmYcsjb.js": {
-   "bytes": 8304,
-   "hash": "6d6af7e9072c"
+  "_app/immutable/chunks/BFl2D6Yq.js": {
+   "bytes": 122,
+   "hash": "eb4433cd53ee"
+  },
+  "_app/immutable/chunks/BcuhYG6O.js": {
+   "bytes": 47686,
+   "hash": "d87f35947b79"
+  },
+  "_app/immutable/chunks/Bjsm3ueJ.js": {
+   "bytes": 51591,
+   "hash": "f37d76c3e638"
   },
   "_app/immutable/chunks/Bjy-W4x2.js": {
    "bytes": 1365,
    "hash": "f07424758318"
   },
-  "_app/immutable/chunks/C8dXTjsw.js": {
+  "_app/immutable/chunks/CMDDo_Cz.js": {
+   "bytes": 26648,
+   "hash": "3a1f0c0efd85"
+  },
+  "_app/immutable/chunks/D-K_yh9x.js": {
    "bytes": 75339,
-   "hash": "82788d3f8e17"
+   "hash": "b56d5243a371"
   },
-  "_app/immutable/chunks/CuuYi3bp.js": {
-   "bytes": 45736,
-   "hash": "69f2efea8360"
+  "_app/immutable/chunks/DIBC0iui.js": {
+   "bytes": 108118,
+   "hash": "1bcbac07c5a0"
   },
-  "_app/immutable/chunks/DKJmJbVV.js": {
-   "bytes": 47678,
-   "hash": "684de6e9bd31"
+  "_app/immutable/chunks/Db4CdQ10.js": {
+   "bytes": 8486,
+   "hash": "a8931e08633b"
   },
-  "_app/immutable/chunks/DgafEnQT.js": {
-   "bytes": 26644,
-   "hash": "5a5c9790116c"
-  },
-  "_app/immutable/chunks/DjTq4tUp.js": {
-   "bytes": 104203,
-   "hash": "28556a8127a2"
-  },
-  "_app/immutable/chunks/FIn7yAJg.js": {
+  "_app/immutable/chunks/RxVNE0oT.js": {
    "bytes": 15337,
-   "hash": "2e2534b66f7e"
-  },
-  "_app/immutable/chunks/cXQsejQ4.js": {
-   "bytes": 122,
-   "hash": "2d5a359f1b9b"
+   "hash": "d2b2485f8dda"
   },
   "_app/immutable/chunks/uBIymjUX.js": {
    "bytes": 1233,
@@ -64,25 +64,25 @@
    "bytes": 65,
    "hash": "0214edcff772"
   },
-  "_app/immutable/entry/app.Dne1kzkl.js": {
+  "_app/immutable/entry/app.kwwEWqYL.js": {
    "bytes": 2955,
-   "hash": "790109218215"
+   "hash": "b58f345f2c90"
   },
-  "_app/immutable/entry/start.DMSPJ5Tf.js": {
+  "_app/immutable/entry/start.i8vRMPM5.js": {
    "bytes": 77,
-   "hash": "0947c6f9ad41"
+   "hash": "c284430eaa66"
   },
-  "_app/immutable/nodes/0.EvKwRbv3.js": {
+  "_app/immutable/nodes/0.BThLPm04.js": {
    "bytes": 238,
-   "hash": "14cb9ba6397c"
+   "hash": "64b44a5d05e0"
   },
-  "_app/immutable/nodes/1.CzCCnVyi.js": {
+  "_app/immutable/nodes/1.CxghJq-x.js": {
    "bytes": 576,
-   "hash": "919a764213ff"
+   "hash": "2b208541f698"
   },
-  "_app/immutable/nodes/2.iRbQiJtJ.js": {
-   "bytes": 2071417,
-   "hash": "c78730a1118d"
+  "_app/immutable/nodes/2.mZxPatiZ.js": {
+   "bytes": 2124985,
+   "hash": "9834235dcde6"
   },
   "_app/immutable/workers/maplibre-gl-worker-B71oqUJw.js": {
    "bytes": 506998,
@@ -90,27 +90,27 @@
   },
   "_app/version.json": {
    "bytes": 21,
-   "hash": "1b127637c174"
+   "hash": "6d63de9c7a3e"
   },
   "beispiele/hafencity.json": {
-   "bytes": 3756733,
-   "hash": "2ed8d8770b9a"
+   "bytes": 3754891,
+   "hash": "883d90814f50"
   },
   "beispiele/manhattan.json": {
-   "bytes": 12620763,
-   "hash": "8ff3f221bf4c"
+   "bytes": 12622524,
+   "hash": "c55e4398dc09"
   },
   "beispiele/rothenburg.json": {
-   "bytes": 5358192,
-   "hash": "223d1cba8f5a"
+   "bytes": 5362876,
+   "hash": "73a0a195086d"
   },
   "favicon.svg": {
    "bytes": 316,
    "hash": "5032bcab02e3"
   },
   "index.html": {
-   "bytes": 3660,
-   "hash": "bbb604eca111"
+   "bytes": 3661,
+   "hash": "5617287718f8"
   },
   "robots.txt": {
    "bytes": 63,

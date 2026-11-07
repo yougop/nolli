@@ -44,7 +44,7 @@ await warte(1500);
 console.log('holen:', await knopf('Bestandsdaten holen', true));
 console.log('Bestand da:', await bisKnopf('Weiter zur Ausgabe', 180000));
 // Der Geländeschalter ist nur im 3D-Modell bedienbar, also erst dorthin.
-console.log('3D:', await knopf('3D-Modell'));
+console.log('3D:', await knopf('3D-Modell', true));
 await warte(1500);
 console.log('Gelände an:', await knopf('Gelände'));
 console.log('Gelände geladen:', await bisKnopf('Gelände', 60000));

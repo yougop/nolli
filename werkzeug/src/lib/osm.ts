@@ -76,6 +76,10 @@ export type Objekt = {
 	 * Gebaeuden ein solches Merkmal, in einer Altstadt sind es Hunderte.
 	 */
 	denkmal?: string;
+	/** Nur Grünflächen mit `landuse=forest`: die Waldart aus `leaf_type`, für die Waldbäume (06.11.2026). */
+	wald?: 'laub' | 'nadel' | 'misch' | 'busch';
+	/** Naturfläche (`natural=*`, Obstwiese, Weinberg): im Plan ein leicht anderes Grün (07.11.2026). */
+	natur?: true;
 	/**
 	 * Strasse und Hausnummer, wo OpenStreetMap sie am Gebaeude fuehrt.
 	 *
@@ -144,7 +148,53 @@ const RANG: Record<string, number> = {
 };
 
 const GRUEN = new Set(['park', 'garden', 'grass', 'meadow', 'forest', 'recreation_ground',
-	'village_green', 'allotments', 'cemetery', 'pitch', 'playground', 'scrub', 'nature_reserve']);
+	'village_green', 'allotments', 'cemetery', 'pitch', 'playground', 'scrub', 'nature_reserve',
+	// Seit 07.11.2026 auch Obstwiesen, Weinberge, Gärtnereien (Volker: Naturflächen dazu).
+	'orchard', 'vineyard', 'plant_nursery']);
+/**
+ * Naturflächen aus `natural=*` (07.11.2026): Wald, Gebüsch, Heide, Grasland,
+ * Feuchtgebiet. Sie standen bisher nur im Rest und fehlten im Plan; in
+ * Rothenburg war der halbe Hang weiß. Sie zählen als Grünflächen.
+ */
+export const NATUR_GRUEN = new Set(['wood', 'scrub', 'heath', 'grassland', 'wetland', 'fell', 'tundra', 'shrubbery']);
+const waldArt = (t: Record<string, string>) => (t.leaf_type === 'needleleaved' ? 'nadel' : t.leaf_type === 'broadleaved' ? 'laub' : 'misch') as 'laub' | 'nadel' | 'misch';
+/** Naturflächen tragen ein eigenes Grün; Gebüsch und Heide Gehölze ohne Stamm. */
+const NATUR_LANDUSE = new Set(['orchard', 'vineyard', 'plant_nursery']);
+const istNatur = (t: Record<string, string>) => NATUR_GRUEN.has(t.natural ?? '') || NATUR_LANDUSE.has(t.landuse ?? '');
+const gehoelz = (t: Record<string, string>) =>
+	// Gebüsch und Heide tragen Gehölze als eigene Herkunft „Natur“ (`naturBaeume`), nicht als Wald.
+	t.landuse === 'forest' || t.natural === 'wood' ? waldArt(t)
+		: ['scrub', 'shrubbery', 'heath'].includes(t.natural ?? '') ? 'busch' as const : undefined;
+
+/** Was als Einfriedung gezeichnet wird (07.11.2026). Poller, Bordsteine und Tore sind Punkte oder zu klein. */
+export const EINFRIEDUNG = new Set(['fence', 'wall', 'hedge', 'city_wall', 'retaining_wall', 'guard_rail', 'jersey_barrier']);
+
+/**
+ * Einfriedungen aus dem Rest holen, für Stände von vor dem 07.11.2026: Dort
+ * lagen Zäune und Mauern ungenutzt in `rest`. So bekommen alte Projekte und
+ * die Beispiele die Ebene, ohne neu zu holen.
+ */
+export function einfriedungenAus(rest: { id: string; typ: string; punkte?: [number, number][]; tags: Record<string, string> }[]): Objekt[] {
+	const aus: Objekt[] = [];
+	for (const e of rest) {
+		if (!e.tags.barrier || !EINFRIEDUNG.has(e.tags.barrier) || !e.punkte || e.punkte.length < 2) continue;
+		aus.push({ id: e.id, ebene: 'grenze', art: 'linie', ringe: [e.punkte], tiefe: Object.keys(e.tags).length, name: e.tags.name, nutzung: e.tags.barrier, zustand: 'normal' });
+	}
+	return aus;
+}
+
+/** Naturflächen aus dem Rest holen, für Stände von vor dem 07.11.2026 (wie `einfriedungenAus`). */
+export function naturAus(rest: { id: string; typ: string; punkte?: [number, number][]; tags: Record<string, string> }[]): Objekt[] {
+	const aus: Objekt[] = [];
+	for (const e of rest) {
+		const t = e.tags;
+		if (e.typ !== 'flaeche' || !e.punkte || e.punkte.length < 4) continue;
+		if (!NATUR_GRUEN.has(t.natural ?? '') && !GRUEN.has(t.landuse ?? '') && !GRUEN.has(t.leisure ?? '')) continue;
+		const wald = gehoelz(t);
+		aus.push({ id: e.id, ebene: 'gruen', art: 'flaeche', ringe: [e.punkte], tiefe: Object.keys(t).length, name: t.name, zustand: 'normal', ...(wald ? { wald } : {}), ...(istNatur(t) ? { natur: true as const } : {}) });
+	}
+	return aus;
+}
 
 type RohPunkt = { lat: number; lon: number };
 type RohElement = {
@@ -318,13 +368,16 @@ export function lesen(roh: { elements: RohElement[] }, gitter: Gitter, kasten?: 
 		} else if (NUTZUNG.has(t.landuse ?? '')) {
 			// Nutzungsflaechen gehen nicht auf das Blatt. Sie werden getrennt
 			// eingelesen, siehe `analysedaten.ts`.
-		} else if (GRUEN.has(t.landuse ?? '') || GRUEN.has(t.leisure ?? '')) {
-			aus.push({ id, ebene: 'gruen', art: 'flaeche', ringe: flaechen, loecher, tiefe, name: t.name, zustand: 'normal' });
+		} else if (GRUEN.has(t.landuse ?? '') || GRUEN.has(t.leisure ?? '') || NATUR_GRUEN.has(t.natural ?? '')) {
+			const wald = gehoelz(t);
+			aus.push({ id, ebene: 'gruen', art: 'flaeche', ringe: flaechen, loecher, tiefe, name: t.name, zustand: 'normal', ...(wald ? { wald } : {}), ...(istNatur(t) ? { natur: true as const } : {}) });
 		} else if (unterirdisch(t) && (t.railway || t.highway)) {
 			// Tunnel gehören nicht auf den Plan. Am 26.10.2026 in Manhattan: Der
 			// Brooklyn-Battery-Tunnel lief als breites Straßenband über die Bucht,
 			// die U-Bahn als Gleise quer durch die Blöcke. Im Netz für Wegrechnungen
 			// bleiben sie, das wird getrennt aus den Rohdaten gebaut.
+		} else if (t.barrier && EINFRIEDUNG.has(t.barrier)) {
+			aus.push({ id, ebene: 'grenze', art: 'linie', ringe: flaechen, tiefe, name: t.name, nutzung: t.barrier, zustand: 'normal' });
 		} else if (t.railway && ['rail', 'tram', 'light_rail', 'subway'].includes(t.railway)) {
 			// Abstell- und Rangiergleise tragen ein `service`-Merkmal. Ein
 			// Bahnhofsvorfeld besteht fast nur daraus; ungewichtet wird daraus

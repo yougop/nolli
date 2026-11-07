@@ -35,13 +35,15 @@ const klick = (t, prefix) => s.evaluate((t, prefix) => {
 
 await klick('HafenCity'); await new Promise(r => setTimeout(r, 6000));
 console.log('Bäume an:', await klick('Bäume'));
-console.log('3D:', await klick('3D-Modell'));
+// Darstellungen tragen Lang- und Kurznamen (seit 07.11.2026); gesucht wird der Langname.
+console.log('3D:', await s.evaluate(() => { const b = [...document.querySelectorAll('.sichtleiste button')].find((x) => x.querySelector('.lang')?.textContent.trim() === '3D-Modell'); b?.click(); return !!b; }));
 await new Promise(r => setTimeout(r, 6000));
 await s.screenshot({ path: ziel + '/3d-baeume.png' });
 console.log('zur Ausgabe:', await klick('Weiter zur Ausgabe'));
 await new Promise(r => setTimeout(r, 2000));
 // Seit 06.11.2026 stehen Modell und Paket unter „Weitere Dateien“, ab Werk zugeklappt.
-console.log('Weitere Dateien:', await klick('Weitere Dateien', true));
+// Ab 860 px Höhe ist der Abschnitt schon offen; nur aufklappen, wenn er zu ist.
+console.log('Weitere Dateien:', await s.evaluate(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim().startsWith('Weitere Dateien')); if (b && b.getAttribute('aria-expanded') !== 'true') b.click(); return !!b; }));
 await new Promise(r => setTimeout(r, 500));
 console.log('Modell-ZIP:', await klick('Modell', true));
 for (let i = 0; i < 24; i++) {

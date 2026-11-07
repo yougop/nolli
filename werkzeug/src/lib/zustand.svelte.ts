@@ -1,18 +1,21 @@
 import { t, zahl } from './sprache.svelte';
 import { Rahmen, VERHAELTNISSE, AUSGABEBREITEN, type Verhaeltnis } from './geo/rahmen';
 import { ortsgitter, nachGitter } from './geo/utm';
-import { lesen, imRahmen, sichtEbene, istTeil, zweifelhafteGebaeude, ZWEIFEL_ENTHAELT, type Objekt, type Zweifel } from './osm';
+import { lesen, imRahmen, einfriedungenAus, naturAus, sichtEbene, istTeil, zweifelhafteGebaeude, ZWEIFEL_ENTHAELT, type Objekt, type Zweifel } from './osm';
 import { drin, beruehrt, ausserhalb, schwerpunkt } from './schneiden';
 import { NEUTRAL, type Anpassung } from './anpassen';
+import { DARSTELLUNGEN, darstellung as darstellungVon } from './darstellung';
 import { STIFTE, type StiftId } from './stifte';
 import { kantenHellFuer } from './zeichnen';
 import { base } from '$app/paths';
 import { ablegen, abholen, wegwerfen } from './ablage';
 import { holeBestand, QuellFehler, Abgebrochen } from './quelle';
 import { DRUCK_VORGABE } from './export/druck';
+import { SATZ_PLAN, SATZ_RAUM, satzKopie, satzAus, type Baumwahl, type Baumsatz } from './export/baeume';
+import { PFLANZ_VORGABE, gebietAnwenden, ausGebieten, type Pflanzwahl, type Gebiet, type Form } from './pflanzen';
 import { holeGelaende, wasserEbnen, netzWeite, type Gelaende } from './geo/gelaende';
 import { holeOverture, gebaeudeErgaenzen, placesAus, type Place } from './overture';
-import { netzAus, nutzflaechenAus, poisAus, halteAus, restAus, baeumeAus, type Baum,
+import { netzAus, nutzflaechenAus, poisAus, halteAus, restAus, baeumeAus, waldBaeume, naturBaeume, NATUR_VORGABE, type NaturWahl, type Baum,
 	type Netz, type Nutzflaeche, type Poi, type Haltestelle, type Linie, type Rest } from './analysedaten';
 
 export type Ort = { name: string; wo: string; lon: number; lat: number; bbox: number[] | null };
@@ -75,6 +78,8 @@ const kastenAus = (s: string | null): Kasten | null => {
 export const SONNE_VORGABE: { azimut: number; hoehe: number; an: boolean; helligkeit: number; waerme: number } =
 	{ azimut: 315, hoehe: 49, an: true, helligkeit: 1, waerme: 0 };
 
+/** Was eine Darstellung sich merkt: Karte, Gebäudekanten, Bäume. */
+type Look = { karte: Anpassung; kanten: typeof KANTEN_VORGABE; sonne: typeof SONNE_VORGABE };
 export const KANTEN_VORGABE: { an: boolean; dicke: number; deckkraft: number; karteDicke: number; karteDeckkraft: number; hell: boolean | null; flaeche: number | null } =
 	{ an: true, dicke: 0.75, deckkraft: 0.75, karteDicke: 1, karteDeckkraft: 1, hell: null, flaeche: null };
 
@@ -205,10 +210,165 @@ class Zustand {
 	 * In der Auswahl stehen Bäume mit `BAUM_ID` davor.
 	 */
 	baumGestrichen = $state.raw(new Set<string>());
+
+	// ---- Bäume pflanzen (07.11.2026) -------------------------------------
+	/**
+	 * Was gepflanzt wurde, als Gebiete mit ihrer Wahl (`pflanzen.ts`); die
+	 * Bäume entstehen daraus. So lässt sich ein Gebiet nachträglich ändern.
+	 */
+	pflanzGebiete = $state.raw<Gebiet[]>([]);
+	/** Die Bäume aus den Gebieten, eine eigene Ebene „Bäume ergänzt“. */
+	gepflanzt = $state.raw<Baum[]>([]);
+	/** Die Ebene an oder aus; aus heißt: in keiner Ausgabe. */
+	gepflanztAn = $state(true);
+	pflanzWahl = $state<Pflanzwahl>({ ...PFLANZ_VORGABE });
+	/** Das Fenster offen: Der Plan malt statt zu wählen. Nicht gespeichert. */
+	pflanzOffen = $state(false);
+	/** Gewählte Gebiete, zum nachträglichen Ändern. Nicht gespeichert. */
+	pflanzAuswahl = $state.raw(new Set<number>());
+	private pflanzVerlauf: Gebiet[][] = [];
+	pflanzSchritte = $state(0);
+	private naechstesGebiet = 1;
+	private pflanzNeu() { this.gepflanzt = ausGebieten(this.objekte, this.pflanzGebiete); }
+	private pflanzMerken() {
+		this.pflanzVerlauf.push(this.pflanzGebiete);
+		if (this.pflanzVerlauf.length > 50) this.pflanzVerlauf.shift();
+		this.pflanzSchritte = this.pflanzVerlauf.length;
+	}
+	/** Die Wahl für ein neues Gebiet, ohne Werkzeugangaben. */
+	private wahlJetzt(): Pflanzwahl { return $state.snapshot(this.pflanzWahl); }
+	private gebietNeu(form: Form): Gebiet {
+		return { id: this.naechstesGebiet++, form, radieren: this.pflanzWahl.radieren, wahl: this.wahlJetzt() };
+	}
+	/** Pinselzug beginnen: ein neues Gebiet aus Kreisen. */
+	pflanzZugBeginnen(x: number, y: number) {
+		this.pflanzMerken();
+		const g = this.gebietNeu({ art: 'kreise', kreise: [] });
+		this.pflanzGebiete = [...this.pflanzGebiete, g];
+		this.pflanzKreis(x, y);
+	}
+	/** Pinsel: einen Kreis an das laufende Gebiet hängen und nur dort setzen. */
+	pflanzKreis(x: number, y: number) {
+		const g = this.pflanzGebiete[this.pflanzGebiete.length - 1];
+		if (!g || g.form.art !== 'kreise') return;
+		const r = this.pflanzWahl.pinselM / 2;
+		g.form.kreise.push([x, y, r]);
+		const neu = gebietAnwenden(this.objekte, this.gepflanzt, g, [x, y, r]);
+		if (neu !== this.gepflanzt) this.gepflanzt = neu;
+	}
+	/** Lasso: die umfahrene Fläche als Gebiet. */
+	pflanzRing(ring: [number, number][]) {
+		if (ring.length < 3) return;
+		this.pflanzMerken();
+		const g = this.gebietNeu({ art: 'ring', ring: ring.map(([x, y]) => [x, y] as [number, number]) });
+		this.pflanzGebiete = [...this.pflanzGebiete, g];
+		this.gepflanzt = gebietAnwenden(this.objekte, this.gepflanzt, g);
+	}
+	/** Ein Baum per Klick; mit Radieren der nächste in Reichweite weg. */
+	pflanzEinzel(x: number, y: number) {
+		this.pflanzMerken();
+		const g = this.gebietNeu({ art: 'punkt', x, y });
+		this.pflanzGebiete = [...this.pflanzGebiete, g];
+		this.gepflanzt = gebietAnwenden(this.objekte, this.gepflanzt, g);
+	}
+	pflanzRueckgaengig() {
+		const alt = this.pflanzVerlauf.pop();
+		if (alt) { this.pflanzGebiete = alt; this.pflanzNeu(); }
+		this.pflanzSchritte = this.pflanzVerlauf.length;
+		this.pflanzAuswahl = new Set();
+	}
+	pflanzAlleWeg() { this.pflanzMerken(); this.pflanzGebiete = []; this.gepflanzt = []; this.pflanzAuswahl = new Set(); }
+	/** Klick im Wählen: das Gebiet des getroffenen gepflanzten Baums, mit Umschalt dazu. */
+	pflanzWaehlen(x: number, y: number, dazu: boolean) {
+		let best: Baum | null = null, d = Infinity;
+		for (const b of this.gepflanzt) { const a = Math.hypot(b.x - x, b.y - y); if (a < d) { d = a; best = b; } }
+		// Getroffen ist, was näher liegt als Krone oder Pflanzabstand: Zwischen
+		// zwei Bäumen geklickt, soll ihr Gebiet trotzdem gemeint sein.
+		const abstand = best ? this.pflanzGebiete.find((g) => g.id === best!.gebiet)?.wahl.abstandM ?? 0 : 0;
+		const id = best && d <= Math.max(4, best.krone, abstand) ? best.gebiet : undefined;
+		if (id === undefined) { if (!dazu) this.pflanzAuswahl = new Set(); return; }
+		const s = new Set(dazu ? this.pflanzAuswahl : []);
+		if (dazu && s.has(id)) s.delete(id); else s.add(id);
+		this.pflanzAuswahl = s;
+		// Die Regler zeigen die Wahl des gewählten Gebiets.
+		const g = this.pflanzGebiete.find((x) => x.id === id);
+		if (g) Object.assign(this.pflanzWahl, { abstandM: g.wahl.abstandM, kroneM: g.wahl.kroneM, variation: g.wahl.variation, art: g.wahl.art, nadelAnteil: g.wahl.nadelAnteil, freiGebaeude: g.wahl.freiGebaeude, freiWasser: g.wahl.freiWasser, freiStrassen: g.wahl.freiStrassen });
+	}
+	/** Liegt an der Stelle ein gepflanzter Baum, dessen Gebiet ein Klick wählen würde? */
+	pflanzTrifft(x: number, y: number) {
+		for (const b of this.gepflanzt) {
+			const abstand = this.pflanzGebiete.find((g) => g.id === b.gebiet)?.wahl.abstandM ?? 0;
+			if (Math.hypot(b.x - x, b.y - y) <= Math.max(4, b.krone, abstand)) return true;
+		}
+		return false;
+	}
+	pflanzAlleWaehlen() { this.pflanzAuswahl = new Set(this.pflanzGebiete.filter((g) => !g.radieren && g.form.art !== 'fest').map((g) => g.id)); }
+	/**
+	 * Einen Wert setzen. Ohne Auswahl gilt er für das, was man als Nächstes
+	 * pflanzt; mit Auswahl auch für die gewählten Gebiete, die dann neu
+	 * gesetzt werden.
+	 */
+	pflanzSetzen<K extends keyof Pflanzwahl>(k: K, v: Pflanzwahl[K]) {
+		this.pflanzWahl[k] = v;
+		if (!this.pflanzAuswahl.size || k === 'werkzeug' || k === 'radieren' || k === 'pinselM') return;
+		this.pflanzGebiete = this.pflanzGebiete.map((g) => this.pflanzAuswahl.has(g.id) ? { ...g, wahl: { ...g.wahl, [k]: v } } : g);
+		this.pflanzNeu();
+	}
+	/** Vor dem ersten Zug an einem Regler mit Auswahl: für Rückgängig merken. */
+	pflanzAenderungBeginnen() { if (this.pflanzAuswahl.size) this.pflanzMerken(); }
+	pflanzAuswahlWeg() {
+		if (!this.pflanzAuswahl.size) return;
+		this.pflanzMerken();
+		this.pflanzGebiete = this.pflanzGebiete.filter((g) => !this.pflanzAuswahl.has(g.id));
+		this.pflanzAuswahl = new Set();
+		this.pflanzNeu();
+	}
 	/** Die Bäume, die stehen bleiben: Was Modell, Bild und Paket bekommen. */
 	get baeumeStehend() {
 		const weg = this.baumGestrichen;
 		return weg.size ? this.baumpunkte.filter((b) => !b.id || !weg.has(b.id)) : this.baumpunkte;
+	}
+	/**
+	 * Erfundene Bäume in Waldflächen (`waldBaeume`), im Rahmen plus 150 m, wie
+	 * die echten. Nur für die Körper in Ansicht, OBJ und 3DM; `data/trees.json`
+	 * bleibt bei den eingetragenen.
+	 */
+	private waldMerk: { schluessel: unknown[]; liste: { baeume: Baum[]; abstandM: number } } | null = null;
+	/** Waldbäume für einen Abstand, gemerkt, solange Daten und Rahmen gleich bleiben. */
+	waldFuer(wald: boolean, abstand: number): { baeume: Baum[]; abstandM: number } {
+		const k = this._kasten;
+		if (!k || !wald) return { baeume: [], abstandM: abstand };
+		const schluessel = [this.objekte, this.rest, k, abstand];
+		if (this.waldMerk && this.waldMerk.schluessel.every((v, i) => v === schluessel[i])) return this.waldMerk.liste;
+		const liste = waldBaeume(this.objekte, this.rest, [k.x0 - 150, k.y0 - 150, k.x1 + 150, k.y1 + 150], abstand);
+		this.waldMerk = { schluessel, liste };
+		return liste;
+	}
+	/**
+	 * Die drei Herkünfte, je an oder aus, für alle Darstellungen gleich
+	 * (07.11.2026): Bestand aus OSM samt Baumreihen, Wald aus Waldflächen im
+	 * Abstand `waldAbstand`, Ergänzt von Hand (`gepflanztAn`).
+	 */
+	bestandAn = $state(true);
+	waldAn = $state(true);
+	waldAbstand = $state(9);
+	/** Gehölze in Naturflächen (Gebüsch, Heide): an/aus und Verteilung. */
+	naturAn = $state(true);
+	naturWahl = $state<NaturWahl>({ ...NATUR_VORGABE });
+	naturListe = $derived.by(() => {
+		const k = this._kasten, w = this.naturWahl;
+		if (!k || !this.naturAn) return [] as Baum[];
+		return naturBaeume(this.objekte, [k.x0 - 150, k.y0 - 150, k.x1 + 150, k.y1 + 150], { abstandM: w.abstandM, kroneM: w.kroneM, variation: w.variation, ballung: w.ballung });
+	});
+	/** Das Aussehen je Herkunft, ein Satz für alle Pläne und einer für das 3D-Modell. */
+	baumLooks = $state<{ plan: Baumsatz; raum: Baumsatz }>({ plan: satzKopie(SATZ_PLAN), raum: satzKopie(SATZ_RAUM) });
+	/** Der Satz der gezeigten Darstellung. */
+	get baumSatz(): Baumsatz { return darstellungVon(this.darstellung).bauweise === 'raum' ? this.baumLooks.raum : this.baumLooks.plan; }
+	/** Die Waldbäume. */
+	waldListe = $derived.by(() => this.waldFuer(this.waldAn, this.waldAbstand));
+	/** Was als Baum gebaut oder gezeichnet wird: die eingeschalteten Herkünfte. */
+	get baeumeModell(): Baum[] {
+		return [...(this.bestandAn ? this.baeumeStehend : []), ...this.waldListe.baeume, ...this.naturListe, ...(this.gepflanztAn ? this.gepflanzt : [])];
 	}
 	sichtbar = $state(new Set<StiftId>(STIFTE.map((s) => s.id)));
 	hervorgehoben = $state<StiftId | null>(null);
@@ -218,14 +378,73 @@ class Zustand {
 	darstellung = $state('schwarzplan');
 
 	/**
-	 * Darstellung wechseln. Die Kantenfarbe springt dabei auf die Vorgabe
-	 * der neuen Darstellung zurück — hell im Schwarzplan, sonst dunkel —,
-	 * auch wenn sie vorher von Hand gewählt war (Volker, 06.11.2026).
+	 * Karte und Gebäude je Darstellung (Volker, 07.11.2026). Ein entsättigter,
+	 * kontrastreicher Boden war im 3D-Modell ein guter Look und verzog den
+	 * Schwarzplan, weil alle Darstellungen dieselben Werte teilten. Jetzt hat
+	 * jede ihren Satz: `karte` und `kanten` sind die der gezeigten
+	 * Darstellung, `looks` hält die übrigen. Wer keinen hat, steht auf der
+	 * Vorgabe.
 	 */
+	looks = $state<Record<string, Look>>({});
+	/** Der gezeigte Look als Kopie. */
+	private lookJetzt(): Look {
+		return { karte: $state.snapshot(this.karte), kanten: $state.snapshot(this.kanten), sonne: $state.snapshot(this.sonne) };
+	}
+	/** Die Werte einer Darstellung, auch der gezeigten. Die Bäume stehen seit 07.11.2026 in `baumLooks`. */
+	lookFuer(id: string): Look {
+		if (id === this.darstellung) return this.lookJetzt();
+		const l = this.looks[id];
+		return { karte: { ...NEUTRAL, ...(l?.karte ?? {}) }, kanten: { ...KANTEN_VORGABE, ...(l?.kanten ?? {}) }, sonne: { ...SONNE_VORGABE, ...(l?.sonne ?? {}) } };
+	}
+	/** Alle Looks samt dem gezeigten, für die Projektdatei. */
+	alleLooks() {
+		return { ...$state.snapshot(this.looks), [this.darstellung]: this.lookJetzt() };
+	}
+	/** Karte und Gebäude, oder die Bäume, der gezeigten Darstellung auf alle übertragen. */
+	lookFuerAlle(teil: 'karte' | 'sonne' = 'karte') {
+		const jetzt = this.lookJetzt();
+		this.looks = Object.fromEntries(DARSTELLUNGEN.map((d) => {
+			const l = this.lookFuer(d.id);
+			return [d.id, teil === 'sonne' ? { ...l, sonne: { ...jetzt.sonne } }
+				: { ...l, karte: { ...jetzt.karte }, kanten: { ...jetzt.kanten } }];
+		}));
+	}
+	/**
+	 * Alle Darstellungen auf ihre Vorgabe (Volker, 07.11.2026): Karte, Gebäude
+	 * und Licht je Darstellung, dazu das Aussehen der Bäume in Plänen und 3D.
+	 * Was gezeigt wird und welche Bäume an sind, bleibt.
+	 */
+	alleDarstellungenZuruecksetzen() {
+		this.looks = {};
+		this.karte = { ...NEUTRAL };
+		this.kanten = { ...KANTEN_VORGABE };
+		this.sonne = { ...SONNE_VORGABE };
+		this.baumLooks = { plan: satzKopie(SATZ_PLAN), raum: satzKopie(SATZ_RAUM) };
+	}
+	/**
+	 * Stände von vor dem 07.11.2026 führten Zäune und Mauern nur im Rest.
+	 * Fehlt die Ebene, wird sie daraus gebaut und aus dem Rest genommen.
+	 */
+	private einfriedungenNachholen() {
+		// Naturflächen (07.11.2026) ebenso, wenn der Rest noch welche führt.
+		const natur = naturAus(this.rest);
+		const neu = [...(this.objekte.some((o) => o.ebene === 'grenze') ? [] : einfriedungenAus(this.rest)), ...natur];
+		if (!neu.length) return;
+		const k = this._kasten;
+		const drin = k ? imRahmen(neu, k.x0, k.y0, k.x1, k.y1) : neu;
+		const ids = new Set(neu.map((o) => o.id));
+		this.objekte = [...this.objekte, ...drin];
+		this.rest = this.rest.filter((e) => !ids.has(e.id));
+	}
+	/** Darstellung wechseln; Karte, Gebäude und Bäume wechseln mit. */
 	darstellungWaehlen(id: string) {
 		if (id === this.darstellung) return;
+		this.looks = { ...this.looks, [this.darstellung]: this.lookJetzt() };
+		const neu = this.lookFuer(id);
 		this.darstellung = id;
-		this.kanten.hell = null;
+		this.karte = neu.karte;
+		this.kanten = neu.kanten;
+		this.sonne = neu.sonne;
 	}
 	/** Die Kantenfarbe, die gerade gilt: eigene Wahl oder Vorgabe der Darstellung. */
 	get kantenHell() { return this.kanten.hell ?? kantenHellFuer(this.darstellung); }
@@ -246,6 +465,7 @@ class Zustand {
 	/** Die Kanten im 3D-Modell: an oder aus, Stärke in Bildschirmpunkten, Deckkraft 0 bis 1. */
 	kanten = $state({ ...KANTEN_VORGABE });
 	sonne = $state({ ...SONNE_VORGABE });
+	/** Form, Größe, Variation und Farbe der Bäume (`export/baeume.ts`). */
 	/** Einstellungen für den 3D-Druck (`export/druck.ts`). */
 	druck = $state({ ...DRUCK_VORGABE });
 	/** Was die Bühne in Schritt 3 statt der Ansicht zeigt: die Druckvorschau oder den Druckausschnitt. Nicht gespeichert. */
@@ -571,7 +791,7 @@ class Zustand {
 				? [...this.objekte, ...this.vorrat].filter((o) => !o.herkunft && (o.zustand !== 'normal' || o.urform)).map((o) => [o.id, o])
 				: []);
 			// Ein anderer Ort ist ein anderes Projekt; Nachholen am selben bleibt eines.
-			if (!gleichesGitter) { this.projektVergessen(); this.baumGestrichen = new Set(); }
+			if (!gleichesGitter) { this.projektVergessen(); this.baumGestrichen = new Set(); this.gepflanzt = []; this.pflanzGebiete = []; }
 			const flaeche: Kasten = { lon0, x0: r.x0 - DATEN_RAND_M, y0: r.y0 - DATEN_RAND_M, x1: r.x1 + DATEN_RAND_M, y1: r.y1 + DATEN_RAND_M };
 			this.ergaenzung = null;
 			this.places = []; this.placesVorrat = []; this.placesInfo = null;
@@ -655,7 +875,7 @@ class Zustand {
 			// Die Beispiele tragen nur ihren Rahmen. Kleiner ziehen geht ohne
 			// Abruf, größer holt nach.
 			this.vorrat = [];
-			this.projektVergessen(); this.baumGestrichen = new Set();
+			this.projektVergessen(); this.baumGestrichen = new Set(); this.gepflanzt = []; this.pflanzGebiete = [];
 			this.datenFlaeche = d.datenFlaeche ?? { ...d.kasten };
 			this.datenStand = d.stand ?? null;
 			this.ergaenzung = null;
@@ -666,6 +886,7 @@ class Zustand {
 			this.haltestellen = d.haltestellen ?? [];
 			this.linien = d.linien ?? [];
 			this.rest = d.rest ?? [];
+			this.einfriedungenNachholen();
 			this.baumpunkte = baeumeAus(this.rest);
 			this.ausgewaehlt = new Set();
 			this.plangebiet = null;
@@ -916,6 +1137,9 @@ class Zustand {
 			rest: this.rest,
 			baeume: this.baeume,
 			baumGestrichen: [...this.baumGestrichen],
+			pflanzGebiete: this.pflanzGebiete,
+			gepflanztAn: this.gepflanztAn,
+			pflanzWahl: $state.snapshot(this.pflanzWahl),
 			/**
 			 * Diese drei sind tiefe Zustände, also Proxys, und die kann
 			 * `indexedDB` nicht kopieren: Seit „Karte anpassen" (03.11.2026)
@@ -925,8 +1149,11 @@ class Zustand {
 			 */
 			karte: $state.snapshot(this.karte),
 			kanten: $state.snapshot(this.kanten),
+			looks: this.alleLooks(),
 			bild3d: $state.snapshot(this.bild3d),
 			sonne: $state.snapshot(this.sonne),
+			baumLooks: $state.snapshot(this.baumLooks),
+			bestandAn: this.bestandAn, waldAn: this.waldAn, waldAbstand: this.waldAbstand, naturAn: this.naturAn, naturWahl: $state.snapshot(this.naturWahl),
 			druck: $state.snapshot(this.druck),
 			ergaenzung: this.ergaenzung,
 			zweifel: this.zweifel,
@@ -996,14 +1223,53 @@ class Zustand {
 		this.haltestellen = p.haltestellen ?? [];
 		this.linien = p.linien ?? [];
 		this.rest = p.rest ?? [];
+		this.einfriedungenNachholen();
 		this.baeume = p.baeume ?? false;
 		this.baumGestrichen = new Set(p.baumGestrichen ?? []);
-		this.karte = { ...NEUTRAL, ...(p.karte ?? {}) };
-		this.kanten = { ...KANTEN_VORGABE, ...(p.kanten ?? {}) };
-		// Bis 06.11.2026 hieß „dunkel" `false` und war die Vorgabe; jetzt folgt
-		// die Vorgabe der Darstellung, also gilt ein altes `false` als keine Wahl.
-		if (this.kanten.hell === false) this.kanten.hell = null;
-		this.sonne = { ...SONNE_VORGABE, ...(p.sonne ?? {}) };
+		// Projekte vom Vormittag des 07.11.2026 kannten nur die Bäume, keine Gebiete.
+		this.pflanzGebiete = p.pflanzGebiete ?? (((p as { gepflanzt?: Baum[] }).gepflanzt ?? []).length ? [{ id: 1, form: { art: 'fest' as const, baeume: (p as { gepflanzt?: Baum[] }).gepflanzt! }, radieren: false, wahl: { ...PFLANZ_VORGABE } }] : []);
+		this.naechstesGebiet = Math.max(0, ...this.pflanzGebiete.map((g) => g.id)) + 1;
+		this.gepflanzt = ausGebieten(this.objekte, this.pflanzGebiete);
+		this.pflanzVerlauf = []; this.pflanzSchritte = 0; this.pflanzAuswahl = new Set();
+		this.gepflanztAn = p.gepflanztAn ?? true;
+		this.pflanzWahl = { ...PFLANZ_VORGABE, ...(p.pflanzWahl ?? {}) };
+		/**
+		 * Looks je Darstellung. Projekte von vor dem 07.11.2026 hatten nur einen
+		 * Satz; der gehört dem 3D-Modell, wo man ihn meist eingestellt hat, die
+		 * Pläne fangen bei ihrer Vorgabe an.
+		 */
+		const looks: Record<string, Look> = {};
+		const roh: Record<string, { karte?: Partial<Anpassung>; kanten?: Partial<typeof KANTEN_VORGABE>; sonne?: Partial<typeof SONNE_VORGABE> }> =
+			(p.looks as typeof roh | undefined) ?? (p.karte || p.kanten ? { modell3d: { karte: p.karte, kanten: p.kanten } } : {});
+		// Die Sonne galt bis 07.11.2026 für alle Darstellungen; so bleibt es für alte Projekte.
+		if (p.sonne && !p.looks) for (const d of DARSTELLUNGEN) roh[d.id] = { ...(roh[d.id] ?? {}), sonne: p.sonne };
+		for (const [id, l] of Object.entries(roh)) {
+			const kanten = { ...KANTEN_VORGABE, ...(l.kanten ?? {}) };
+			// Bis 06.11.2026 hieß „dunkel" `false` und war die Vorgabe; jetzt folgt
+			// die Vorgabe der Darstellung, also gilt ein altes `false` als keine Wahl.
+			if (kanten.hell === false) kanten.hell = null;
+			looks[id] = { karte: { ...NEUTRAL, ...(l.karte ?? {}) }, kanten, sonne: { ...SONNE_VORGABE, ...(l.sonne ?? p.sonne ?? {}) } };
+		}
+		this.looks = looks;
+		const gezeigt = looks[p.darstellung];
+		this.karte = { ...NEUTRAL, ...(gezeigt?.karte ?? {}) };
+		this.kanten = { ...KANTEN_VORGABE, ...(gezeigt?.kanten ?? {}) };
+		/**
+		 * Bäume: seit dem 07.11.2026 je Herkunft, zwei Sätze. Ältere Stände
+		 * hatten einen Satz (`baumBild`) oder einen je Darstellung (`looks[id].baum`);
+		 * der des 3D-Modells wird zum 3D-Satz für alle drei Herkünfte, mit Wald
+		 * und Abstand daraus.
+		 */
+		type Alt = Partial<Baumwahl> & { wald?: boolean; waldAbstand?: number; waldGroesse?: number };
+		const alt3d = ((p.looks as Record<string, { baum?: Alt }> | undefined)?.modell3d?.baum ?? (p as { baumBild?: Alt }).baumBild);
+		const altSatz = alt3d ? { bestand: alt3d, wald: { ...alt3d, groesse: (alt3d.groesse ?? 1.1) * (alt3d.waldGroesse ?? 1) }, ergaenzt: alt3d } : undefined;
+		this.baumLooks = { plan: satzAus(p.baumLooks?.plan, SATZ_PLAN), raum: satzAus(p.baumLooks?.raum ?? altSatz, SATZ_RAUM) };
+		this.bestandAn = p.bestandAn ?? true;
+		this.waldAn = p.waldAn ?? alt3d?.wald ?? true;
+		this.waldAbstand = p.waldAbstand ?? alt3d?.waldAbstand ?? 9;
+		this.naturAn = p.naturAn ?? true;
+		this.naturWahl = { ...NATUR_VORGABE, ...(p.naturWahl ?? {}) };
+		this.sonne = { ...SONNE_VORGABE, ...(gezeigt?.sonne ?? p.sonne ?? {}) };
 		this.druck = { ...DRUCK_VORGABE, ...(p.druck ?? {}), ausschnitt: { ...DRUCK_VORGABE.ausschnitt, ...(p.druck?.ausschnitt ?? {}) } };
 		this.bild3d = { ...{ format: 'ansicht', breite: 4096, rahmen: false, hintergrund: null, transparent: false }, ...(p.bild3d ?? {}) };
 		this.baumpunkte = baeumeAus(this.rest);
@@ -1070,9 +1336,9 @@ class Zustand {
 		}
 		gestrichen += this.baumGestrichen.size;
 		return JSON.stringify([this._kasten, this.verhaeltnis.name, this.ausgabeBreite, this.darstellung, this.beschriftung,
-			this.bereinigt, this.baeume, this.gelaende, [...this.sichtbar].sort(), this.plangebiet, this.karte, this.kanten,
-			this.sonne, this.druck, this.bild3d, this.datenStand, this.objekte.length, this.vorrat.length,
-			gestrichen, erhalt, beschnitten, overture, this.places.length]);
+			this.bereinigt, this.baeume, this.gelaende, [...this.sichtbar].sort(), this.plangebiet, this.alleLooks(),
+			this.sonne, this.baumLooks, this.bestandAn, this.waldAn, this.waldAbstand, this.naturAn, this.naturWahl, this.druck, this.bild3d, this.datenStand, this.objekte.length, this.vorrat.length,
+			gestrichen, erhalt, beschnitten, overture, this.places.length, this.gepflanzt.length, this.gepflanztAn]);
 	}
 	get projektGeaendert() { return !!this.projektName && this.abdruck() !== this.projektAbdruck; }
 	/** Nach Speichern unter diesem Namen. */
@@ -1125,6 +1391,8 @@ class Zustand {
 		this.objekte = [];
 		this.vorrat = [];
 		this.baumGestrichen = new Set();
+		this.gepflanzt = [];
+		this.pflanzGebiete = [];
 		this.placesVorrat = [];
 		this.datenFlaeche = null;
 		this.datenStand = null;

@@ -2,8 +2,11 @@ import { t } from '$lib/sprache.svelte';
 import { Rahmen } from '$lib/geo/rahmen';
 import { zip } from 'fflate';
 import { zeichneBlatt } from '$lib/zeichnen';
+import type { Baumsatz } from '$lib/export/baeume';
+import type { Baum } from '$lib/analysedaten';
 import { alsDxf } from '$lib/export/dxf';
-import { anpassen, istNeutral, type Anpassung } from '$lib/anpassen';
+import { anpassen, istNeutral, mitte, type Anpassung } from '$lib/anpassen';
+import { SvgLeinwand } from '$lib/export/svg';
 import { alsObj } from '$lib/export/obj';
 import type { Objekt } from '$lib/osm';
 import type { Gelaende } from '$lib/geo/gelaende';
@@ -36,18 +39,47 @@ export const stempel = () => new Date().toISOString().slice(0, 10);
  */
 export const WEBP = 'image/webp';
 
+/**
+ * Ein Plan als SVG, mit denselben Angaben wie `bild` (07.11.2026). Die
+ * Karten-Regler wirken über die Farben: Ihre Formel braucht die mittlere
+ * Helligkeit des Blattes, die eine kleine Rasterfassung liefert.
+ */
+export async function planSvg(objekte: Objekt[], r: Rahmen, darstellung: string, bereinigt: boolean,
+	beschriftung: boolean, plangebiet: [number, number][] | null, sichtbar: Set<any>,
+	baeume?: Baum[], anpassung?: Anpassung,
+	kanten?: { an: boolean; dicke: number; deckkraft: number }, sonne?: { azimut: number; hoehe: number; an?: boolean },
+	baumSatz?: Baumsatz, titel = 'Nolli', beschreibung = ''): Promise<string> {
+	const wunsch = { darstellung, bereinigt, beschriftung, plangebiet, rahmenZeigen: false, sichtbar, hervorgehoben: null, baeume, kanten, sonne, baumSatz, federKanten: true };
+	let farbe = (c: [number, number, number]) => c;
+	if (anpassung && !istNeutral(anpassung)) {
+		const klein = new Rahmen({ lon0: r.gitter.lon0, bbox: [r.x0, r.y0, r.x1, r.y1], pixelBreite: 400, verhaeltnis: r.verhaeltnis });
+		const c = document.createElement('canvas');
+		c.width = klein.pixelBreite; c.height = klein.pixelHoehe;
+		zeichneBlatt(c.getContext('2d')!, objekte, klein, wunsch);
+		const p = mitte(c) * 255, s = anpassung.saettigung, k = anpassung.kontrast, h = anpassung.helligkeit ?? 1;
+		farbe = ([R, G, B]) => {
+			const grau = 0.2126 * R + 0.7152 * G + 0.0722 * B;
+			return [R, G, B].map((v) => ((grau + (v - grau) * s - p) * k + p) * h) as [number, number, number];
+		};
+	}
+	const leinwand = new SvgLeinwand(r.pixelBreite, r.pixelHoehe, farbe);
+	zeichneBlatt(leinwand as unknown as CanvasRenderingContext2D, objekte, r, wunsch);
+	return leinwand.svg(titel, beschreibung);
+}
+
 export async function bild(objekte: Objekt[], r: Rahmen, darstellung: string, bereinigt: boolean,
 	beschriftung: boolean, plangebiet: [number, number][] | null, sichtbar: Set<any>,
 	ohneBauten = false, typ = 'image/png',
-	baeume?: { x: number; y: number; krone: number }[], anpassung?: Anpassung,
-	kanten?: { an: boolean; dicke: number; deckkraft: number }, sonne?: { azimut: number; hoehe: number; an?: boolean }): Promise<Blob> {
+	baeume?: Baum[], anpassung?: Anpassung,
+	kanten?: { an: boolean; dicke: number; deckkraft: number }, sonne?: { azimut: number; hoehe: number; an?: boolean },
+	baumSatz?: Baumsatz): Promise<Blob> {
 	let c = document.createElement('canvas');
 	c.width = r.pixelBreite; c.height = r.pixelHoehe;
 	const ctx = c.getContext('2d');
 	if (!ctx) throw new Error(t().bild.keineLeinwand);
 	zeichneBlatt(ctx, objekte, r, {
 		darstellung, bereinigt, beschriftung, plangebiet,
-		rahmenZeigen: false, sichtbar, hervorgehoben: null, ohneBauten, baeume, kanten, sonne
+		rahmenZeigen: false, sichtbar, hervorgehoben: null, ohneBauten, baeume, kanten, sonne, baumSatz
 	});
 	if (anpassung && !istNeutral(anpassung)) {
 		const ziel = document.createElement('canvas');

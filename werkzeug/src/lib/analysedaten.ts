@@ -482,7 +482,31 @@ export const BAUM = {
  * Ein Baum, wie Nolli ihn zeichnet. `hoehe` und `stamm` (Stammumfang) nur,
  * wo OpenStreetMap sie führt (`height`, `circumference`), in Metern.
  */
-export type Baum = { id?: string; x: number; y: number; krone: number; gemessen: boolean; hoehe?: number; stamm?: number };
+export type Baum = {
+	id?: string; x: number; y: number; krone: number; gemessen: boolean; hoehe?: number; stamm?: number; nadel?: boolean;
+	/** Erfunden für eine Waldfläche (`waldBaeume`). */
+	wald?: boolean;
+	/** Ein Busch in einer Gebüschfläche (`natural=scrub`): niedrig, ohne Stamm (07.11.2026). */
+	busch?: boolean;
+	/** Aus einer Baumreihe (`natural=tree_row`) gesetzt, Lage geschätzt. */
+	reihe?: boolean;
+	/** Von Hand gepflanzt (Fenster „Bäume pflanzen“). */
+	ergaenzt?: boolean;
+	/** Das Gebiet, aus dem ein gepflanzter Baum stammt. */
+	gebiet?: number;
+};
+
+/**
+ * Nadelbaum? Aus `leaf_type=needleleaved`, sonst aus der Gattung in `genus`,
+ * `species` oder `taxon` (Volker, 06.11.2026). `leaf_type` allein kennt in
+ * Rothenburg 38 von 1.678 Bäumen, in der HafenCity zwei.
+ */
+const NADEL_GATTUNG = /^(pinus|picea|abies|larix|pseudotsuga|taxus|thuja|juniperus|cedrus|sequoia|sequoiadendron|metasequoia|tsuga|chamaecyparis|cupressus|taxodium|cryptomeria|araucaria)\b/i;
+export function istNadelbaum(tags: Record<string, string>) {
+	if (tags.leaf_type === 'needleleaved') return true;
+	if (tags.leaf_type === 'broadleaved') return false;
+	return [tags.genus, tags.species, tags.taxon].some((v) => !!v && NADEL_GATTUNG.test(v.trim()));
+}
 
 export function baeumeAus(rest: Rest[]) {
 	const aus: Baum[] = [];
@@ -497,8 +521,169 @@ export function baeumeAus(rest: Rest[]) {
 			gemessen: d !== undefined,
 			// Unplausibles fällt weg: kein Baum über 60 m, kein Stamm über 12 m Umfang.
 			...(h !== undefined && h <= 60 ? { hoehe: h } : {}),
-			...(u !== undefined && u <= 12 ? { stamm: u } : {})
+			...(u !== undefined && u <= 12 ? { stamm: u } : {}),
+			...(istNadelbaum(e.tags) ? { nadel: true } : {})
 		});
+	}
+	/**
+	 * Baumreihen (Volker, 07.11.2026). `natural=tree_row` ist eine Linie
+	 * entlang einer Straße oder eines Wegs, ohne Einzelbäume. Gesetzt wird
+	 * alle `REIHE_ABSTAND_M` Meter ein Baum, mit Merkmalen der Reihe
+	 * (`leaf_type`, `genus`); wo schon ein eingetragener Baum steht, keiner.
+	 */
+	const REIHE_ABSTAND_M = 8;
+	const einzeln = aus.slice();
+	const nah = (x: number, y: number) => einzeln.some((b) => Math.abs(b.x - x) < 4 && Math.abs(b.y - y) < 4 && Math.hypot(b.x - x, b.y - y) < 4);
+	for (const e of rest) {
+		if (e.tags.natural !== 'tree_row' || !e.punkte || e.punkte.length < 2) continue;
+		const nadel = istNadelbaum(e.tags);
+		let rest0 = REIHE_ABSTAND_M / 2, n = 0;
+		for (let i = 1; i < e.punkte.length; i++) {
+			const [ax, ay] = e.punkte[i - 1], [bx, by] = e.punkte[i];
+			const l = Math.hypot(bx - ax, by - ay);
+			let t = rest0;
+			while (t <= l) {
+				const x = ax + ((bx - ax) * t) / l, y = ay + ((by - ay) * t) / l;
+				if (!nah(x, y)) aus.push({ id: `${e.id}:${n}`, x, y, krone: BAUM.vorgabeKroneM, gemessen: false, reihe: true, ...(nadel ? { nadel: true } : {}) });
+				n++;
+				t += REIHE_ABSTAND_M;
+			}
+			rest0 = t - l;
+		}
+	}
+	return aus;
+}
+
+/**
+ * Bäume für Waldflächen (Volker, 06.11.2026). OpenStreetMap führt Wälder als
+ * Flächen ohne Einzelbäume: `landuse=forest` (Grünfläche, Waldart in
+ * `Objekt.wald`) und `natural=wood` (im Rest, mit seinen Merkmalen). Die
+ * Bäume hier sind erfunden: ein Raster mit `abstandM`, je Punkt fest
+ * verschoben, nur innerhalb der Fläche und ohne ihre Löcher. Laub, Nadel
+ * oder gemischt nach `leaf_type`; ohne Angabe gemischt. Sie tragen `wald`,
+ * gehen in Ansicht, OBJ und 3DM, aber nicht in `data/trees.json`.
+ *
+ * Höchstens `hoechstens` Bäume; reicht das nicht, wird das Raster weiter.
+ */
+export function waldBaeume(objekte: { ebene: string; zustand: string; ringe: [number, number][][]; loecher?: [number, number][][]; wald?: 'laub' | 'nadel' | 'misch' | 'busch' }[],
+	rest: Rest[], box: [number, number, number, number], abstandM: number, hoechstens = 30000): { baeume: Baum[]; abstandM: number } {
+	type Flaeche = { ringe: [number, number][][]; loecher: [number, number][][]; art: 'laub' | 'nadel' | 'misch' | 'busch' };
+	const flaechen: Flaeche[] = [];
+	for (const o of objekte) if (o.ebene === 'gruen' && o.wald && o.wald !== 'busch' && o.zustand !== 'gestrichen') flaechen.push({ ringe: o.ringe, loecher: o.loecher ?? [], art: o.wald });
+	for (const e of rest) {
+		if (e.typ !== 'flaeche' || !e.punkte || (e.tags.natural !== 'wood' && e.tags.landuse !== 'forest')) continue;
+		const lt = e.tags.leaf_type;
+		flaechen.push({ ringe: [e.punkte], loecher: [], art: lt === 'needleleaved' ? 'nadel' : lt === 'broadleaved' ? 'laub' : 'misch' });
+	}
+	const [bx0, by0, bx1, by1] = box;
+	const hash = (x: number, y: number, n: number) => { const v = Math.sin(x * 12.9898 + y * 78.233 + n * 39.425) * 43758.5453; return v - Math.floor(v); };
+	const innen = (x: number, y: number, ring: [number, number][]) => {
+		let drin = false;
+		for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+			const [xi, yi] = ring[i], [xj, yj] = ring[j];
+			if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) drin = !drin;
+		}
+		return drin;
+	};
+	// Fläche im Rahmen grob schätzen, damit das Raster die Höchstzahl nicht
+	// sprengt: Waldanteil der Hülle mal dem Teil der Hülle, der im Rahmen liegt.
+	let flaeche = 0;
+	for (const f of flaechen) for (const ring of f.ringe) {
+		let a = 0, x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+		for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+			a += (ring[j][0] + ring[i][0]) * (ring[j][1] - ring[i][1]);
+			x0 = Math.min(x0, ring[i][0]); x1 = Math.max(x1, ring[i][0]); y0 = Math.min(y0, ring[i][1]); y1 = Math.max(y1, ring[i][1]);
+		}
+		const huelle = (x1 - x0) * (y1 - y0);
+		const drin = Math.max(0, Math.min(x1, box[2]) - Math.max(x0, box[0])) * Math.max(0, Math.min(y1, box[3]) - Math.max(y0, box[1]));
+		if (huelle > 0) flaeche += (Math.abs(a) / 2) * (drin / huelle);
+	}
+	let d = Math.max(3, abstandM);
+	if (flaeche / (d * d) > hoechstens) d = Math.sqrt(flaeche / hoechstens);
+	const baeume: Baum[] = [];
+	const gesehen = new Set<string>();
+	for (const f of flaechen) {
+		let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+		for (const ring of f.ringe) for (const [x, y] of ring) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+		x0 = Math.max(x0, bx0); y0 = Math.max(y0, by0); x1 = Math.min(x1, bx1); y1 = Math.min(y1, by1);
+		if (x0 >= x1 || y0 >= y1) continue;
+		for (let gy = Math.floor(y0 / d); gy * d <= y1; gy++)
+			for (let gx = Math.floor(x0 / d); gx * d <= x1; gx++) {
+				const x = (gx + 0.15 + 0.7 * hash(gx, gy, 1)) * d, y = (gy + 0.15 + 0.7 * hash(gx, gy, 2)) * d;
+				if (x < bx0 || x > bx1 || y < by0 || y > by1) continue;
+				if (!f.ringe.some((r) => innen(x, y, r)) || f.loecher.some((r) => innen(x, y, r))) continue;
+				const k = `${gx}:${gy}`;
+				if (gesehen.has(k)) continue;   // überlappende Flächen
+				gesehen.add(k);
+				// Gebüsch: niedrige Büsche, 2,5 bis 4 m breit, nur jede zweite Rasterstelle frei.
+				if (f.art === 'busch') {
+					if (hash(gx, gy, 6) < 0.25) continue;
+					baeume.push({ id: `wald:${gx}:${gy}`, x, y, krone: 2.5 + 1.5 * hash(gx, gy, 4), gemessen: false, wald: true, busch: true });
+					if (baeume.length >= hoechstens) return { baeume, abstandM: d };
+					continue;
+				}
+				const nadel = f.art === 'nadel' || (f.art === 'misch' && hash(gx, gy, 3) < 0.4);
+				// Krone unabhängig vom Abstand, 5,4 bis 7,8 m: Der Abstand regelt die
+				// Dichte, nicht die Größe (Volker, 06.11.2026: bei 20 m wurden sie riesig).
+				baeume.push({ id: `wald:${gx}:${gy}`, x, y, krone: BAUM.vorgabeKroneM * (0.9 + 0.4 * hash(gx, gy, 4)), gemessen: false, wald: true, ...(nadel ? { nadel: true } : {}) });
+				if (baeume.length >= hoechstens) return { baeume, abstandM: d };
+			}
+	}
+	return { baeume, abstandM: d };
+}
+
+/**
+ * Gehölze in Naturflächen (Volker, 07.11.2026): Kugeln ohne Stamm auf
+ * Gebüsch und Heide (`Objekt.wald === 'busch'`). Gleichmäßig verteilt
+ * wirkten sie wie Pickel; deshalb mit „Ballung“: ein weiches Rauschen in
+ * zwei Maßstäben (40 m und 13 m) entscheidet, wo dicht und wo frei ist.
+ * Bei Ballung 0 gleichmäßig, bei 1 Gruppen mit Lichtungen dazwischen. Wo es
+ * dicht ist, werden die Gehölze auch etwas größer.
+ */
+export type NaturWahl = { abstandM: number; kroneM: number; variation: number; ballung: number };
+export const NATUR_VORGABE: NaturWahl = { abstandM: 5, kroneM: 3.5, variation: 0.35, ballung: 0.7 };
+export function naturBaeume(objekte: { ebene: string; zustand: string; ringe: [number, number][][]; loecher?: [number, number][][]; wald?: string }[],
+	box: [number, number, number, number], w: NaturWahl, hoechstens = 30000): Baum[] {
+	const flaechen = objekte.filter((o) => o.ebene === 'gruen' && o.wald === 'busch' && o.zustand !== 'gestrichen');
+	if (!flaechen.length) return [];
+	const hash = (x: number, y: number, n: number) => { const v = Math.sin(x * 12.9898 + y * 78.233 + n * 39.425) * 43758.5453; return v - Math.floor(v); };
+	/** Wertrauschen, weich interpoliert, 0 bis 1. */
+	const rauschen = (x: number, y: number, m: number, n: number) => {
+		const gx = Math.floor(x / m), gy = Math.floor(y / m), fx = x / m - gx, fy = y / m - gy;
+		const s = (t: number) => t * t * (3 - 2 * t);
+		const a = hash(gx, gy, n), b = hash(gx + 1, gy, n), c = hash(gx, gy + 1, n), d = hash(gx + 1, gy + 1, n);
+		const u = s(fx), v = s(fy);
+		return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+	};
+	const innen = (x: number, y: number, ring: [number, number][]) => {
+		let drin = false;
+		for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+			const [xi, yi] = ring[i], [xj, yj] = ring[j];
+			if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) drin = !drin;
+		}
+		return drin;
+	};
+	const d = Math.max(2, w.abstandM), [bx0, by0, bx1, by1] = box;
+	const aus: Baum[] = [], gesehen = new Set<string>();
+	for (const f of flaechen) {
+		let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+		for (const ring of f.ringe) for (const [x, y] of ring) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+		x0 = Math.max(x0, bx0); y0 = Math.max(y0, by0); x1 = Math.min(x1, bx1); y1 = Math.min(y1, by1);
+		if (x0 >= x1 || y0 >= y1) continue;
+		for (let gy = Math.floor(y0 / d); gy * d <= y1; gy++)
+			for (let gx = Math.floor(x0 / d); gx * d <= x1; gx++) {
+				const k = `${gx}:${gy}`;
+				if (gesehen.has(k)) continue;
+				const x = (gx + 0.1 + 0.8 * hash(gx, gy, 11)) * d, y = (gy + 0.1 + 0.8 * hash(gx, gy, 12)) * d;
+				if (!f.ringe.some((r) => innen(x, y, r)) || (f.loecher ?? []).some((r) => innen(x, y, r))) continue;
+				const n = 0.65 * rauschen(x, y, 40, 21) + 0.35 * rauschen(x, y, 13, 22);
+				const dicht = Math.min(1, Math.max(0, (n - 0.35) / 0.3));
+				if (hash(gx, gy, 13) > 1 - w.ballung + w.ballung * dicht) continue;
+				gesehen.add(k);
+				const krone = Math.max(0.8, w.kroneM * (1 + w.variation * (2 * hash(gx, gy, 14) - 1)) * (1 - 0.25 * w.ballung + 0.4 * w.ballung * dicht));
+				aus.push({ id: `natur:${k}`, x, y, krone, gemessen: true, busch: true });
+				if (aus.length >= hoechstens) return aus;
+			}
 	}
 	return aus;
 }

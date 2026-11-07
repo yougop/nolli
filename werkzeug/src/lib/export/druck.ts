@@ -793,6 +793,20 @@ function grundplatte(rs: Raster, k: number, see: { wasser: MultiPolygon; land: M
 	for (const t of teile) if (!rs.eben) t.dreiecke = t.dreiecke.flatMap((d) => aufsRaster(d, rs, x0, y0));
 	const p = (q: [number, number], z: number) => [(q[0] - x0) * k, (q[1] - y0) * k, z];
 	const sch = (q: [number, number]) => `${q[0].toFixed(4)},${q[1].toFixed(4)}`;
+	/**
+	 * Alle Punkte auf 0,1 mm im Ortsgitter legen, wie die Kantensuche unten
+	 * rundet, und Dreiecke mit zwei gleichen Ecken weglassen (06.11.2026).
+	 * Vorher blieben beim Zerlegen aufs Geländeraster Punkte stehen, die nur
+	 * Bruchteile von 0,1 mm auseinanderlagen. Für die Kantensuche waren sie
+	 * derselbe Punkt, und das flache Dreieck daraus trug die Randkante in
+	 * Gegenrichtung: Die Wand dort galt als innen und fehlte. Am Hang in
+	 * Rothenburg fehlte so jedes zweite Wandstück der Platte (Volker: schwarze
+	 * Schlitze in der Seite). Gerundet heben sich solche Dreiecke sauber weg.
+	 */
+	const r4 = (v: number) => Math.round(v * 1e4) / 1e4;
+	for (const t of teile) t.dreiecke = t.dreiecke
+		.map((d) => d.map((q) => [r4(q[0]), r4(q[1])] as [number, number]))
+		.filter((d) => sch(d[0]) !== sch(d[1]) && sch(d[1]) !== sch(d[2]) && sch(d[0]) !== sch(d[2]));
 	// Welche gerichtete Kante zu welcher Fläche gehört.
 	const kante = new Map<string, number>();
 	teile.forEach((t, n) => { for (const d of t.dreiecke) for (let e = 0; e < 3; e++) kante.set(`${sch(d[e])}>${sch(d[(e + 1) % 3])}`, n); });

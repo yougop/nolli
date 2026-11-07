@@ -2,6 +2,8 @@ import { Rahmen } from './geo/rahmen';
 import { sichtEbene, type Objekt } from './osm';
 import { STIFTE, stift, type StiftId } from './stifte';
 import { darstellung, type Darstellung } from './darstellung';
+import { baumForm, herkunftVon, type Baumwahl, type Baumsatz } from './export/baeume';
+import type { Baum } from './analysedaten';
 
 export type Zeichenwunsch = {
 	darstellung: string;
@@ -56,7 +58,11 @@ export type Zeichenwunsch = {
 	 */
 	ohneBauten?: boolean;
 	/** Baeume, wenn sie zugeschaltet sind. Ort und Kronendurchmesser in Metern. */
-	baeume?: { id?: string; x: number; y: number; krone: number }[];
+	baeume?: Baum[];
+	/** Größe, Variation und Farbe der Bäume aus dem Menü Bäume, je Darstellung (07.11.2026). */
+	baumSatz?: Baumsatz;
+	/** Gebäudekanten als Federstärke auf A1 statt in Bildpunkten; für die SVG. */
+	federKanten?: boolean;
 	/** Gestrichene Bäume nach Kennung; gezeichnet als Geist, bereinigt gar nicht. */
 	baumGestrichen?: Set<string>;
 	/** Gewählte Bäume nach Kennung, für die Markierung. */
@@ -211,6 +217,12 @@ export function zeichneBlatt(
 		ctx.rect(...blatt);
 		ctx.clip();
 	}
+	/**
+	 * Ebenen für die SVG (`export/svg.ts`): Die SVG-Leinwand macht aus jedem
+	 * Aufruf eine Gruppe; die Bildschirm- und Bildleinwand kennt ihn nicht.
+	 */
+	const ebene = (name: string) => (ctx as unknown as { ebene?: (n: string) => void }).ebene?.(name);
+	ebene('Grund');
 	ctx.fillStyle = d.grund;
 	ctx.fillRect(...blatt);
 	ctx.lineJoin = 'round'; ctx.lineCap = 'round';
@@ -297,8 +309,16 @@ export function zeichneBlatt(
 	};
 
 	// 1 Flaechen von hinten nach vorn
+	ebene('Gruen und Wasser');
+	/**
+	 * Naturflächen in einem ganz leicht anderen Grün (Volker, 07.11.2026):
+	 * etwas dunkler und einen Hauch gelblicher als die Grünfläche der
+	 * Darstellung, in Grauplänen also ein etwas dunkleres Grau.
+	 */
+	const naturGruen = naturTon(farbe('gruen'));
 	for (const id of ['gruen', 'wasser'] as StiftId[])
-		for (const o of nach(id)) flaeche(o, farbeVon(o, farbe(id)), undefined, undefined, true);
+		for (const o of nach(id)) flaeche(o, farbeVon(o, o.natur ? naturGruen : farbe(id)), undefined, undefined, true);
+	ebene('Strassen und Bahn');
 	/**
 	 * 2 Strassen als Netz mit Rangfolge, dann Bahn.
 	 *
@@ -368,7 +388,26 @@ export function zeichneBlatt(
 	}
 	ctx.restore();
 
+	/**
+	 * Einfriedungen (07.11.2026): Mauern und Stadtmauern durchgezogen und
+	 * kräftiger, Stützmauern durchgezogen, Zäune gestrichelt, Hecken
+	 * gepunktet — so liest man im Plan, was man sieht.
+	 */
+	ebene('Einfriedungen');
+	ctx.save();
+	ctx.strokeStyle = farbe('grenze');
+	ctx.globalAlpha = ka;
+	for (const o of nach('grenze')) {
+		const a = o.nutzung ?? 'fence';
+		const mauer = a === 'wall' || a === 'city_wall' || a === 'retaining_wall';
+		ctx.lineWidth = dick('grenze') * kf * (a === 'city_wall' ? 2.4 : mauer ? 1.4 : 1);
+		ctx.setLineDash(a === 'hedge' ? [r.strich(0.3), r.strich(0.9)] : mauer ? [] : [r.strich(1.2), r.strich(0.8)]);
+		pfad(o, false); ctx.stroke();
+	}
+	ctx.restore();
+
 	// 3 Baustellen: gefuellt und gestrichelt umrandet
+	ebene('Baustellen');
 	ctx.setLineDash([r.strich(4), r.strich(2.5)]);
 	for (const o of nach('bau')) {
 		pfad(o, true);
@@ -379,6 +418,7 @@ export function zeichneBlatt(
 	ctx.setLineDash([]);
 
 	// 4 Gestrichenes bleibt sichtbar, aber als Geist mit Streichung.
+	ebene('Gestrichen');
 	//   Die Ebenensichtbarkeit gilt auch hier: Wer die Ebene Gebaeude
 	//   ausblendet, will weder Fuellung noch Umriss noch Streichung sehen.
 	if (!w.bereinigt && !w.ohneBauten) {
@@ -392,6 +432,7 @@ export function zeichneBlatt(
 	}
 
 	// 5 Gebaeude
+	ebene('Gebaeude');
 	/** Die Gebäudefläche aus „Geometrie anpassen", als Grau; sonst die der Darstellung. */
 	const eigeneFlaeche = w.kanten?.flaeche != null
 		? (() => { const v = Math.round(Math.max(0, Math.min(1, w.kanten!.flaeche!)) * 255); return `rgb(${v},${v},${v})`; })()
@@ -517,6 +558,7 @@ export function zeichneBlatt(
 	for (const o of bauten) { if (o.ebene === 'erhalt') { pfad(o, true); ctx.stroke(); } }
 
 	// 5a Die Kanten aus „Kanten", über allen Gebäuden, in einem Zug
+	ebene('Gebaeudekanten');
 	if (w.kanten?.an && bauten.length) {
 		ctx.save();
 		ctx.globalAlpha = w.kanten.deckkraft;
@@ -526,7 +568,10 @@ export function zeichneBlatt(
 		// Schwarzplan, dunkel in allen anderen (Volker, 06.11.2026).
 		ctx.strokeStyle = (w.kanten.hell ?? kantenHellFuer(d.id)) ? '#F4F4F2' : '#2B2B29';
 		ctx.lineJoin = 'round';
-		ctx.lineWidth = w.kanten.dicke * Math.max(1, W / 1200);
+		// Für die SVG als Feder in Millimetern auf A1 (07.11.2026, Volker: „sehr
+		// fett“): 0,75 Bildschirmpunkte, die Vorgabe, werden 0,18 mm wie die
+		// übrigen Gebäudeumrisse. In Bild und Ansicht wie bisher in Punkten.
+		ctx.lineWidth = w.federKanten ? r.strich((0.18 * w.kanten.dicke) / 0.75) : w.kanten.dicke * Math.max(1, W / 1200);
 		ctx.beginPath();
 		for (const o of bauten) ringeZeichnen(ctx, o, r, 0, 0);
 		ctx.stroke();
@@ -541,12 +586,14 @@ export function zeichneBlatt(
 	 * masstaeblich, und ein Baum mit zwoelf Metern Krone nimmt zwoelf Meter ein.
 	 */
 	if (w.baeume?.length) {
+		ebene('Baeume');
 		const laub = d.farbe.baum ?? (d.grund === '#111111' ? '#3E4A34' : '#9FB27E');
 		const weg = w.baumGestrichen;
 		const ist = (b: { id?: string }) => !!(weg?.size && b.id && weg.has(b.id));
 		const stehen = weg?.size ? w.baeume.filter((b) => !ist(b)) : w.baeume;
-		const radius = (b: { krone: number }) => Math.max(r.strich(0.4), b.krone / 2 / r.mpp);
-		const kreis = (b: { x: number; y: number; krone: number }) => {
+		const satz = w.baumSatz;
+		const radius = (b: Baum) => Math.max(r.strich(0.4), (satz ? baumForm(b, satz).rx : b.krone / 2) / r.mpp);
+		const kreis = (b: Baum) => {
 			const [px, py] = r.utmZuPixel(b.x, b.y);
 			ctx.beginPath(); ctx.arc(px, py, radius(b), 0, Math.PI * 2);
 		};
@@ -556,9 +603,41 @@ export function zeichneBlatt(
 		ctx.strokeStyle = d.kante?.baum ?? laub;
 		ctx.lineWidth = r.strich(0.18);
 		// In der Linie nur der Kronenrand, wie alles andere dort.
-		if (d.bauweise !== 'linie') for (const b of stehen) { kreis(b); ctx.fill(); }
+		/**
+		 * Farbe je Baum, wenn Sättigung, Helligkeit oder Farbvariation von der
+		 * Vorgabe abweichen; sonst wie bisher alle in einem Zug.
+		 */
+		const faerbt = (wahl?: Baumwahl) => !!wahl && (wahl.saettigung !== 1 || wahl.helligkeit !== 1 || wahl.farbStreuung > 0);
+		/**
+		 * Zwei Durchgänge: erst die Bäume aus den Daten, dann die von Hand
+		 * gepflanzten auf einer eigenen Ebene „Baeume ergaenzt“ (SVG, 07.11.2026).
+		 */
+		const eigene = stehen.filter((b) => !b.ergaenzt), ergaenzt = stehen.filter((b) => b.ergaenzt);
+		for (const [n, liste] of [[0, eigene], [1, ergaenzt]] as const) {
+		if (!liste.length) continue;
+		if (n === 1) ebene('Baeume ergaenzt');
+		ctx.globalAlpha = 0.5;
+		ctx.fillStyle = laub;
+		if (d.bauweise !== 'linie') {
+			const [h0, s0, l0] = nachHsl(laub);
+			for (const b of liste) {
+				// Je Baum das Aussehen seiner Herkunft (Bestand, Wald, Ergänzt).
+				const wahl = satz?.[herkunftVon(b)];
+				if (!faerbt(wahl)) { ctx.fillStyle = laub; kreis(b); ctx.fill(); continue; }
+				{
+					const u = Math.sin(b.x * 3.17 + b.y * 1.91) * 9473.1, v = Math.sin(b.x * 2.03 - b.y * 4.41) * 6151.7;
+					const a = (u - Math.floor(u)) * 2 - 1, c = (v - Math.floor(v)) * 2 - 1, st = wahl!.farbStreuung;
+					const ton = (h0 + 0.08 * st * a + 1) % 1;
+					const satt = Math.min(1, s0 * wahl!.saettigung * Math.max(0, 1 + 0.3 * st * (a * 0.6 - c * 0.4)));
+					const licht = Math.min(0.95, l0 * wahl!.helligkeit * Math.max(0.2, 1 + 0.4 * st * c));
+					ctx.fillStyle = `hsl(${(ton * 360).toFixed(1)} ${(satt * 100).toFixed(1)}% ${(licht * 100).toFixed(1)}%)`;
+					kreis(b); ctx.fill();
+				}
+			}
+		}
 		ctx.globalAlpha = 1;
-		for (const b of stehen) { kreis(b); ctx.stroke(); }
+		for (const b of liste) { kreis(b); ctx.stroke(); }
+		}
 		// Gestrichene Bäume als Geist wie gestrichene Häuser: Umriss in der
 		// Farbe des Gestrichenen, gestrichelt, ohne Fläche.
 		if (weg?.size && !w.bereinigt) {
@@ -580,9 +659,11 @@ export function zeichneBlatt(
 	}
 
 	// 6 Beschriftung
+	ebene('Beschriftung');
 	if (w.beschriftung) beschriften(ctx, objekte, r, d, w);
 
 	// 7 Auswahl, Fanglinie, Plangebiet und Rahmen
+	ebene('Plangebiet und Rahmen');
 	if (w.ausgewaehlt?.size) {
 		const gewaehlt = objekte.filter((o) => w.ausgewaehlt!.has(o.id));
 		ctx.strokeStyle = d.grund === '#111111' ? 'rgba(17,17,17,.85)' : 'rgba(255,255,255,.85)';
@@ -784,3 +865,26 @@ export const ebenenZaehlen = (objekte: Objekt[]) => {
 
 /** Ab Werk helle Gebäudekanten nur im Schwarzplan, wo die Häuser schwarz sind. */
 export const kantenHellFuer = (darstellung: string) => darstellung === 'schwarzplan';
+
+/** Eine Hex-Farbe als Ton, Sättigung, Helligkeit, je 0 bis 1. */
+function nachHsl(hex: string): [number, number, number] {
+	const n = parseInt(hex.replace('#', '').slice(0, 6), 16);
+	const r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+	const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2;
+	if (max === min) return [0, 0, l];
+	const d = max - min, s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+	const h = max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+	return [h / 6, s, l];
+}
+
+/**
+ * Das Grün der Naturflächen. Am 07.11.2026 zuerst 6 % dunkler und kaum
+ * gelblicher; Volker sah keinen Unterschied. Jetzt in Farbplänen 10 %
+ * dunkler und eine Spur gelblicher, in Grauplänen 6 % dunkler.
+ */
+function naturTon(hex: string): string {
+	const [h, s, l] = nachHsl(hex);
+	if (s < 0.05) return `hsl(0 0% ${(Math.max(0, l - 0.06) * 100).toFixed(1)}%)`;
+	// Ton nur leicht Richtung Gelb: −0,05 kippte ins Senfgelbe (Aufsicht, 07.11.2026).
+	return `hsl(${(((h - 0.02 + 1) % 1) * 360).toFixed(1)} ${(Math.min(1, s * 1.05) * 100).toFixed(1)}% ${(Math.max(0, l - 0.09) * 100).toFixed(1)}%)`;
+}

@@ -17,7 +17,7 @@
  * Loch und weiss nicht, warum.
  */
 export type StiftId =
-	| 'gruen' | 'wasser' | 'bahn' | 'strasse' | 'bau' | 'gebaeude' | 'overture' | 'baum'
+	| 'gruen' | 'wasser' | 'bahn' | 'strasse' | 'grenze' | 'bau' | 'gebaeude' | 'overture' | 'baum'
 	| 'erhalt' | 'gestrichen' | 'plangebiet' | 'rahmen';
 
 export type Stift = {
@@ -36,6 +36,12 @@ export const STIFTE: Stift[] = [
 	{ id: 'wasser',     name: 'Wasser',         dxf: 'N_WASSER',     mm: 0.13, hell: '#E6E6E6', dunkel: '#2E2E2E', fuellung: true,  dxfFarbe: 4 },
 	{ id: 'bahn',       name: 'Bahn',           dxf: 'N_BAHN',       mm: 0.35, hell: '#A6A6A6', dunkel: '#6E7276', fuellung: false, dxfFarbe: 8 },
 	{ id: 'strasse',    name: 'Straßen',        dxf: 'N_STRASSE',    mm: 0.18, hell: '#CFCFCF', dunkel: '#4A4E52', fuellung: false, dxfFarbe: 9 },
+	/**
+	 * Einfriedungen (Volker, 07.11.2026): Zäune, Mauern, Hecken, Stadtmauern
+	 * und Stützmauern aus `barrier=*`. Sie zeichnen Grundstücks- und
+	 * Geländekanten, die OSM sonst nicht führt.
+	 */
+	{ id: 'grenze',     name: 'Einfriedungen',  dxf: 'N_GRENZE',     mm: 0.18, hell: '#8A8A8A', dunkel: '#8E9296', fuellung: false, dxfFarbe: 8 },
 	{ id: 'bau',        name: 'Im Bau',          dxf: 'N_BAU',        mm: 0.18, hell: '#BDBDBD', dunkel: '#4E5255', fuellung: true,  dxfFarbe: 2 },
 	{ id: 'gebaeude',   name: 'Gebäude',        dxf: 'N_GEBAEUDE',   mm: 0.25, hell: '#111111', dunkel: '#E8EAE7', fuellung: true,  dxfFarbe: 7 },
 	/**

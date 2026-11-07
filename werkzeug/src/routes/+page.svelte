@@ -7,6 +7,7 @@
 	import DruckAusschnitt from '$lib/ui/DruckAusschnitt.svelte';
 	import { DACH_NAME } from '$lib/dach';
 	import { druckMasse, druckVorschlag, ausschnittGroesse, DRUCK_VORGABE } from '$lib/export/druck';
+	import { baumSatzSetzen, SATZ_PLAN, SATZ_RAUM, HERKUENFTE, type Herkunft } from '$lib/export/baeume';
 	import { z, VERHAELTNISSE, AUSGABEBREITEN, KANTEN_VORGABE, SONNE_VORGABE } from '$lib/zustand.svelte';
 	import { breiteName, BILDFORMATE, gedreht } from '$lib/geo/rahmen';
 	import { STIFTE, FAHRBAHN } from '$lib/stifte';
@@ -21,7 +22,7 @@
 	import { feldImRahmen, aequidistanz, tiefsteUnter } from '$lib/geo/gelaende';
 	import type { Rahmen } from '$lib/geo/rahmen';
 	import { DARSTELLUNGEN, darstellung as darstellungVon } from '$lib/darstellung';
-	import { laden, stempel, bild, dxf, dxfAufGelaende, obj, alsMtl, paket, WEBP } from '$lib/ui/ausgeben';
+	import { laden, stempel, bild, planSvg, dxf, dxfAufGelaende, obj, alsMtl, paket, WEBP } from '$lib/ui/ausgeben';
 	import { sucheOrt, ortBei } from '$lib/quelle';
 	import { t, sprache, spracheSetzen, spracheAnfangen, gebiet, zahl, englisch } from '$lib/sprache.svelte';
 	import { aufV2, vertragV2, pfadV2, darstellungV2, VERTRAG_NAME, VERTRAG_VERSION } from '$lib/vertrag';
@@ -75,7 +76,7 @@
 		z.schritt; z.ort; z.kasten; z.verhaeltnis; z.ausgabeBreite;
 		z.objekte; z.sichtbar; z.plangebiet; z.darstellung;
 		z.beschriftung; z.bereinigt; z.geladenFuer; z.datenFlaeche; z.vorrat; z.datenStand; z.gelaende; z.gelaendeFuer; z.ergaenzung; z.placesInfo;
-		z.karte.saettigung; z.karte.kontrast; z.karte.helligkeit;
+		z.karte.saettigung; z.karte.kontrast; z.karte.helligkeit; z.looks; z.gepflanzt; z.gepflanztAn;
 		z.sichern();
 	});
 
@@ -181,6 +182,24 @@
 	const denkmale = $derived(z.objekte.filter((o) => o.denkmal).length);
 	const darstellungJetzt = $derived(darstellungVon(z.darstellung));
 	const raeumlich = $derived(darstellungJetzt.bauweise === 'raum');
+	/**
+	 * Was in der gezeigten Darstellung wirkt (Volker, 07.11.2026: „Müssten nicht
+	 * alle Optionen, die man nicht ändern kann, ausgegraut sein?“). Die Sonne
+	 * wirft Schatten nur im 3D-Modell, in Aufsicht und Weißmodell. Bäume nur,
+	 * wenn sie an sind; ihre Farbe nicht in der Linie, wo nur der Umriss steht,
+	 * und ihre Sättigung nicht, wo die Darstellung sie grau zeichnet.
+	 */
+	const sonneWirkt = $derived(raeumlich || darstellungJetzt.bauweise === 'weissmodell');
+	const baumAn = $derived(!!z.baeume);
+	const baumFarbeWirkt = $derived(baumAn && (raeumlich || darstellungJetzt.bauweise !== 'linie'));
+	const baumSaettigungWirkt = $derived.by(() => {
+		if (!baumFarbeWirkt) return false;
+		if (raeumlich) return true;
+		const f = darstellungJetzt.farbe.baum;
+		if (!f) return true;
+		const n = parseInt(f.slice(1, 7), 16);
+		return !((n >> 16 & 255) === (n >> 8 & 255) && (n >> 8 & 255) === (n & 255));
+	});
 	/** Eine Aufsicht, die als Untergrund für ein 3D-Werkzeug taugt? */
 	const schattenwurf = $derived(darstellungJetzt.bauweise === 'weissmodell');
 	/**
@@ -256,6 +275,47 @@
 	let kantenKlapp = $state<HTMLDivElement | null>(null);
 	let lichtRegler = $state(false);
 	let lichtKlapp = $state<HTMLDivElement | null>(null);
+	let baumRegler = $state(false);
+	/** Das Pflanzfenster auf oder zu; beim Öffnen die Bäume an und das 3D-Druck-Fenster zu. */
+	/** Pflanzen: das Fenster auf, „Ergänzt“ aufgeklappt, Bäume an, 3D-Druck zu. */
+	function pflanzUmschalten(auf = !z.pflanzOffen) {
+		if (auf) { baumFenster = true; bandAuf.ergaenzt = true; z.baeume = true; druckOffen = false; if (z.werkzeug === 'polygon') z.polygonAbbrechen(); }
+		else bandAuf.ergaenzt = false;
+	}
+	let baumKlapp = $state<HTMLDivElement | null>(null);
+	/** Die Ausgänge (OBJ, 3DM) lesen den 3D-Satz aus `export/baeume`; hier wird er gesetzt. */
+	$effect(() => { baumSatzSetzen($state.snapshot(z.baumLooks.raum)); });
+	const baeume3d = $derived(z.baeumeModell);
+	/**
+	 * Das Fenster „Bäume“ (Volker, 07.11.2026, Impeccable Option A): drei
+	 * Bänder nach Herkunft, Bestand, Wald und Ergänzt, je mit Auge, Zahl und
+	 * Aussehen. Ist „Ergänzt“ aufgeklappt, malt der Plan.
+	 */
+	let baumFenster = $state(false);
+	/** Hat eine Darstellung eigene Werte für Karte, Gebäude oder Licht? Für den Punkt an ihrer Taste. */
+	const eigeneWerte = (id: string) => {
+		z.looks; z.karte; z.kanten; z.sonne;
+		const l = z.lookFuer(id);
+		const gleich = <T extends object>(a: T, b: T) => (Object.keys(b) as (keyof T)[]).every((k) => a[k] === b[k]);
+		return !istNeutral(l.karte) || !gleich(l.kanten, KANTEN_VORGABE) || !gleich(l.sonne, SONNE_VORGABE);
+	};
+	let bandAuf = $state<Record<Herkunft, boolean>>({ bestand: true, wald: false, natur: false, ergaenzt: false });
+	const satzName: 'raum' | 'plan' = $derived(raeumlich ? 'raum' : 'plan');
+	$effect(() => { z.pflanzOffen = baumFenster && bandAuf.ergaenzt && !raeumlich && z.schritt >= 2; });
+	const baumVorgabe = (h: Herkunft) => {
+		const v = (satzName === 'raum' ? SATZ_RAUM : SATZ_PLAN)[h], w = z.baumLooks[satzName][h];
+		return (Object.keys(v) as (keyof typeof v)[]).every((k) => w[k] === v[k]);
+	};
+	const baumVeraendert = $derived(!HERKUENFTE.every((h) => baumVorgabe(h)));
+	/** Ist irgendwo etwas verstellt? Dann steht „Alle zurücksetzen“ in der Leiste. */
+	const irgendwasVerstellt = $derived(DARSTELLUNGEN.some((d) => eigeneWerte(d.id))
+		|| (['plan', 'raum'] as const).some((n) => HERKUENFTE.some((h) => {
+			const v = (n === 'raum' ? SATZ_RAUM : SATZ_PLAN)[h], w = z.baumLooks[n][h];
+			return (Object.keys(v) as (keyof typeof v)[]).some((k) => w[k] !== v[k]);
+		})));
+	function alleZuruecksetzen() {
+		if (confirm(t().sicht.alleZuruecksetzenFrage)) z.alleDarstellungenZuruecksetzen();
+	}
 	const sonneVorgabe = $derived((Object.keys(SONNE_VORGABE) as (keyof typeof SONNE_VORGABE)[]).every((k) => z.sonne[k] === SONNE_VORGABE[k]));
 	const himmelsrichtung = (a: number) => t().sicht.himmel[Math.round((((a % 360) + 360) % 360) / 45) % 8];
 	/** Die Regeltafeln schließen bei einem Klick daneben und mit Escape, wie jedes Aufklappfeld. */
@@ -265,7 +325,9 @@
 		if (kartenRegler && zu(kartenKlapp)) kartenRegler = false;
 		if (kantenRegler && zu(kantenKlapp)) kantenRegler = false;
 		if (lichtRegler && zu(lichtKlapp)) lichtRegler = false;
+		if (baumRegler && zu(baumKlapp)) baumRegler = false;
 		if (druckOffen && e instanceof KeyboardEvent && e.key === 'Escape') druckOffen = false;
+		if (baumFenster && e instanceof KeyboardEvent && e.key === 'Escape' && !(e.target as HTMLElement | null)?.closest?.('input')) baumFenster = false;
 	}
 	const f0 = (n: number) => zahl(Math.round(n));
 	const f1 = (n: number) => zahl(n, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -342,9 +404,16 @@
 	 * Paket, als `model_outside.obj` — wer das Modell für Rhino holt,
 	 * braucht den Rand nicht.
 	 */
-	/** Das Bodenbild des Modells, ohne Bauten: für OBJ und 3DM dasselbe. */
-	const bodenTextur = (rr: Rahmen) => bild(bestand, rr, 'modellaufsicht', z.bereinigt, z.beschriftung,
-		z.plangebiet, z.sichtbar, true, 'image/png', undefined, z.karte, z.kanten, z.sonne);
+	/**
+	 * Das Bodenbild des Modells, ohne Bauten: für OBJ und 3DM dasselbe. Mit
+	 * Karte und Kanten des 3D-Modells, gleich welche Darstellung gerade
+	 * gezeigt wird (Looks je Darstellung, 07.11.2026).
+	 */
+	const bodenTextur = (rr: Rahmen) => {
+		const l = z.lookFuer('modell3d');
+		return bild(bestand, rr, 'modellaufsicht', z.bereinigt, z.beschriftung,
+			z.plangebiet, z.sichtbar, true, 'image/png', undefined, l.karte, l.kanten, l.sonne);
+	};
 
 	/** `model.3dm`: Körper als Extrusionen, Kurven, Ebenen, Attribute (`export/rhino.ts`). */
 	async function rhinoDatei(rr: Rahmen, textur?: Blob) {
@@ -353,8 +422,8 @@
 		const t = textur ?? await bodenTextur(rr);
 		const v = rr.vertrag({}) as Record<string, any>;
 		return als3dm({
-			objekte: bestand, r: rr, gelaende: z.gelaendeJetzt, baeume: modellKronen ? z.baeumeStehend : [],
-			textur: new Uint8Array(await t.arrayBuffer()), kantenHell: z.kanten.hell ?? false,
+			objekte: bestand, r: rr, gelaende: z.gelaendeJetzt, baeume: modellKronen ? baeume3d : [],
+			textur: new Uint8Array(await t.arrayBuffer()), kantenHell: z.lookFuer('modell3d').kanten.hell ?? false,
 			ecke: { lat: v.bbox_wgs84.sued, lon: v.bbox_wgs84.west },
 			kopf: {
 				contract: VERTRAG_NAME, contract_version: VERTRAG_VERSION,
@@ -370,7 +439,7 @@
 		const bodenbild = await bodenTextur(rr);
 		const teile: { name: string; inhalt: Blob | string }[] = [
 			{ name: pfadV2('modell.obj'), inhalt: obj(bestand, rr, z.gelaendeJetzt, 'model.mtl', 'innen',
-				modellKronen ? z.baeumeStehend : []) },
+				modellKronen ? baeume3d : []) },
 			{ name: 'model.mtl', inhalt: alsMtl(textur) },
 			{ name: textur, inhalt: bodenbild }
 		];
@@ -397,11 +466,10 @@
 		for (const d of flach) {
 			arbeitet = `paket:${t().ausgeben.paketBild(++n, flach.length)}`;
 			await anstrich();
-			// Die eigene Kantenwahl gilt für die Darstellung, in der sie getroffen
-			// wurde; die übrigen Bilder nehmen ihre Vorgabe.
-			const kantenD = d.id === z.darstellung ? z.kanten : { ...z.kanten, hell: null };
+			// Jedes Bild mit Karte und Kanten seiner Darstellung (Looks, 07.11.2026).
+			const lookD = z.lookFuer(d.id), kantenD = lookD.kanten;
 			const b = await bild(bestand, rr, d.id, z.bereinigt, z.beschriftung, z.plangebiet, z.sichtbar,
-				false, WEBP, z.baeume ? z.baeumeStehend : undefined, z.karte, kantenD, z.sonne);
+				false, WEBP, z.baeume ? z.baeumeModell : undefined, lookD.karte, kantenD, lookD.sonne, $state.snapshot(z.baumLooks.plan));
 			teile.push({ name: pfadV2(`bilder/${d.id}.webp`), inhalt: b });
 			bilder.push({ datei: `bilder/${d.id}.webp`, darstellung: d.id, was: englisch.darstellungen[d.id].zweck,
 				baeume: !!z.baeume && !!z.baeumeStehend.length });
@@ -431,7 +499,7 @@
 				 * die als Grund taugt.
 				 */
 				const g = await bild(bestand, rr, d.id, z.bereinigt, z.beschriftung, z.plangebiet, z.sichtbar,
-					true, WEBP, undefined, z.karte, kantenD, z.sonne);
+					true, WEBP, undefined, lookD.karte, kantenD, lookD.sonne);
 				teile.push({ name: pfadV2(`bilder/${d.id}_grund.webp`), inhalt: g });
 				bilder.push({ datei: `bilder/${d.id}_grund.webp`, darstellung: d.id,
 					was: 'The same extent without buildings and without trees, as a ground texture under a model of your own',
@@ -505,6 +573,7 @@
 					[{ x0: g.x0, y0: g.y0, dx: g.dx, dy: g.dy, nx: g.nx, ny: g.ny,
 						hoehen: Array.from(g.z, (v) => Math.round(v * 100) / 100) }]);
 
+
 		if (z.placesInfo)
 			legen('places.json',
 				`Places from Overture Maps (shops, food and drink, services), separate from the OpenStreetMap points because the licence differs. Only open places with confidence ≥ ${PLACES_ZUVERSICHT}. No phone numbers, e-mail or social media by design.`,
@@ -540,14 +609,22 @@
 
 	/** Der Datenvertrag zum aktuellen Stand, samt Halteliste und Geschwistern. */
 	/** Die Bäume im Rahmen, in Gittermetern wie alles andere. */
+	/**
+	 * Bäume im Paket. Seit 07.11.2026 mit Herkunft: `osm` für eingetragene
+	 * Bäume, `osm_tree_row` für die aus Baumreihen gesetzten (Lage geschätzt),
+	 * `added` für von Hand gepflanzte, wenn ihre Ebene an ist. Waldbäume
+	 * bleiben draußen; sie sind nur Körper, keine Daten.
+	 */
 	function baumliste() {
 		const rr = r!;
-		return z.baeumeStehend
+		return [...z.baeumeStehend, ...(z.gepflanztAn ? z.gepflanzt : [])]
 			.filter((b) => b.x >= rr.x0 && b.x <= rr.x1 && b.y >= rr.y0 && b.y <= rr.y1)
 			.map((b) => ({
 				x: b.x, y: b.y,
 				krone_m: Math.round(b.krone * 10) / 10,
-				gemessen: b.gemessen,
+				gemessen: !b.ergaenzt && b.gemessen,
+				herkunft: b.ergaenzt ? 'added' : b.reihe ? 'osm_tree_row' : 'osm',
+				...(b.nadel ? { leaf_type: 'needleleaved' } : {}),
 				material: 'tree'
 			}));
 	}
@@ -947,7 +1024,7 @@
 							schema: 'data/materials.json',
 							...(z.gelaendeJetzt
 								? { terrain_texture: 'model_texture.png',
-									terrain_texture_style: `top_view_bare${istNeutral(z.karte) ? '' : `, saturation ${z.karte.saettigung.toFixed(2)}, contrast ${z.karte.kontrast.toFixed(2)}, brightness ${(z.karte.helligkeit ?? 1).toFixed(2)}`}, PNG, covers exactly the frame` }
+									terrain_texture_style: ((k) => `top_view_bare${istNeutral(k) ? '' : `, saturation ${k.saettigung.toFixed(2)}, contrast ${k.kontrast.toFixed(2)}, brightness ${(k.helligkeit ?? 1).toFixed(2)}`}, PNG, covers exactly the frame`)(z.lookFuer('modell3d').karte) }
 								: {})
 						},
 						zeichnung: 'zeichnung.dxf',
@@ -1048,7 +1125,8 @@
 
 	// ---- Projektdatei ------------------------------------------------------
 	let projektWahl = $state<HTMLInputElement | null>(null);
-	let weitereOffen = $state(false);
+	// Offen, wenn das Fenster hoch genug ist; sonst fand man SVG, DXF und Modell nicht (Impeccable, 07.11.2026).
+	let weitereOffen = $state(typeof window !== 'undefined' && window.innerHeight >= 860);
 	let vertragOffen = $state(false);
 	let projektArbeit = $state<null | 'speichern' | 'oeffnen'>(null);
 	/**
@@ -1132,7 +1210,7 @@
 		} finally { projektArbeit = null; }
 	}
 
-	async function ausgeben(art: 'bild' | 'dxf' | 'obj' | 'vertrag' | 'paket' | '3dm' | '3mf' | 'stl') {
+	async function ausgeben(art: 'bild' | 'svg' | 'dxf' | 'obj' | 'vertrag' | 'paket' | '3dm' | '3mf' | 'stl') {
 		if (!r) return;
 		arbeitet = art;
 		// Ohne diese Zeile bliebe die Beschriftung stehen: das Zeichnen von
@@ -1146,8 +1224,16 @@
 				const b = raeumlich && raum
 					? await raum.alsBild()
 					: await bild(bestand, r, z.darstellung, z.bereinigt, z.beschriftung, z.plangebiet, z.sichtbar,
-						false, 'image/png', z.baeume ? z.baeumeStehend : undefined, z.karte, z.kanten, z.sonne);
+						false, 'image/png', z.baeume ? z.baeumeModell : undefined, z.karte, z.kanten, z.sonne, $state.snapshot(z.baumLooks.plan));
 				laden(b, `${basis}_${darstellungV2(z.darstellung)}_${raeumlich ? z.bild3d.breite : r.pixelBreite}px.png`, 'image/png');
+			} else if (art === 'svg') {
+				// Der gezeigte Plan als Pfadzeichnung, deckungsgleich mit dem Bild (07.11.2026).
+				const name = t().darstellungen[z.darstellung]?.name ?? z.darstellung;
+				const text = await planSvg(bestand, r, z.darstellung, z.bereinigt, z.beschriftung, z.plangebiet, z.sichtbar,
+					z.baeume ? z.baeumeModell : undefined, z.karte, z.kanten, z.sonne, $state.snapshot(z.baumLooks.plan),
+					`${z.ort?.name ?? 'Nolli'} · ${name}`,
+					`Nolli, ${name}. ${Math.round(r.breiteM)} × ${Math.round(r.hoeheM)} m; at 841 mm width the scale is 1:${r.massstabA1}. One layer per group of objects.`);
+				laden(text, `${basis}_${darstellungV2(z.darstellung)}.svg`, 'image/svg+xml');
 			} else if (art === 'dxf') {
 				laden(dxf(bestand, r, z.gelaendeJetzt), `${basis}.dxf`, 'application/dxf');
 			} else if (art === 'obj') {
@@ -1262,13 +1348,15 @@
 					<div class="gruppe" role="group" aria-label={t().sicht.darstellung}>
 						{#each DARSTELLUNGEN.filter((d) => d.bauweise !== 'raum') as d}
 							<button type="button" class:an={z.darstellung === d.id} aria-pressed={z.darstellung === d.id}
-								onclick={() => { z.darstellungWaehlen(d.id); z.druckBuehne = null; }} title={t().darstellungen[d.id].zweck}>{t().darstellungen[d.id].name}</button>
+								class:eigen={eigeneWerte(d.id)}
+								onclick={() => { z.darstellungWaehlen(d.id); z.druckBuehne = null; }} title={t().darstellungen[d.id].zweck}><span class="lang">{t().darstellungen[d.id].name}</span><span class="kurz">{t().darstellungKurz[d.id] ?? t().darstellungen[d.id].name}</span></button>
 						{/each}
 						<!-- Das 3D-Modell ist eine Darstellung wie die Blätter, nur räumlich; der
 						     doppelte Strich setzt es ab, die Wahl bleibt eine (Volker, 06.11.2026). -->
 						{#each DARSTELLUNGEN.filter((d) => d.bauweise === 'raum') as d}
 							<button type="button" class="nachsatz" class:an={z.darstellung === d.id} aria-pressed={z.darstellung === d.id}
-								onclick={() => { z.darstellungWaehlen(d.id); z.druckBuehne = null; }} title={t().darstellungen[d.id].zweck}>{t().darstellungen[d.id].name}</button>
+								class:eigen={eigeneWerte(d.id)}
+								onclick={() => { z.darstellungWaehlen(d.id); z.druckBuehne = null; }} title={t().darstellungen[d.id].zweck}><span class="lang">{t().darstellungen[d.id].name}</span><span class="kurz">{t().darstellungKurz[d.id] ?? t().darstellungen[d.id].name}</span></button>
 						{/each}
 					</div>
 					<!--
@@ -1282,7 +1370,7 @@
 						<button type="button" class="einzeln" class:an={z.beschriftung} aria-pressed={z.beschriftung} disabled={raeumlich}
 							onclick={() => (z.beschriftung = !z.beschriftung)}
 							title={t().sicht.beschriftungTitel}
-						>{t().sicht.beschriftung}</button>
+						><span class="lang">{t().sicht.beschriftung}</span><span class="kurz">{t().sicht.beschriftungKurz}</span></button>
 						<!--
 							Anders als die Beschriftung gilt dieser Schalter auch im Modell: Dort
 							stehen die Kronen als Körper. Ein Schalter, der beim Wechsel der
@@ -1291,15 +1379,21 @@
 							sieht. Schrift dagegen gibt es im Modell nicht, deshalb bleibt
 							„Beschriftung" dort aus.
 						-->
-						<button type="button" class="einzeln" class:an={z.baeume} aria-pressed={z.baeume}
-							disabled={!z.baumpunkte.length}
+						<!-- Bäume als ein Element (Impeccable, 07.11.2026): das Häkchen schaltet,
+						     das Wort öffnet das Fenster. Vorher standen „Bäume“ zweimal in der Leiste. -->
+						<button type="button" class="einzeln haken" class:an={z.baeume} aria-pressed={z.baeume}
+							disabled={!z.baumpunkte.length && !z.waldListe.baeume.length && !z.gepflanzt.length}
 							onclick={() => (z.baeume = !z.baeume)}
+							aria-label={t().sicht.baeume}
 							title={z.baumpunkte.length
 								? (raeumlich
 									? t().sicht.baeumeRaum(imRahmenBaeume)
 									: t().sicht.baeumeFlach(imRahmenBaeume))
 								: t().sicht.keineBaeume}
-						>{t().sicht.baeume}</button>
+						></button>
+						<button type="button" class="einzeln wort klappknopf" class:an={z.baeume} class:offen={baumFenster} class:veraendert={baumVeraendert}
+							aria-expanded={baumFenster} onclick={() => { baumFenster = !baumFenster; if (baumFenster) druckOffen = false; }}
+							title={t().sicht.baumMenueTitel}>{t().sicht.baeume}</button>
 						<!--
 							Das Gelände ist nur im 3D-Modell zu sehen; die flachen Darstellungen
 							sind Aufsichten und kennen keine Höhe. Dort ist der Schalter aus und
@@ -1332,6 +1426,7 @@
 							>{t().sicht.karte}</button>
 							{#if kartenRegler}
 								<div class="regler" role="group" aria-label={t().sicht.karte}>
+									<p class="gilt">{t().sicht.giltFuer(t().darstellungen[z.darstellung]?.name ?? z.darstellung)}</p>
 									<label>
 										<span>{t().sicht.saettigung}</span>
 										<!-- Bis 300 % (Volker, 04.11.2026): blasse Karten brauchen mehr als 150 %. -->
@@ -1362,6 +1457,7 @@
 									</label>
 									<button type="button" class="zurueck" disabled={istNeutral(z.karte) && z.kanten.karteDicke === 1 && z.kanten.karteDeckkraft === 1}
 										onclick={() => { z.karte = { ...NEUTRAL }; z.kanten.karteDicke = 1; z.kanten.karteDeckkraft = 1; }}>{t().sicht.karteZurueck}</button>
+									<button type="button" class="zurueck" onclick={() => z.lookFuerAlle()} title={t().sicht.aufAlleTitel}>{t().sicht.aufAlle}</button>
 								</div>
 							{/if}
 						</div>
@@ -1378,6 +1474,7 @@
 							>{t().sicht.geo}</button>
 							{#if kantenRegler}
 								<div class="regler" role="group" aria-label={t().sicht.geo}>
+									<p class="gilt">{t().sicht.giltFuer(t().darstellungen[z.darstellung]?.name ?? z.darstellung)}</p>
 									<span class="unter">{t().sicht.kanten}</span>
 									<div class="wahl schmal">
 										<button type="button" class:an={z.kanten.an} aria-pressed={z.kanten.an} onclick={() => (z.kanten.an = true)}>{t().sicht.kantenAn}</button>
@@ -1408,6 +1505,7 @@
 									<button type="button" class="zurueck"
 										disabled={z.kanten.an === KANTEN_VORGABE.an && z.kanten.hell === KANTEN_VORGABE.hell && z.kanten.dicke === KANTEN_VORGABE.dicke && z.kanten.deckkraft === KANTEN_VORGABE.deckkraft && z.kanten.flaeche == null}
 										onclick={() => { Object.assign(z.kanten, { an: KANTEN_VORGABE.an, hell: KANTEN_VORGABE.hell, dicke: KANTEN_VORGABE.dicke, deckkraft: KANTEN_VORGABE.deckkraft, flaeche: null }); }}>{t().sicht.karteZurueck}</button>
+									<button type="button" class="zurueck" onclick={() => z.lookFuerAlle()} title={t().sicht.aufAlleTitel}>{t().sicht.aufAlle}</button>
 								</div>
 							{/if}
 						</div>
@@ -1425,7 +1523,8 @@
 							>{t().sicht.licht}</button>
 							{#if lichtRegler}
 								<div class="regler" role="group" aria-label={t().sicht.licht}>
-									{#if !raeumlich}<span class="unter">{t().sicht.lichtNur3d}</span>{/if}
+									<p class="gilt">{t().sicht.giltFuer(t().darstellungen[z.darstellung]?.name ?? z.darstellung)}</p>
+									{#if !raeumlich}<span class="unter">{t().sicht.lichtNur3d}{#if !sonneWirkt} · {t().sicht.sonneNurSchatten}{/if}</span>{/if}
 									<label>
 										<span>{t().sicht.helligkeit}</span>
 										<!-- Bis 250 %: Ohne Sonne bleibt nur der Himmel, und das Bild braucht mehr (Volker, 04.11.2026). -->
@@ -1439,24 +1538,34 @@
 									</label>
 									<span class="unter">{t().sicht.sonne}</span>
 									<div class="wahl schmal">
-										<button type="button" class:an={z.sonne.an} aria-pressed={z.sonne.an} onclick={() => (z.sonne.an = true)}>{t().sicht.kantenAn}</button>
-										<button type="button" class:an={!z.sonne.an} aria-pressed={!z.sonne.an} onclick={() => (z.sonne.an = false)}>{t().sicht.kantenAus}</button>
+										<button type="button" class:an={z.sonne.an} aria-pressed={z.sonne.an} disabled={!sonneWirkt} onclick={() => (z.sonne.an = true)}>{t().sicht.kantenAn}</button>
+										<button type="button" class:an={!z.sonne.an} aria-pressed={!z.sonne.an} disabled={!sonneWirkt} onclick={() => (z.sonne.an = false)}>{t().sicht.kantenAus}</button>
 									</div>
 									<label>
 										<span>{t().sicht.sonneRichtung}</span>
-										<input type="range" min="0" max="360" step="5" disabled={!z.sonne.an} bind:value={z.sonne.azimut} />
+										<input type="range" min="0" max="360" step="5" disabled={!z.sonne.an || !sonneWirkt} bind:value={z.sonne.azimut} />
 										<em class="mono">{z.sonne.azimut}° {himmelsrichtung(z.sonne.azimut)}</em>
 									</label>
 									<label>
 										<span>{t().sicht.sonneHoehe}</span>
-										<input type="range" min="5" max="85" step="1" disabled={!z.sonne.an} bind:value={z.sonne.hoehe} />
+										<input type="range" min="5" max="85" step="1" disabled={!z.sonne.an || !sonneWirkt} bind:value={z.sonne.hoehe} />
 										<em class="mono">{z.sonne.hoehe}°</em>
 									</label>
 									<button type="button" class="zurueck" disabled={sonneVorgabe}
 										onclick={() => { Object.assign(z.sonne, SONNE_VORGABE); }}>{t().sicht.karteZurueck}</button>
+									<button type="button" class="zurueck" onclick={() => z.lookFuerAlle('sonne')} title={t().sicht.aufAlleSonneTitel}>{t().sicht.aufAlle}</button>
 								</div>
 							{/if}
 						</div>
+						<!-- Alle Darstellungen auf die Vorgabe (07.11.2026); nur sichtbar, wenn etwas verstellt ist. -->
+						{#if irgendwasVerstellt}
+							<div class="klapp">
+								<!-- Als Symbol, damit die Leiste auch auf dem Notebook in einer Zeile bleibt (Volker, 07.11.2026). -->
+								<button type="button" class="einzeln alleweg" onclick={alleZuruecksetzen} title={t().sicht.alleZuruecksetzenTitel} aria-label={t().sicht.alleZuruecksetzen}>
+									<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3 8a5 5 0 1 0 1.6-3.7M3 2.5v3h3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+								</button>
+							</div>
+						{/if}
 					</div>
 				</div>
 			{/if}
@@ -1491,6 +1600,205 @@
 					Neu angelegt übersetzte es bei jedem Wechsel alle Shader neu, das
 					dauerte auf der Grafikkarte Sekunden (Volker, 04.11.2026).
 				-->
+		<!--
+			Das Fenster „Bäume“ (Volker, 07.11.2026, Impeccable Option A): drei
+			Bänder nach Herkunft. Bestand aus OSM samt Baumreihen, Wald aus
+			Waldflächen, Ergänzt von Hand. Jedes Band: Auge, Zahl, aufklappbar,
+			darin was es ist und wie es aussieht. Ist „Ergänzt“ offen, malt der Plan.
+			Das Aussehen gilt in zwei Sätzen: einer für alle Pläne, einer fürs 3D.
+		-->
+		{#snippet aussehen(h: Herkunft)}
+			<span class="unter">{t().baeume.aussehen}</span>
+			{#if raeumlich && h !== 'natur'}
+				<div class="wahl schmal" role="group" aria-label={t().sicht.baumForm}>
+					<button type="button" class:an={z.baumLooks[satzName][h].art === 'ikosaeder'} aria-pressed={z.baumLooks[satzName][h].art === 'ikosaeder'} onclick={() => (z.baumLooks[satzName][h].art = 'ikosaeder')}>{t().sicht.baumIkosaeder}</button>
+					<button type="button" class:an={z.baumLooks[satzName][h].art === 'kugel'} aria-pressed={z.baumLooks[satzName][h].art === 'kugel'} onclick={() => (z.baumLooks[satzName][h].art = 'kugel')}>{t().sicht.baumKugel}</button>
+				</div>
+			{/if}
+			<label class="regelzeile">
+				<span>{t().sicht.baumGroesse}</span>
+				<input type="range" min="0.5" max="2" step="0.05" bind:value={z.baumLooks[satzName][h].groesse} />
+				<em class="mono">{Math.round(z.baumLooks[satzName][h].groesse * 100)} %</em>
+			</label>
+			{#if raeumlich}
+				<label class="regelzeile">
+					<span>{t().sicht.baumHoehe}</span>
+					<input type="range" min="0.5" max="2.5" step="0.05" bind:value={z.baumLooks[satzName][h].hoehe} />
+					<em class="mono">{Math.round(z.baumLooks[satzName][h].hoehe * 100)} %</em>
+				</label>
+			{/if}
+			{#if h !== 'ergaenzt'}
+				<label class="regelzeile">
+					<span>{t().sicht.baumStreuung}</span>
+					<input type="range" min="0" max="2" step="0.1" bind:value={z.baumLooks[satzName][h].streuung} />
+					<em class="mono">±{Math.round(z.baumLooks[satzName][h].streuung * 30)} %</em>
+				</label>
+			{/if}
+			<label class="regelzeile">
+				<span>{t().sicht.saettigung}</span>
+				<input type="range" min="0" max="2" step="0.01" disabled={!baumSaettigungWirkt} bind:value={z.baumLooks[satzName][h].saettigung} />
+				<em class="mono">{Math.round(z.baumLooks[satzName][h].saettigung * 100)} %</em>
+			</label>
+			<label class="regelzeile">
+				<span>{t().sicht.helligkeit}</span>
+				<input type="range" min="0.5" max="1.8" step="0.01" disabled={!baumFarbeWirkt} bind:value={z.baumLooks[satzName][h].helligkeit} />
+				<em class="mono">{Math.round(z.baumLooks[satzName][h].helligkeit * 100)} %</em>
+			</label>
+			<label class="regelzeile">
+				<span>{t().sicht.baumFarbStreuung}</span>
+				<input type="range" min="0" max="2" step="0.05" disabled={!baumFarbeWirkt} bind:value={z.baumLooks[satzName][h].farbStreuung} />
+				<em class="mono">{Math.round(z.baumLooks[satzName][h].farbStreuung * 100)} %</em>
+			</label>
+			<div class="wahl schmal">
+				<button type="button" disabled={baumVorgabe(h)} onclick={() => (z.baumLooks[satzName][h] = { ...(satzName === 'raum' ? SATZ_RAUM : SATZ_PLAN)[h] })}>{t().sicht.karteZurueck}</button>
+			</div>
+		{/snippet}
+		{#snippet bandKopf(h: Herkunft, n: number, an: boolean, schalten: () => void)}
+			<div class="bandkopf">
+				<button type="button" class="auge" class:aus={!an} aria-pressed={an} onclick={schalten} title={an ? t().baeume.ausblenden : t().baeume.einblenden}>
+					<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">{#if an}<path d="M1 8s2.6-4.5 7-4.5S15 8 15 8s-2.6 4.5-7 4.5S1 8 1 8z"/><circle cx="8" cy="8" r="2"/>{:else}<path d="M2 2l12 12M6.4 3.8A7 7 0 0 1 8 3.5C12.4 3.5 15 8 15 8a12 12 0 0 1-2 2.6M4 5.3A12 12 0 0 0 1 8s2.6 4.5 7 4.5a7 7 0 0 0 2.4-.4"/>{/if}</svg>
+				</button>
+				<button type="button" class="bandknopf" aria-expanded={bandAuf[h]} onclick={() => (bandAuf[h] = !bandAuf[h])}>
+					<span>{t().baeume.herkunft[h]}</span>
+					<em class="mono">{zahl(n)}</em>
+					<span class="pfeil" class:auf={bandAuf[h]} aria-hidden="true">▸</span>
+				</button>
+			</div>
+		{/snippet}
+		{#if baumFenster && z.schritt >= 2}
+			<div class="druckfenster baumfenster" role="dialog" aria-label={t().baeume.titel}>
+				<div class="druckkopf">
+					<span class="feld">{t().baeume.titel}</span>
+					<button type="button" class="zu" onclick={() => (baumFenster = false)} aria-label={t().meldungSchliessen}>×</button>
+				</div>
+				<div class="druckkopf zwei">
+					<em>{t().baeume.giltFuer(raeumlich)}</em>
+					{#if !z.baeume}<button type="button" class="zurueck" onclick={() => (z.baeume = true)}>{t().baeume.anschalten}</button>{/if}
+				</div>
+				<div class="bildrahmen" class:gedimmt={!z.baeume}>
+					<!-- Bestand -->
+					{@render bandKopf('bestand', z.baeumeStehend.length, z.bestandAn, () => (z.bestandAn = !z.bestandAn))}
+					{#if bandAuf.bestand}
+						<p class="hinweis leise">{t().baeume.bestandWas(z.baeumeStehend.filter((b) => b.reihe).length)}</p>
+						{@render aussehen('bestand')}
+					{/if}
+					<!-- Wald -->
+					{@render bandKopf('wald', z.waldListe.baeume.length, z.waldAn, () => (z.waldAn = !z.waldAn))}
+					{#if bandAuf.wald}
+						<label class="regelzeile">
+							<span>{t().sicht.waldAbstand}</span>
+							<input type="range" min="5" max="20" step="1" disabled={!z.waldAn} bind:value={z.waldAbstand} />
+							<em class="mono">{z.waldAbstand} m</em>
+						</label>
+						<p class="hinweis leise">{t().baeume.waldWas(Math.round(z.waldListe.abstandM))}</p>
+						{@render aussehen('wald')}
+					{/if}
+					<!-- Naturflächen: Gehölze ohne Stamm auf Gebüsch und Heide, mit Ballung (07.11.2026). -->
+					{@render bandKopf('natur', z.naturListe.length, z.naturAn, () => (z.naturAn = !z.naturAn))}
+					{#if bandAuf.natur}
+						<label class="regelzeile">
+							<span>{t().baeume.dichte}</span>
+							<input type="range" min="2" max="15" step="0.5" disabled={!z.naturAn} bind:value={z.naturWahl.abstandM} />
+							<em class="mono">{z.naturWahl.abstandM} m</em>
+						</label>
+						<label class="regelzeile">
+							<span>{t().pflanzen.krone}</span>
+							<input type="range" min="1" max="10" step="0.5" disabled={!z.naturAn} bind:value={z.naturWahl.kroneM} />
+							<em class="mono">{z.naturWahl.kroneM} m</em>
+						</label>
+						<label class="regelzeile">
+							<span>{t().pflanzen.variation}</span>
+							<input type="range" min="0" max="0.8" step="0.05" disabled={!z.naturAn} bind:value={z.naturWahl.variation} />
+							<em class="mono">±{Math.round(z.naturWahl.variation * 100)} %</em>
+						</label>
+						<label class="regelzeile">
+							<span>{t().baeume.ballung}</span>
+							<input type="range" min="0" max="1" step="0.05" disabled={!z.naturAn} bind:value={z.naturWahl.ballung} />
+							<em class="mono">{Math.round(z.naturWahl.ballung * 100)} %</em>
+						</label>
+						<p class="hinweis leise">{t().baeume.naturWas}</p>
+						{@render aussehen('natur')}
+					{/if}
+					<!-- Ergänzt -->
+					{@render bandKopf('ergaenzt', z.gepflanzt.length, z.gepflanztAn, () => (z.gepflanztAn = !z.gepflanztAn))}
+					{#if bandAuf.ergaenzt}
+						{#if raeumlich}
+							<p class="hinweis leise">{t().baeume.pflanzenNurPlan}</p>
+						{:else}
+							<div class="wahl schmal" role="group" aria-label={t().pflanzen.werkzeug}>
+								{#each [['pinsel', t().pflanzen.pinsel], ['lasso', t().pflanzen.lasso], ['einzel', t().pflanzen.einzel]] as [id, name]}
+									<button type="button" class:an={z.pflanzWahl.werkzeug === id} aria-pressed={z.pflanzWahl.werkzeug === id} onclick={() => (z.pflanzWahl.werkzeug = id as 'pinsel')}>{name}</button>
+								{/each}
+							</div>
+							<div class="wahl schmal" role="group">
+								<button type="button" class:an={!z.pflanzWahl.radieren} aria-pressed={!z.pflanzWahl.radieren} onclick={() => (z.pflanzWahl.radieren = false)}>{t().pflanzen.pflanzen}</button>
+								<button type="button" class:an={z.pflanzWahl.radieren} aria-pressed={z.pflanzWahl.radieren} onclick={() => (z.pflanzWahl.radieren = true)}>{t().pflanzen.radieren}</button>
+							</div>
+							{#if z.pflanzWahl.werkzeug === 'pinsel'}
+								<label class="regelzeile">
+									<span>{t().pflanzen.pinselGroesse}</span>
+									<input type="range" min="5" max="100" step="1" bind:value={z.pflanzWahl.pinselM} />
+									<em class="mono">{z.pflanzWahl.pinselM} m</em>
+								</label>
+							{/if}
+							<!-- Mit Auswahl wirken die Regler auf die gewählten Gebiete; der Rand zeigt es. -->
+							<div class="pflanzwerte" class:bearbeitet={z.pflanzAuswahl.size > 0}>
+								{#if z.pflanzAuswahl.size}
+									<div class="gewaehlt">
+										<span>{t().pflanzen.gewaehlt(z.pflanzAuswahl.size, z.gepflanzt.filter((b) => b.gebiet !== undefined && z.pflanzAuswahl.has(b.gebiet)).length)}</span>
+										<button type="button" class="zurueck" onclick={() => (z.pflanzAuswahl = new Set())}>{t().pflanzen.abwaehlen}</button>
+										<button type="button" class="zurueck" onclick={() => z.pflanzAuswahlWeg()}>{t().pflanzen.gewaehlteWeg}</button>
+									</div>
+								{/if}
+								<label class="regelzeile">
+									<span>{t().pflanzen.abstand}</span>
+									<input type="range" min="3" max="20" step="0.5" disabled={z.pflanzWahl.radieren && !z.pflanzAuswahl.size} value={z.pflanzWahl.abstandM}
+										onpointerdown={() => z.pflanzAenderungBeginnen()} oninput={(e) => z.pflanzSetzen('abstandM', Number((e.currentTarget as HTMLInputElement).value))} />
+									<em class="mono">{z.pflanzWahl.abstandM} m</em>
+								</label>
+								<label class="regelzeile">
+									<span>{t().pflanzen.krone}</span>
+									<input type="range" min="2" max="16" step="0.5" disabled={z.pflanzWahl.radieren && !z.pflanzAuswahl.size} value={z.pflanzWahl.kroneM}
+										onpointerdown={() => z.pflanzAenderungBeginnen()} oninput={(e) => z.pflanzSetzen('kroneM', Number((e.currentTarget as HTMLInputElement).value))} />
+									<em class="mono">{z.pflanzWahl.kroneM} m</em>
+								</label>
+								<label class="regelzeile">
+									<span>{t().pflanzen.variation}</span>
+									<input type="range" min="0" max="0.6" step="0.05" disabled={z.pflanzWahl.radieren && !z.pflanzAuswahl.size} value={z.pflanzWahl.variation}
+										onpointerdown={() => z.pflanzAenderungBeginnen()} oninput={(e) => z.pflanzSetzen('variation', Number((e.currentTarget as HTMLInputElement).value))} />
+									<em class="mono">±{Math.round(z.pflanzWahl.variation * 100)} %</em>
+								</label>
+								<div class="wahl schmal" role="group" aria-label={t().pflanzen.art}>
+									{#each [['laub', t().pflanzen.laub], ['nadel', t().pflanzen.nadel], ['misch', t().pflanzen.misch]] as [id, name]}
+										<button type="button" class:an={z.pflanzWahl.art === id} aria-pressed={z.pflanzWahl.art === id} disabled={z.pflanzWahl.radieren && !z.pflanzAuswahl.size} onclick={() => { z.pflanzAenderungBeginnen(); z.pflanzSetzen('art', id as 'laub'); }}>{name}</button>
+									{/each}
+								</div>
+								{#if z.pflanzWahl.art === 'misch'}
+									<label class="regelzeile">
+										<span>{t().pflanzen.nadelAnteil}</span>
+										<input type="range" min="0.05" max="0.95" step="0.05" disabled={z.pflanzWahl.radieren && !z.pflanzAuswahl.size} value={z.pflanzWahl.nadelAnteil}
+											onpointerdown={() => z.pflanzAenderungBeginnen()} oninput={(e) => z.pflanzSetzen('nadelAnteil', Number((e.currentTarget as HTMLInputElement).value))} />
+										<em class="mono">{Math.round(z.pflanzWahl.nadelAnteil * 100)} %</em>
+									</label>
+								{/if}
+								<span class="unter">{t().pflanzen.frei}</span>
+								<div class="wahl schmal" role="group" aria-label={t().pflanzen.frei}>
+									<button type="button" class:an={z.pflanzWahl.freiGebaeude} aria-pressed={z.pflanzWahl.freiGebaeude} onclick={() => { z.pflanzAenderungBeginnen(); z.pflanzSetzen('freiGebaeude', !z.pflanzWahl.freiGebaeude); }}>{t().pflanzen.freiGebaeude}</button>
+									<button type="button" class:an={z.pflanzWahl.freiWasser} aria-pressed={z.pflanzWahl.freiWasser} onclick={() => { z.pflanzAenderungBeginnen(); z.pflanzSetzen('freiWasser', !z.pflanzWahl.freiWasser); }}>{t().pflanzen.freiWasser}</button>
+									<button type="button" class:an={z.pflanzWahl.freiStrassen} aria-pressed={z.pflanzWahl.freiStrassen} onclick={() => { z.pflanzAenderungBeginnen(); z.pflanzSetzen('freiStrassen', !z.pflanzWahl.freiStrassen); }}>{t().pflanzen.freiStrassen}</button>
+								</div>
+							</div>
+							<div class="wahl schmal">
+								<button type="button" disabled={!z.pflanzSchritte} onclick={() => z.pflanzRueckgaengig()}>{t().pflanzen.zurueck}</button>
+								<button type="button" disabled={!z.gepflanzt.length} onclick={() => z.pflanzAlleWeg()}>{t().pflanzen.alleWeg}</button>
+							</div>
+							<p class="hinweis leise">{t().pflanzen.wink}</p>
+						{/if}
+						{@render aussehen('ergaenzt')}
+					{/if}
+				</div>
+			</div>
+		{/if}
 		<!--
 			Das Fenster für den 3D-Druck, schwebend links auf der Bühne.
 			Schließt mit × oder Escape; Vorschau und Ausschnitt bleiben auf der
@@ -1836,6 +2144,13 @@
 						</p>
 					{/if}
 				</div>
+				<!-- Bäume als eigenes Band (Impeccable, 07.11.2026), nicht unter Werkzeug. -->
+				<div class="teil">
+					<span class="feld">{t().baeume.titel}<em class="mono">{zahl(z.gepflanzt.length)} {t().baeume.ergaenztKurz}</em></span>
+					<div class="wahl">
+						<button type="button" class:an={z.pflanzOffen} aria-pressed={z.pflanzOffen} onclick={() => pflanzUmschalten()}>{t().pflanzen.knopf}</button>
+					</div>
+				</div>
 
 				<div class="teil">
 					<span class="feld">{t().bereinigen.auswahl}{#if z.ausgewaehlt.size}<em class="mono lebt">{z.ausgewaehlt.size}</em>{/if}</span>
@@ -2066,7 +2381,7 @@
 				     „Bild ausgeben" bleibt im Blick (Volker, 06.11.2026). -->
 				<div class="teil" class:zu={!weitereOffen}>
 					<button type="button" class="feld klappkopf" aria-expanded={weitereOffen} onclick={() => (weitereOffen = !weitereOffen)}>
-						{t().ausgeben.weitere}<em class="mono">5</em>
+						{t().ausgeben.weitere}<em class="mono">{raeumlich ? 5 : 6}</em>
 					</button>
 					{#if weitereOffen}
 					<ul class="ausgaben">
@@ -2076,6 +2391,12 @@
 							</em>
 							<span>{t().ausgeben.paketWas}</span>
 						</button></li>
+						{#if !raeumlich}
+							<li><button type="button" disabled={!!arbeitet} onclick={() => ausgeben('svg')}>
+								<strong>{t().ausgeben.planSvg}</strong><em class="mono">{arbeitet === 'svg' ? t().ausgeben.schreibt : t().ausgeben.planSvgZeile(t().darstellungen[z.darstellung]?.name ?? z.darstellung)}</em>
+								<span>{t().ausgeben.planSvgWas}</span>
+							</button></li>
+						{/if}
 						<li><button type="button" disabled={!!arbeitet} onclick={() => ausgeben('dxf')}>
 							<strong>{t().ausgeben.zeichnung}</strong><em class="mono">{arbeitet === 'dxf' ? t().ausgeben.schreibt : t().ausgeben.zeichnungZeile(STIFTE.length + 1 + (z.gelaendeJetzt ? 2 : 0))}</em>
 							<span>{t().ausgeben.zeichnungWas}</span>
@@ -2118,7 +2439,7 @@
 					{#if druckJetzt}
 						<!-- Dieselbe Schrift wie „Bild ausgeben“, nur hell: Der Hauptknopf bleibt der Hauptknopf. -->
 						<button type="button" class="haupt zweit" class:an={druckOffen} aria-expanded={druckOffen}
-							onclick={() => (druckOffen = !druckOffen)}>
+							onclick={() => { druckOffen = !druckOffen; if (druckOffen) baumFenster = false; }}>
 							{t().ausgeben.druckKnopf(Math.round(druckJetzt.breiteMm), Math.round(druckJetzt.hoeheMm))}
 						</button>
 					{/if}
@@ -2318,6 +2639,23 @@
 	.sichtleiste .gruppe > button:has(+ .nachsatz) { border-radius: 0 var(--rund) var(--rund) 0; }
 	.sichtleiste .gruppe > .nachsatz { margin-left: 3px; border-left: 1px solid var(--linie); border-radius: var(--rund); }
 	.sichtleiste .gruppe > .nachsatz.an { border-color: var(--tinte); }
+	/* Unter 1400 px kurze Namen, damit die Leiste in einer Zeile bleibt (Impeccable, 07.11.2026). */
+	.sichtleiste .kurz { display: none; }
+	/* Notebook (Volker, 07.11.2026): gemessen fehlten bei 1440 px 20 und bei 1280 px 17 Punkte. */
+	@media (max-width: 1500px) {
+		.sichtleiste .lang { display: none; }
+		.sichtleiste .kurz { display: inline; }
+		.sichtleiste { gap: 6px 14px; }
+	}
+	@media (max-width: 1340px) {
+		.sichtleiste .schalter > button, .sichtleiste .anpassen > .klapp > button { padding-inline: 5px !important; }
+		.sichtleiste { gap: 6px 10px; padding-inline: 10px; }
+	}
+	/* Eigene Werte für Karte, Gebäude oder Licht: ein Akzentpunkt oben rechts. */
+	.sichtleiste .gruppe > button.eigen { position: relative; }
+	.sichtleiste .gruppe > button.eigen::after {
+		content: ''; position: absolute; top: 3px; right: 3px; width: 4px; height: 4px; border-radius: 50%; background: var(--akzent);
+	}
 
 	/* Einblenden: Schalter mit Häkchen wie die Ebenenliste. Schwarz gefüllt ist
 	   in dieser Leiste nur die gewählte Ansicht, nie ein eingeschalteter Inhalt. */
@@ -2330,11 +2668,14 @@
 	}
 	.sichtleiste .schalter > button.an { color: var(--tinte); }
 	.sichtleiste .schalter > button:hover:not(:disabled) { background: var(--senke); color: var(--tinte); opacity: 1; }
-	.sichtleiste .schalter > button::before {
+	/* Bäume: Häkchen und Wort als ein Paar, das Wort öffnet das Fenster. */
+	.sichtleiste .schalter > button.haken { padding-right: 2px; }
+	.sichtleiste .schalter > button.wort { padding-left: 4px; }
+	.sichtleiste .schalter > button:not(.wort)::before {
 		content: ''; flex: none; width: 12px; height: 12px; box-sizing: border-box;
 		border: 1.5px solid currentColor; border-radius: 2px;
 	}
-	.sichtleiste .schalter > button.an::before {
+	.sichtleiste .schalter > button.an:not(.wort)::before {
 		border: 0; background: var(--tinte);
 		/* Das Häkchen ist aus dem Kästchen ausgespart, damit es in hell und
 		   dunkel den Grund zeigt statt einer festen Farbe. */
@@ -2353,6 +2694,8 @@
 	}
 	.sichtleiste .anpassen > .klapp > button:hover:not(:disabled) { background: var(--senke); }
 	.sichtleiste .anpassen .regler { left: auto; right: 0; }
+	.sichtleiste .anpassen .alleweg { color: var(--tinte-2); padding: 5px 6px !important; margin-left: 2px; }
+	.sichtleiste .anpassen .alleweg svg { display: block; }
 
 	.buehne { position: relative; background: var(--radial); overflow: hidden; }
 	.buehne.karte { background: var(--senke); }
@@ -2460,6 +2803,10 @@
 	.wahl button em { font-size: 10.5px; font-style: normal; color: var(--tinte-3); }
 	.wahl button:hover { color: var(--tinte); border-color: var(--linie-stark); }
 	.wahl button.an { background: var(--tinte); border-color: var(--tinte); color: var(--blatt); }
+	/* Gesperrt muss gesperrt aussehen (Impeccable, 07.11.2026): vorher sah ein
+	   gesperrter Knopf aus wie ein bedienbarer, nur ohne Wirkung. */
+	.wahl button:disabled { opacity: 0.42; cursor: default; }
+	.wahl button:disabled:hover { color: inherit; border-color: var(--linie); }
 	.wahl button.an em { color: var(--linie-stark); }
 
 	/* ---------- Messung ---------- */
@@ -2535,7 +2882,7 @@
 		border: 1px solid var(--linie); border-radius: var(--rund);
 	}
 	.tatzeile button:hover:not(:disabled) { border-color: var(--linie-stark); }
-	.tatzeile button:disabled { color: var(--tinte-3); cursor: not-allowed; }
+	.tatzeile button:disabled { opacity: 0.42; cursor: default; }
 	.buch { margin-top: 12px; }
 
 	/* ---------- Ausgaben ---------- */
@@ -2656,11 +3003,15 @@
 		border-radius: 50%; background: var(--akzent);
 	}
 	.sichtleiste .klappknopf::after { order: 2; }
+	.sichtleiste .regler .gilt { margin: 0 0 4px; font-size: 11px; color: var(--tinte-2); }
 	.sichtleiste .regler {
 		position: absolute; top: calc(100% + 6px); left: 0; z-index: 20;
 		display: grid; gap: 10px; width: 260px; padding: 12px 14px;
 		background: var(--blatt); border: 1px solid var(--linie); border-radius: var(--rund);
 		box-shadow: var(--heben);
+		/* Lange Tafeln (Bäume) scrollen in sich, statt die ganze Seite zu
+		   verschieben (Volker, 07.11.2026). Platz bis knapp über den Fensterrand. */
+		max-height: calc(100dvh - 120px); overflow-y: auto; overscroll-behavior: contain;
 	}
 	.sichtleiste .regler label {
 		display: grid; grid-template-columns: 70px 1fr 56px; align-items: center; gap: 8px;
@@ -2698,6 +3049,32 @@
 		background: var(--senke); border-bottom: 1px solid var(--linie);
 	}
 	.druckkopf:first-child .feld { font-size: 12.5px; font-weight: 600; letter-spacing: 0.01em; text-transform: none; color: var(--tinte); }
+	/* Fenster „Bäume“: Bänder je Herkunft mit Auge, Zahl und Pfeil (07.11.2026). */
+	.baumfenster .bildrahmen.gedimmt { opacity: 0.5; }
+	.baumfenster .bandkopf {
+		display: flex; align-items: stretch; margin: 6px -16px 2px;
+		background: var(--senke); border-block: 1px solid var(--linie);
+	}
+	.baumfenster .bandkopf .auge {
+		display: grid; place-items: center; width: 38px; border: 0; border-right: 1px solid var(--linie);
+		background: none; color: var(--tinte); cursor: pointer;
+	}
+	.baumfenster .bandkopf .auge svg { fill: none; stroke: currentColor; stroke-width: 1.4; }
+	.baumfenster .bandkopf .auge.aus { color: var(--tinte-2); }
+	.baumfenster .bandknopf {
+		flex: 1; display: flex; align-items: center; gap: 8px; padding: 8px 14px 8px 10px; border: 0; background: none;
+		font: inherit; font-size: 12.5px; font-weight: 600; color: var(--tinte); cursor: pointer; text-align: left;
+	}
+	.baumfenster .bandknopf em { margin-left: auto; font-style: normal; font-weight: 400; font-size: 11px; color: var(--tinte-2); }
+	.baumfenster .bandknopf .pfeil { font-size: 10px; color: var(--tinte-2); transition: transform 0.15s; }
+	.baumfenster .bandknopf .pfeil.auf { transform: rotate(90deg); }
+	.baumfenster .unter { font-size: 11px; color: var(--tinte-2); margin-top: 4px; }
+	/* Mit Auswahl wirken die Regler auf die gewählten Gebiete: dann ein Rahmen in Akzent. */
+	.baumfenster .pflanzwerte { display: grid; gap: 10px; }
+	.baumfenster .pflanzwerte.bearbeitet { padding: 10px; border: 1.5px solid var(--akzent-tief); border-radius: var(--rund); background: var(--akzent-flor); }
+	.baumfenster .gewaehlt { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--tinte); }
+	.baumfenster .gewaehlt span { flex: 1; }
+	.baumfenster .gewaehlt .zurueck { border: 1px solid var(--linie); background: var(--blatt); color: var(--tinte-2); font: inherit; font-size: 11px; padding: 2px 7px; border-radius: var(--rund); cursor: pointer; }
 	.druckfenster .band {
 		margin: 8px -16px 2px; padding: 8px 16px;
 		background: var(--senke); border-block: 1px solid var(--linie);

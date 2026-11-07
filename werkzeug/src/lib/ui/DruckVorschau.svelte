@@ -48,6 +48,8 @@
 	 * findet. Umgeschaltet wird am Material, ohne neu zu rechnen.
 	 */
 	let probleme = $state(false);
+	/** Kachelschilder an oder aus (Volker, 06.11.2026); ab Werk an. */
+	let schilderAn = $state(true);
 	let anzahlKlein = $state(0);
 	function abdunkeln() {
 		gruppe.traverse((o) => {
@@ -216,11 +218,16 @@
 	<canvas bind:this={leinwand} tabindex="0" onpointerdown={runter} onwheel={rad} onkeydown={taste}
 		oncontextmenu={(e) => e.preventDefault()}
 		aria-label={t().ausgeben.druckVorschau}></canvas>
-	{#each schilder as s (s.name)}
+	{#each schilderAn ? schilder : [] as s (s.name)}
 		<span class="schild" style:left="{s.x}px" style:top="{s.y}px"><b>{s.name}</b> {s.mass}</span>
 	{/each}
-	<button type="button" class="probleme" class:an={probleme} aria-pressed={probleme} disabled={!anzahlKlein && !probleme}
-		onclick={() => (probleme = !probleme)}>{t().ausgeben.druckProbleme}{#if anzahlKlein}<em>{anzahlKlein}</em>{/if}</button>
+	<div class="knoepfe">
+		{#if schilder.length}
+			<button type="button" class:an={schilderAn} aria-pressed={schilderAn} onclick={() => (schilderAn = !schilderAn)}>{t().ausgeben.druckSchilder}</button>
+		{/if}
+		<button type="button" class="probleme" class:an={probleme} aria-pressed={probleme} disabled={!anzahlKlein && !probleme}
+			onclick={() => (probleme = !probleme)}>{t().ausgeben.druckProbleme}{#if anzahlKlein}<em>{anzahlKlein}</em>{/if}</button>
+	</div>
 	<p class="wink">{t().raum.wink}</p>
 	{#if rechnet}<span class="mono">{t().ausgeben.druckRechnet}</span>{/if}
 </div>
@@ -233,14 +240,15 @@
 		position: absolute; right: 18px; bottom: 18px; margin: 0; font-size: 11px; color: var(--tinte-2);
 		background: var(--blatt); border: 1px solid var(--linie); padding: 3px 8px; border-radius: 2px;
 	}
-	.probleme {
-		position: absolute; right: 18px; top: 18px; display: flex; align-items: center; gap: 7px;
+	.knoepfe { position: absolute; right: 18px; top: 18px; display: flex; gap: 6px; }
+	.knoepfe button {
+		display: flex; align-items: center; gap: 7px;
 		font: inherit; font-size: 11.5px; color: var(--tinte); background: var(--blatt);
 		border: 1px solid var(--linie); padding: 5px 10px; border-radius: 2px; cursor: pointer;
 	}
-	.probleme:hover:not(:disabled) { background: var(--senke); }
-	.probleme.an { background: var(--tinte); color: var(--blatt); border-color: var(--tinte); }
-	.probleme:disabled { opacity: 0.45; cursor: default; }
+	.knoepfe button:hover:not(:disabled) { background: var(--senke); }
+	.knoepfe button.an { background: var(--tinte); color: var(--blatt); border-color: var(--tinte); }
+	.knoepfe button:disabled { opacity: 0.45; cursor: default; }
 	.probleme em { font-style: normal; font-variant-numeric: tabular-nums; color: #d2453a; font-weight: 600; }
 	.probleme.an em { color: #ff8a80; }
 	.schild {

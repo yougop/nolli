@@ -23,6 +23,7 @@ Overture Maps.
 | Output | Contents |
 |---|---|
 | **Images** | Figure-ground, inverted, line, use, top view, white model, data depth, 3D model — up to 8192 px (8K), with a bare version of each (no buildings, no trees) to use as a ground texture. The 3D image has its own format, width and background, or a transparent one |
+| **Plan as SVG** | The shown plan as vector paths, identical to the image: one layer per group (ground, green and water, streets, fences and walls, buildings, edges, trees, labels), A1 wide, for Illustrator, Affinity or Inkscape |
 | **Drawing** | `drawing.dxf`: separate layers with pen widths (`N_BUILDINGS`, `N_STREETS`, `N_WATER`, …), labels, frame, contour lines when terrain is on. Cut at the frame, metres, origin at the lower-left corner. With terrain also `drawing_terrain.dxf`: the same plan lying on the terrain |
 | **Model** | `model.3dm` for Rhino and `model.obj` with `model.mtl` and `model_texture.png`: buildings with their roofs, in greys by use class, cut cleanly at the frame; the ground textured with the top view, on the terrain or flat; tree crowns |
 | **3D print** | `.3mf` or `.stl` in millimetres: a closed base plate with the buildings, raised streets, green areas and recessed water, as one object of five parts for a multicolour printer, or in one colour. Any part of the frame, at a scale or fitted to the bed, split into tiles if it is larger |
@@ -37,7 +38,18 @@ Overture Maps.
 | **2 · Clean up** | Click objects or draw a polygon to remove them or keep them; a click on a building part takes the whole house. Trees can be removed too. Removed objects stay visible as ghosts and are listed by ID in the contract. While drawing a polygon, the right mouse button takes back the last point and the view can still be panned. A site area clears everything inside and cuts streets at its boundary. Nolli removes buildings that cannot be buildings on its own, and offers to fill gaps from Overture (see below). |
 | **3 · Export** | One image, the drawing, the model, the 3D print, the data contract, or the complete package. |
 
-The row above the sheet is the same in steps 2 and 3: the styles, three switches (labels, trees, terrain) and the menus for map, buildings and light. Labels grow with the sheet, so a 4K image carries the same lettering as the screen, at any zoom.
+The row above the sheet is the same in steps 2 and 3: the styles, three switches (labels, trees, terrain) and the menus for map, buildings and light. Labels grow with the sheet, so a 4K image carries the same lettering as the screen, at any zoom. Each style keeps its own map, building and light settings — a desaturated 3D look no longer bends the figure-ground plan; a dot on a style shows it has its own values, and ↺ resets all.
+
+**Trees** have one window, sorted by where they come from, each with an eye, a count and its own look (shape, size, height, variation, colour), one set for the plans and one for the 3D model:
+
+- **Existing** — single trees from OpenStreetMap, conifers from `leaf_type` or genus as cones, plus trees set every 8 m along tree rows (`natural=tree_row`).
+- **Woodland** — estimated trees in `landuse=forest` and `natural=wood`, broadleaf, conifer or mixed after `leaf_type`, with adjustable spacing.
+- **Natural areas** — trunkless shrubs on scrub and heath, clumped by a soft noise into groups and clearings.
+- **Added** — planted by hand with brush, lasso or single click, erasable; each stroke stays an area whose spacing, crown, variation and kind can be changed afterwards.
+
+Estimated and added trees go into the model, OBJ and 3DM; `data/trees.json` lists existing and added trees with their `origin`.
+
+**Fences and walls** (`barrier=fence/wall/hedge/city_wall/retaining_wall`) are their own layer, and natural areas (`natural=scrub/heath/grassland/wetland/wood`, orchards, vineyards) count as green in a slightly different tone.
 
 **Project file.** **Save** writes everything — frame, data, clean-up, terrain, settings — into one `.nolli` file; **Open** reads it back without fetching. Saving again overwrites the open file; with Shift held it asks for a new name. (Chrome and Edge; other browsers download a copy.)
 

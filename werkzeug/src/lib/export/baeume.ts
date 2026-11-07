@@ -56,6 +56,62 @@ export const FLAECHEN: [number, number, number][] = [
  */
 export const BAUM_BILD = { groesser: 1.2, hoch: 1.45, streuung: 0.3, stamm: 0.09 };
 
+/**
+ * Was man an den Bäumen einstellen kann (Volker, 06.11.2026): Form der Krone,
+ * Größe als Faktor auf das Nennmaß (ab Werk 1,2 wie `BAUM_BILD.groesser`,
+ * von 0,9 bis 1,4), Höhe der Krone als Verhältnis von Höhe zu Breite (1 ist
+ * rund, ab Werk `BAUM_BILD.hoch`), Variation als Vielfaches von
+ * `BAUM_BILD.streuung`, Sättigung und Helligkeit der Kronenfarbe. Form und
+ * Größe gelten für Ansicht, OBJ und 3DM, die Farbe für Ansicht und 3D-Bild.
+ *
+ * Nadelbäume (`Baum.nadel`) sind in jeder Form Kegel, schlanker und höher.
+ * Eine dritte Form „natürlich“ aus drei Kugeln je Krone gab es am 06.11.2026
+ * kurz; sie sah nicht gut aus (Volker) und ist wieder entfernt.
+ */
+export type Baumart = 'ikosaeder' | 'kugel';
+/** Wie Bäume einer Herkunft aussehen. */
+export type Baumwahl = {
+	art: Baumart; groesse: number; hoehe: number; streuung: number;
+	saettigung: number; helligkeit: number; farbStreuung: number;
+};
+/**
+ * Drei Herkünfte (Volker, 07.11.2026: „die ganzen Bäume und Baumgebiete
+ * zusammenbekommen“, „drei Zonen im 3D einstellen“): Bestand aus OSM samt
+ * Baumreihen, Wald aus Waldflächen, Ergänzt von Hand. Jede hat ihr eigenes
+ * Aussehen, in zwei Sätzen: einer für alle Pläne, einer für das 3D-Modell.
+ */
+export type Herkunft = 'bestand' | 'wald' | 'natur' | 'ergaenzt';
+export const HERKUENFTE: Herkunft[] = ['bestand', 'wald', 'natur', 'ergaenzt'];
+export type Baumsatz = Record<Herkunft, Baumwahl>;
+export const herkunftVon = (b: Baum): Herkunft => (b.busch ? 'natur' : b.wald ? 'wald' : b.ergaenzt ? 'ergaenzt' : 'bestand');
+
+/** 3D ab Werk wie von Volker am 06.11.2026 eingestellt: Kugel, 110 %, rund, ±30 %, Sättigung 55 %. */
+const RAUM: Baumwahl = { art: 'kugel', groesse: 1.1, hoehe: 1, streuung: 1, saettigung: 0.55, helligkeit: 1, farbStreuung: 0.3 };
+/** Pläne ab Werk wie bisher: Kreis im Kronendurchmesser, ohne Variation, Farbe der Darstellung. */
+const PLAN: Baumwahl = { art: 'kugel', groesse: 1, hoehe: 1, streuung: 0, saettigung: 1, helligkeit: 1, farbStreuung: 0 };
+export const SATZ_RAUM: Baumsatz = { bestand: { ...RAUM }, wald: { ...RAUM }, natur: { ...RAUM, streuung: 0, saettigung: 0.5, helligkeit: 1.1, farbStreuung: 0.4 }, ergaenzt: { ...RAUM } };
+/** Der Wald in den Plänen etwas heller, damit erfundene Bäume nicht wie eingetragene wirken. */
+export const SATZ_PLAN: Baumsatz = { bestand: { ...PLAN }, wald: { ...PLAN, helligkeit: 1.15 }, natur: { ...PLAN, helligkeit: 1.15 }, ergaenzt: { ...PLAN } };
+export const satzKopie = (s: Baumsatz): Baumsatz => ({ bestand: { ...s.bestand }, wald: { ...s.wald }, natur: { ...s.natur }, ergaenzt: { ...s.ergaenzt } });
+/** Einen gespeicherten Satz einlesen, Fehlendes aus der Vorgabe. */
+export function satzAus(roh: Partial<Record<Herkunft, Partial<Baumwahl>>> | undefined, vorgabe: Baumsatz): Baumsatz {
+	const s = satzKopie(vorgabe);
+	for (const h of HERKUENFTE) {
+		s[h] = { ...s[h], ...(roh?.[h] ?? {}) };
+		if (s[h].art !== 'kugel') s[h].art = 'ikosaeder';
+	}
+	return s;
+}
+/**
+ * Der gültige Satz des 3D-Modells. Die Seite setzt ihn, sobald sich etwas
+ * ändert; so muss nicht jeder Ausgang (OBJ, 3DM) ihn durchreichen.
+ */
+let aktiv: Baumsatz = satzKopie(SATZ_RAUM);
+export const baumSatzSetzen = (s: Baumsatz) => { aktiv = satzAus(s, SATZ_RAUM); };
+
+/** Nadelbäume: so viel schmaler und so viel höher als ein Laubbaum gleicher Krone. */
+const NADEL = { breit: 0.8, hoch: 1.6 };
+
 /** Eine feste Zahl zwischen −1 und 1 je Ort; `n` gibt eine zweite, unabhängige. */
 function zufall(x: number, y: number, n = 0) {
 	const v = Math.sin(x * 12.9898 + y * 78.233 + n * 39.425) * 43758.5453;
@@ -65,21 +121,90 @@ function zufall(x: number, y: number, n = 0) {
 /**
  * Die Form eines Baums, vom Fuß aus gemessen: Kronenradius `rx` (waagerecht)
  * und `rz` (senkrecht), Kronenmitte `mitte` über dem Fuß, Stamm mit Radius
- * `stammR` bis `stammH`, Drehung `dreh` um die Hochachse im Bogenmaß. Der Kronenansatz wächst mit dem Baum. Führt OSM eine
- * Höhe, reicht die Krone bis dorthin, in vernünftigen Grenzen; führt es den
- * Stammumfang, gilt er, sonst ein Stamm passend zur Krone.
+ * `stammR` bis `stammH`, Drehung `dreh` um die Hochachse im Bogenmaß,
+ * `nadel` für Kegel. Der Kronenansatz wächst mit
+ * dem Baum. Führt OSM eine Höhe, reicht die Krone bis dorthin, in
+ * vernünftigen Grenzen; führt es den Stammumfang, gilt er, sonst ein Stamm
+ * passend zur Krone.
  */
-export function baumForm(b: Baum) {
+export function baumForm(b: Baum, satz: Baumsatz = aktiv) {
+	const w = satz[herkunftVon(b)];
 	const nenn = Math.max(0.5, b.krone / 2);
-	const s = b.gemessen ? 1 : 1 + BAUM_BILD.streuung * zufall(b.x, b.y);
-	const rx = nenn * BAUM.silhouetteFaktor * BAUM_BILD.groesser * s;
-	let rz = rx * BAUM_BILD.hoch, ansatz = BAUM.stammhoeheM * s;
+	const nadel = !!b.nadel;
+	const s = b.gemessen ? 1 : Math.max(0.3, 1 + BAUM_BILD.streuung * w.streuung * zufall(b.x, b.y));
+	const rx = nenn * BAUM.silhouetteFaktor * w.groesse * s * (nadel ? NADEL.breit : 1);
+	const verh = w.hoehe * (nadel ? NADEL.hoch : 1);
+	let rz = rx * verh, ansatz = BAUM.stammhoeheM * s;
+	// Busch: flach und ohne sichtbaren Stamm, die Krone sitzt fast auf dem Boden.
+	// Gehölz in Naturflächen: Kugel ohne Stamm, liegt dem Boden auf.
+	if (b.busch) { rz = rx * w.hoehe; ansatz = 0; }
 	if (b.hoehe !== undefined && b.hoehe > 2) {
-		rz = Math.max(rx * 0.8, Math.min(rx * 2, (b.hoehe - ansatz) / 2));
+		// Mit gemessener Höhe bleibt die Spitze, wo OSM sie hat; die Regler
+		// verändern die Krone relativ zur bisherigen Form.
+		rz = Math.max(rx * 0.8, Math.min(rx * 2, (b.hoehe - ansatz) / 2)) * (verh / BAUM_BILD.hoch);
 		ansatz = Math.max(1, b.hoehe - 2 * rz);
 	}
-	const stammR = b.stamm !== undefined ? b.stamm / (2 * Math.PI) : Math.min(0.6, Math.max(0.18, nenn * s * BAUM_BILD.stamm));
-	return { rx, rz, mitte: ansatz + rz, stammR, stammH: ansatz + rz * 0.5, dreh: Math.PI * zufall(b.x, b.y, 1) };
+	/**
+	 * Der gemessene Stamm nie dünner als der gezeichnete (Volker, 06.11.2026):
+	 * Die Kronen sind zeichnerisch vergrößert, ein Stamm in echter Stärke
+	 * (HafenCity: 0,7 bis 1,1 m Umfang, also 11 bis 17 cm Radius) stand
+	 * darunter wie ein Strich. `data/trees.json` trägt weiter den Messwert.
+	 */
+	// Nadelbäume mindestens 12 % des Kronenradius: Unter dem schmalen Kegel wirkte der Stamm sonst verloren.
+	const gezeichnet = Math.max(Math.min(0.6, Math.max(0.18, nenn * s * BAUM_BILD.stamm)), nadel ? rx * 0.12 : 0);
+	const stammR = b.busch ? 0.05 : b.stamm !== undefined ? Math.max(gezeichnet, b.stamm / (2 * Math.PI)) : gezeichnet;
+	return { rx, rz, mitte: ansatz + rz * (b.busch ? 0.8 : 1), stammR, stammH: b.busch ? 0 : ansatz + rz * 0.5, dreh: Math.PI * zufall(b.x, b.y, 1), nadel, art: b.busch ? 'kugel' as const : w.art };
+}
+
+/** Ein Netz mit Y nach oben, Flächen eins-basiert, nach außen gewunden. */
+type Netz3 = { ecken: [number, number, number][]; flaechen: [number, number, number][] };
+
+/** Kugel aus Ringen: `seg` um die Hochachse, `ringe` von Pol zu Pol. */
+function kugelNetz(seg: number, ringe: number): Netz3 {
+	const ecken: [number, number, number][] = [[0, 1, 0]];
+	for (let j = 1; j < ringe; j++) {
+		const t = (j / ringe) * Math.PI;
+		for (let i = 0; i < seg; i++) {
+			const w = (i / seg) * 2 * Math.PI;
+			ecken.push([Math.sin(t) * Math.cos(w), Math.cos(t), Math.sin(t) * Math.sin(w)]);
+		}
+	}
+	ecken.push([0, -1, 0]);
+	const flaechen: [number, number, number][] = [];
+	const ring = (j: number, i: number) => 2 + (j - 1) * seg + (i % seg);
+	for (let i = 0; i < seg; i++) flaechen.push([1, ring(1, i + 1), ring(1, i)]);
+	for (let j = 1; j < ringe - 1; j++)
+		for (let i = 0; i < seg; i++) {
+			flaechen.push([ring(j, i), ring(j, i + 1), ring(j + 1, i + 1)]);
+			flaechen.push([ring(j, i), ring(j + 1, i + 1), ring(j + 1, i)]);
+		}
+	for (let i = 0; i < seg; i++) flaechen.push([ecken.length, ring(ringe - 1, i), ring(ringe - 1, i + 1)]);
+	return { ecken, flaechen };
+}
+
+/** Ein Kegel mit Boden: Grundkreis `rb` auf Höhe `yb`, Spitze auf `yt`. */
+function kegelNetz(seg: number, yb: number, yt: number, rb: number): Netz3 {
+	const ecken: [number, number, number][] = [[0, yt, 0]];
+	for (let i = 0; i < seg; i++) { const w = (i / seg) * 2 * Math.PI; ecken.push([rb * Math.cos(w), yb, rb * Math.sin(w)]); }
+	ecken.push([0, yb, 0]);
+	const flaechen: [number, number, number][] = [];
+	const k = (i: number) => 2 + (i % seg);
+	for (let i = 0; i < seg; i++) { flaechen.push([1, k(i + 1), k(i)]); flaechen.push([ecken.length, k(i), k(i + 1)]); }
+	return { ecken, flaechen };
+}
+
+/**
+ * Die Kugel als zweite Kronenform: 12 Segmente um die Hochachse, 7 Ringe,
+ * also 144 Dreiecke statt zwanzig.
+ */
+const KUGEL = kugelNetz(12, 7);
+/** Nadelbäume: ein Kegel, kantig mit 6, rund mit 12 Seiten. */
+const NADEL_KANTIG = kegelNetz(6, -1, 1, 1);
+const NADEL_RUND = kegelNetz(12, -1, 1, 1);
+/** Ecken und Flächen der Krone für Form und Laub oder Nadel. Einheitsmaß, Y nach oben. */
+export function kronenForm(art: Baumart = 'kugel', nadel = false): Netz3 {
+	if (nadel) return art === 'kugel' ? NADEL_RUND : NADEL_KANTIG;
+	return art === 'kugel' ? KUGEL : { ecken: ECKEN, flaechen: FLAECHEN };
 }
 
 /** Der Stamm als sechseckiges Prisma mit Deckeln, Einheitsradius und -höhe, Z nach oben. */
@@ -142,20 +267,27 @@ export function kronenKoerper(
 		}
 		punkte += ecken.length;
 	};
-	if (formen.length) {
-		zeilen.push('o trees');
+	/**
+	 * Zwei Körperpaare: die Bäume aus den Daten (`trees`, `trunks`) und die
+	 * von Hand gepflanzten (`trees_added`, `trunks_added`, 07.11.2026), damit
+	 * man sie im Zielprogramm getrennt ein- und ausblenden kann.
+	 */
+	for (const [name, liste] of [['', formen.filter((f) => !f.b.ergaenzt)], ['_added', formen.filter((f) => f.b.ergaenzt)]] as const) {
+		if (!liste.length) continue;
+		zeilen.push(`o trees${name}`);
 		if (material) zeilen.push('usemtl tree');
-		for (const { b, f, fuss } of formen) {
+		for (const { b, f, fuss } of liste) {
 			kronen++;
 			const m: [number, number, number] = [b.x - r.x0, b.y - r.y0, fuss + f.mitte];
 			// Ecken sind (x, y nach oben, z nach Süden) gerechnet: umstellen auf
 			// Z nach oben, Y nach Norden wie das Modell.
 			const c = Math.cos(f.dreh), d = Math.sin(f.dreh);
-			koerper(ECKEN.map(([ex, ey, ez]) => [m[0] + (ex * c + ez * d) * f.rx, m[1] + (ex * d - ez * c) * f.rx, m[2] + ey * f.rz]), FLAECHEN, m);
+			const kf = kronenForm(f.art, f.nadel);
+			koerper(kf.ecken.map(([ex, ey, ez]) => [m[0] + (ex * c + ez * d) * f.rx, m[1] + (ex * d - ez * c) * f.rx, m[2] + ey * f.rz]), kf.flaechen, m);
 		}
-		zeilen.push('', 'o trunks');
+		zeilen.push('', `o trunks${name}`);
 		if (material) zeilen.push('usemtl trunk');
-		for (const { b, f, fuss } of formen) {
+		for (const { b, f, fuss } of liste) {
 			const mx = b.x - r.x0, my = b.y - r.y0;
 			// Der Fuß einen halben Meter im Grund, damit er am Hang nicht in der Luft steht.
 			const z0 = fuss - 0.5, h = f.stammH + 0.5;

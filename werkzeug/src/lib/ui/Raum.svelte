@@ -13,8 +13,8 @@
 	import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 	import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
 	import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
-	import { feldImRahmen, tiefsteUnter, hoeheBei } from '$lib/geo/gelaende';
-	import { baumForm } from '$lib/export/baeume';
+	import { feldImRahmen, tiefsteUnter, hoeheBei, aufsNetz } from '$lib/geo/gelaende';
+	import { baumForm, kronenForm, herkunftVon, HERKUENFTE, type Herkunft } from '$lib/export/baeume';
 	import type { StiftId } from '$lib/stifte';
 	import { KARTE_GLSL, mitte } from '$lib/anpassen';
 
@@ -234,6 +234,41 @@
 	const KRONE = { hell: 0x4f7f4a, dunkel: 0x6ea368 };
 	/** Stammfarbe, je Schema eine, wie `trunk` im Materialkatalog. */
 	const STAMM = { hell: 0x6b5b4b, dunkel: 0x8a7866 };
+	/**
+	 * Die Kronenfarbe nach Sättigung und Helligkeit aus dem Menü Bäume
+	 * (06.11.2026), je Baum als Instanzfarbe; Nadelbäume dunkler und kühler.
+	 * Umgefärbt wird ohne neu zu bauen.
+	 */
+	/** Je Baum zwei feste Zufallszahlen (−1 bis 1) für Ton und Helligkeit, dazu Nadel oder Laub. */
+	let kronenNetze: { netz: THREE.InstancedMesh; abw: { a: number; b: number; nadel: boolean; h: Herkunft }[] }[] = [];
+	/**
+	 * Farbvariation (Volker, 06.11.2026, dann „krasser“): je Baum bei 100 %
+	 * Ton um bis zu ±0,08 (von Gelbgrün bis Blaugrün), Helligkeit um bis zu
+	 * ±40 % und Sättigung um bis zu ±30 %, der Regler geht bis 200 %.
+	 * Nadelbäume dunkler und kühler.
+	 */
+	function kronenFarbe(c: THREE.Color, a = 0, b = 0, nadel = false, h: Herkunft = 'bestand') {
+		// Das Aussehen der Herkunft im 3D-Satz (07.11.2026).
+		const w = z.baumLooks.raum[h];
+		const hsl = { h: 0, s: 0, l: 0 }, v = w.farbStreuung;
+		c.set(KRONE[schema]).getHSL(hsl);
+		const ton = 0.08 * v * a + (nadel ? -0.03 : 0);
+		const licht = Math.max(0.2, 1 + 0.4 * v * b) * (nadel ? 0.8 : 1);
+		const satt = Math.max(0, 1 + 0.3 * v * (a * 0.6 - b * 0.4));
+		return c.setHSL((hsl.h + ton + 1) % 1, Math.min(1, hsl.s * w.saettigung * satt), Math.min(0.95, hsl.l * w.helligkeit * licht));
+	}
+	function kronenFaerben() {
+		const c = new THREE.Color();
+		for (const { netz, abw } of kronenNetze) {
+			abw.forEach((x, i) => netz.setColorAt(i, kronenFarbe(c, x.a, x.b, x.nadel, x.h)));
+			if (netz.instanceColor) netz.instanceColor.needsUpdate = true;
+		}
+	}
+	$effect(() => {
+		for (const h of HERKUENFTE) { const w = z.baumLooks.raum[h]; w.saettigung; w.helligkeit; w.farbStreuung; }
+		schema;
+		untrack(() => { if (kronenNetze.length) { kronenFaerben(); anfordern(); } });
+	});
 
 	/**
 	 * Der Grund folgt dem Schema der Oberflaeche.
@@ -377,6 +412,92 @@
 	/** Wie hoch das Modell über seinem tiefsten Punkt reicht. Für Kamera und Einrahmung. */
 	const modellHoehe = () => Math.max(hoechstes(z.objekte) + (feld ? feld.max - feld.min : 0), 1);
 
+	/**
+	 * Die Bäume für sich (Volker, 07.11.2026: „Immer wenn man beim 3D-Modell
+	 * auf Baumdarstellung klickt, muss das nachgezeichnet werden“). Vorher
+	 * baute jede Änderung an den Bäumen die ganze Szene neu, Gebäude und
+	 * Bodenbild eingeschlossen. Jetzt nur die Kronen und Stämme.
+	 */
+	const baumTeile: THREE.Object3D[] = [];
+	function baeumeBauen() {
+		const r = z.rahmen;
+		if (!r || !szene) return;
+		const g = z.gelaendeJetzt, bezug = feld ? feld.min : 0;
+		for (const alt of baumTeile.splice(0)) {
+			szene.remove(alt);
+			const m = alt as THREE.Mesh;
+			m.geometry?.dispose?.();
+			(m.material as THREE.Material | undefined)?.dispose?.();
+		}
+		kronenNetze = [];
+		if (z.baeume && z.baeumeModell.length) {
+			const drin = z.baeumeModell.filter(
+				(b) => b.x >= r.x0 && b.x <= r.x1 && b.y >= r.y0 && b.y <= r.y1
+			);
+			if (drin.length) {
+				// Form aus dem Menü Bäume. Je Kronenform ein Satz Instanzen: kantig ein
+				// Ikosaeder, Kugel glatt; Nadelbäume Kegel.
+				// Je Herkunft und Laub oder Nadel ein Satz Instanzen, mit der Form der Herkunft.
+				const satz = $state.snapshot(z.baumLooks.raum);
+				const formen = drin.map((b) => baumForm(b, satz));
+				const gruppen = new Map<string, number[]>();
+				formen.forEach((f, i) => {
+					const k = `${herkunftVon(drin[i])}:${f.nadel ? 'nadel' : 'laub'}`;
+					(gruppen.get(k) ?? gruppen.set(k, []).get(k)!).push(i);
+				});
+				kronenNetze = [];
+				const kronen: THREE.InstancedMesh[] = [];
+				for (const [k, idx] of gruppen) {
+					const f0 = formen[idx[0]];
+					const h0 = herkunftVon(drin[idx[0]]);
+					const n = kronenForm(f0.art, f0.nadel);
+					const geo = new THREE.BufferGeometry();
+					geo.setAttribute('position', new THREE.Float32BufferAttribute(n.ecken.flat(), 3));
+					geo.setIndex(n.flaechen.flat().map((x) => x - 1));
+					geo.computeVertexNormals();
+					const kantig = f0.art === 'ikosaeder' || f0.nadel;
+					const netz = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ flatShading: kantig, roughness: 1, metalness: 0 }), idx.length);
+					const abw = idx.map((i) => {
+						const b = drin[i];
+						const u = Math.sin(b.x * 3.17 + b.y * 1.91) * 9473.1, v = Math.sin(b.x * 2.03 - b.y * 4.41) * 6151.7;
+						return { a: (u - Math.floor(u)) * 2 - 1, b: (v - Math.floor(v)) * 2 - 1, nadel: f0.nadel, h: h0 };
+					});
+					kronenNetze.push({ netz, abw });
+					kronen.push(netz);
+					netz.userData.idx = idx;
+				}
+				kronenFaerben();
+				// Stämme als sechseckige Säulen, wie `trunks` im OBJ; die Form beider aus `baumForm`.
+				const saeule = new THREE.CylinderGeometry(1, 1, 1, 6);
+				saeule.translate(0, 0.5, 0);
+				const staemme = new THREE.InstancedMesh(
+					saeule,
+					new THREE.MeshStandardMaterial({ color: STAMM[schema], flatShading: true, roughness: 1, metalness: 0 }),
+					drin.length
+				);
+				const m = new THREE.Matrix4(), ort = new THREE.Vector3(), groesse = new THREE.Vector3();
+				const dreh = new THREE.Quaternion(), hoch = new THREE.Vector3(0, 1, 0);
+				const imNetz = new Map<number, [THREE.InstancedMesh, number]>();
+				for (const netz of kronen) (netz.userData.idx as number[]).forEach((i, j) => imNetz.set(i, [netz, j]));
+				for (let i = 0; i < drin.length; i++) {
+					const b = drin[i], f = formen[i];
+					const fuss = g ? hoeheBei(g, b.x, b.y) - bezug : 0;
+					// Im Modell zeigt Z nach Süden: dieselbe Drehung wie im OBJ, also mit umgekehrtem Sinn.
+					dreh.setFromAxisAngle(hoch, -f.dreh);
+					const [netz, j] = imNetz.get(i)!;
+					netz.setMatrixAt(j, m.compose(ort.set(b.x - r.x0, fuss + f.mitte, -(b.y - r.y0)), dreh, groesse.set(f.rx, f.rz, f.rx)));
+					// Der Fuß einen halben Meter im Grund, damit er am Hang nicht in der Luft steht.
+					staemme.setMatrixAt(i, m.compose(ort.set(b.x - r.x0, fuss - 0.5, -(b.y - r.y0)), dreh, groesse.set(f.stammR, f.stammH + 0.5, f.stammR)));
+				}
+				for (const t of [...kronen, staemme]) {
+					t.instanceMatrix.needsUpdate = true;
+					t.castShadow = true; t.receiveShadow = true;
+					szene!.add(t); baumTeile.push(t);
+				}
+			}
+		}
+	}
+
 	function bauen() {
 		gebautFuer = rahmenSchluessel(z.rahmen);
 		const r = z.rahmen;
@@ -430,6 +551,33 @@
 				lg.setPositions(baukanten(liste, r, g ? (o) => tiefsteUnter(g, o.ringe) - bezug : undefined));
 				const kanten = new LineSegments2(lg, kantenStoff);
 				szene!.add(kanten); geloescht.push(kanten);
+				/**
+				 * Fußlinien am Hang (Volker, 06.11.2026, wie `foot_lines` für
+				 * Jonathans Make2D): Der Körper steht auf dem tiefsten Punkt unter
+				 * ihm und reicht bergseitig ins Gelände. Die Kante, wo Wand und
+				 * Boden sich treffen, ist dann keine Grundrisskante, und es fehlte
+				 * eine Linie. Hier liegt der Grundriss aufs Geländenetz gelegt, um
+				 * 20 cm angehoben, damit er nicht im Boden verschwindet.
+				 */
+				if (f) {
+					const pos: number[] = [];
+					for (const o of liste)
+						for (const ring of [...o.ringe, ...(o.loecher ?? [])]) {
+							if (ring.length < 3) continue;
+							const lokal = ring.map(([x, y]) => [x - r.x0, y - r.y0] as [number, number]);
+							const zug = aufsNetz(f, [...lokal, lokal[0]]);
+							for (let i = 1; i < zug.length; i++) {
+								const [ax, ay, az] = zug[i - 1], [bx, by, bz] = zug[i];
+								pos.push(ax, az - bezug + 0.2, -ay, bx, bz - bezug + 0.2, -by);
+							}
+						}
+					if (pos.length) {
+						const fg = new LineSegmentsGeometry();
+						fg.setPositions(pos);
+						const fuss = new LineSegments2(fg, kantenStoff);
+						szene!.add(fuss); geloescht.push(fuss);
+					}
+				}
 			}
 			return m;
 		};
@@ -460,42 +608,7 @@
 		 * Kante darf nicht verschatten, wo ein Haus an derselben Stelle es
 		 * nicht tut.
 		 */
-		if (z.baeume && z.baeumeStehend.length) {
-			const drin = z.baeumeStehend.filter(
-				(b) => b.x >= r.x0 && b.x <= r.x1 && b.y >= r.y0 && b.y <= r.y1
-			);
-			if (drin.length) {
-				const kugel = new THREE.InstancedMesh(
-					new THREE.IcosahedronGeometry(1, 0),
-					new THREE.MeshStandardMaterial({ color: KRONE[schema], flatShading: true, roughness: 1, metalness: 0 }),
-					drin.length
-				);
-				// Stämme als sechseckige Säulen, wie `trunks` im OBJ; die Form beider aus `baumForm`.
-				const saeule = new THREE.CylinderGeometry(1, 1, 1, 6);
-				saeule.translate(0, 0.5, 0);
-				const staemme = new THREE.InstancedMesh(
-					saeule,
-					new THREE.MeshStandardMaterial({ color: STAMM[schema], flatShading: true, roughness: 1, metalness: 0 }),
-					drin.length
-				);
-				const m = new THREE.Matrix4(), ort = new THREE.Vector3(), groesse = new THREE.Vector3();
-				const dreh = new THREE.Quaternion(), hoch = new THREE.Vector3(0, 1, 0);
-				for (let i = 0; i < drin.length; i++) {
-					const b = drin[i], f = baumForm(b);
-					const fuss = g ? hoeheBei(g, b.x, b.y) - bezug : 0;
-					// Im Modell zeigt Z nach Süden: dieselbe Drehung wie im OBJ, also mit umgekehrtem Sinn.
-					dreh.setFromAxisAngle(hoch, -f.dreh);
-					kugel.setMatrixAt(i, m.compose(ort.set(b.x - r.x0, fuss + f.mitte, -(b.y - r.y0)), dreh, groesse.set(f.rx, f.rz, f.rx)));
-					// Der Fuß einen halben Meter im Grund, damit er am Hang nicht in der Luft steht.
-					staemme.setMatrixAt(i, m.compose(ort.set(b.x - r.x0, fuss - 0.5, -(b.y - r.y0)), dreh, groesse.set(f.stammR, f.stammH + 0.5, f.stammR)));
-				}
-				for (const t of [kugel, staemme]) {
-					t.instanceMatrix.needsUpdate = true;
-					t.castShadow = true; t.receiveShadow = true;
-					szene.add(t); geloescht.push(t);
-				}
-			}
-		}
+		baeumeBauen();
 
 		const platte = f
 			? new THREE.PlaneGeometry(r.breiteM, r.hoeheM, f.nx - 1, f.ny - 1)
@@ -890,7 +1003,11 @@
 			// doppelt so gross, haengt aus der Buehne heraus und zeigt nur ihr
 			// linkes oberes Viertel. Auf einem groben Bildschirm faellt das nie
 			// auf, auf einem feinen sofort.
-			renderer.setSize(b, h);
+			// Beim Ausgeben ohne Stil: Die Leinwand rechnet in voller Größe, misst
+			// auf dem Schirm aber weiter wie die Ansicht. Mit Stil sprang sie für
+			// den Moment des Rechnens auf 4096 Punkte, und die Ansicht zoomte
+			// sichtbar hinein (Volker, 06.11.2026).
+			renderer.setSize(b, h, !ausgabe);
 			composer.setSize(b, h);
 			zuletzt = { b, h };
 		}
@@ -925,6 +1042,16 @@
 		const aus = ausschnitt(stand.b, stand.h);
 		const h = Math.round((b * aus.h) / aus.w);
 		const dichte = renderer.getPixelRatio();
+		// Ein Standbild der Ansicht über die Leinwand, solange sie in voller
+		// Größe rechnet; sonst sähe man das Ausgabebild kurz verzerrt.
+		const dom = renderer.domElement;
+		zeichne();
+		const deckel = document.createElement('canvas');
+		deckel.width = dom.width; deckel.height = dom.height;
+		deckel.getContext('2d')?.drawImage(dom, 0, 0);
+		deckel.style.cssText = `position:absolute;left:${dom.offsetLeft}px;top:${dom.offsetTop}px;width:${dom.clientWidth}px;height:${dom.clientHeight}px;pointer-events:none;z-index:1`;
+		dom.insertAdjacentElement('afterend', deckel);
+		try {
 		renderer.setPixelRatio(1);
 		zuletzt = { b: 0, h: 0 };
 		zeichne({ b, h, aus });
@@ -941,10 +1068,13 @@
 		const blob = await new Promise<Blob>((gut, schlecht) =>
 			quelle.toBlob((x) => (x ? gut(x) : schlecht(new Error('Kein Bild'))), typ, 1)
 		);
-		renderer.setPixelRatio(dichte);
-		zuletzt = { b: 0, h: 0 };
-		zeichne();
 		return blob;
+		} finally {
+			renderer.setPixelRatio(dichte);
+			zuletzt = { b: 0, h: 0 };
+			zeichne();
+			deckel.remove();
+		}
 	}
 	/** Höhe durch Breite des 3D-Bilds, für die Anzeige des Maßes. */
 	export const bildSeite = () => { const a = ausschnitt(breite, hoehe); return a.h / a.w; };
@@ -988,7 +1118,7 @@
 		};
 	});
 	$effect(() => {
-		z.objekte; z.sichtbar; z.bereinigt; z.plangebiet; z.kasten; z.baeume; z.baumpunkte; z.baumGestrichen; feld;
+		z.objekte; z.sichtbar; z.bereinigt; z.plangebiet; z.kasten; feld;
 		z.kanten.an; z.ausgabeBreite; z.rahmen; z.gelaendeJetzt; schema;
 		if (!renderer) return;
 		if (!untrack(() => aktiv)) { veraltet = true; return; }
@@ -996,6 +1126,15 @@
 		// etwa alle Kanteneinstellungen fürs Bodenbild —, und jeder Zug an
 		// einem Regler baute sonst die ganze Szene neu: 4,6 s je Schritt.
 		untrack(neuBauen);
+	});
+	/** Nur die Bäume neu, wenn sich nur an ihnen etwas ändert. */
+	$effect(() => {
+		z.baeume; z.baumpunkte; z.baumGestrichen; z.gepflanzt; z.gepflanztAn;
+		for (const h of HERKUENFTE) { const w = z.baumLooks.raum[h]; w.art; w.groesse; w.hoehe; w.streuung; }
+		z.waldListe; z.bestandAn; z.naturListe;
+		if (!renderer) return;
+		if (!untrack(() => aktiv)) { veraltet = true; return; }
+		untrack(() => { baeumeBauen(); anfordern(); });
 	});
 	// Zurück in die Ansicht: nachholen, was ruhend liegen blieb. Ein neuer
 	// Ort beginnt mit dem Ausgangsblick, wie früher beim Neuanlegen.

@@ -21,6 +21,10 @@
 
 	let leinwand = $state<HTMLCanvasElement | null>(null);
 	let rechnet = $state(false);
+	/** Das Modell ließ sich nicht rechnen; steht auf der Bühne, statt still leer zu bleiben. */
+	let fehlgeschlagen = $state(false);
+	/** Neu aufgebaut wird die Leinwand, wenn der Browser ihren Kontext nicht zurückgibt. */
+	let neuAufbau = $state(0);
 	let renderer: THREE.WebGLRenderer | null = null;
 	const szene = new THREE.Scene();
 	const kamera = new THREE.PerspectiveCamera(30, 1.5, 1, 20000);
@@ -98,7 +102,7 @@
 		await new Promise((f) => setTimeout(f, 30));
 		try {
 			const { druckModell } = await import('$lib/export/druck');
-			const { kacheln } = druckModell(objekte, r, z.gelaendeJetzt, $state.snapshot(z.druck));
+			const { kacheln } = druckModell(objekte, r, z.gelaendeJetzt, { ...$state.snapshot(z.druck), neubauEigen: z.druckNeubauFarbig });
 			gruppe.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) { m.geometry.dispose(); (m.material as THREE.Material).dispose(); } });
 			gruppe.clear();
 			const ein = z.druck.farben === 'ein';
@@ -120,6 +124,7 @@
 					teil.add(see);
 				}
 				if (k.haeuser.length) teil.add(netz(k.haeuser, FARBEN.haeuser));
+				if (k.neubau.length && z.neubauFarbe) teil.add(netz(k.neubau, new THREE.Color(z.neubauFarbe).getHex()));
 				// Zu kleine Teile rot, damit man sieht, was nicht sauber druckt.
 				if (k.kleine.length) { const kl = netz(k.kleine, FARBEN.klein); kl.userData.klein = true; kl.renderOrder = 1; teil.add(kl); }
 				if (k.strassen.length) teil.add(netz(k.strassen, ein ? FARBEN.haeuser : FARBEN.strassen));
@@ -150,6 +155,10 @@
 				abstand = 1;
 			}
 			zeichnen();
+			fehlgeschlagen = false;
+		} catch (e) {
+			console.error(e);
+			fehlgeschlagen = true;
 		} finally {
 			rechnet = false;
 		}
@@ -158,17 +167,39 @@
 	$effect(() => {
 		const el = leinwand;
 		if (!el) return;
-		renderer = new THREE.WebGLRenderer({ canvas: el, antialias: true, alpha: true });
-		renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+		try { renderer = new THREE.WebGLRenderer({ canvas: el, antialias: true, alpha: true }); }
+		catch (e) { console.error(e); fehlgeschlagen = true; return; }
+		const r3 = renderer;
+		r3.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
 		const beob = new ResizeObserver(() => zeichnen());
 		beob.observe(el);
-		return () => { beob.disconnect(); renderer?.dispose(); renderer = null; };
+		untrack(zeichnen);
+		// Verliert der Browser den Kontext, kommt er meist wieder; sonst eine neue Leinwand.
+		let warten: ReturnType<typeof setTimeout> | undefined;
+		const verloren = (e: Event) => { e.preventDefault(); warten = setTimeout(() => neuAufbau++, 1500); };
+		const zurueck = () => { clearTimeout(warten); zeichnen(); };
+		el.addEventListener('webglcontextlost', verloren);
+		el.addEventListener('webglcontextrestored', zurueck);
+		return () => {
+			clearTimeout(warten);
+			el.removeEventListener('webglcontextlost', verloren);
+			el.removeEventListener('webglcontextrestored', zurueck);
+			beob.disconnect();
+			r3.dispose();
+			/**
+			 * Den Kontext wirklich zurückgeben (Volker, 10.11.2026: Vorschau ging oft
+			 * erst nach Neuladen). `dispose` lässt ihn stehen; nach 16 offenen wirft
+			 * Chrome die ältesten weg, auch den des 3D-Modells.
+			 */
+			r3.forceContextLoss();
+			renderer = null;
+		};
 	});
 
 	let takt: ReturnType<typeof setTimeout> | undefined;
 	$effect(() => {
 		// Neu rechnen, wenn sich Einstellungen, Daten oder Gelände ändern.
-		JSON.stringify(z.druck); objekte; r; z.gelaendeJetzt;
+		JSON.stringify(z.druck); objekte; r; z.gelaendeJetzt; z.neubauFarbe;
 		clearTimeout(takt);
 		takt = setTimeout(() => untrack(rechnen), 250);
 		return () => clearTimeout(takt);
@@ -215,9 +246,9 @@
 
 <div class="vorschau">
 	<!-- Pfeiltasten drehen und kippen, +/− zoomen, damit die Vorschau auch ohne Maus geht. -->
-	<canvas bind:this={leinwand} tabindex="0" onpointerdown={runter} onwheel={rad} onkeydown={taste}
+	{#key neuAufbau}<canvas bind:this={leinwand} tabindex="0" onpointerdown={runter} onwheel={rad} onkeydown={taste}
 		oncontextmenu={(e) => e.preventDefault()}
-		aria-label={t().ausgeben.druckVorschau}></canvas>
+		aria-label={t().ausgeben.druckVorschau}></canvas>{/key}
 	{#each schilderAn ? schilder : [] as s (s.name)}
 		<span class="schild" style:left="{s.x}px" style:top="{s.y}px"><b>{s.name}</b> {s.mass}</span>
 	{/each}
@@ -230,9 +261,11 @@
 	</div>
 	<p class="wink">{t().raum.wink}</p>
 	{#if rechnet}<span class="mono">{t().ausgeben.druckRechnet}</span>{/if}
+	{#if fehlgeschlagen && !rechnet}<span class="mono fehlt">{t().ausgeben.druckVorschauFehler} <button type="button" onclick={rechnen}>{t().ausgeben.druckNochmal}</button></span>{/if}
 </div>
 
 <style>
+	.fehlt button { margin-left: 6px; font: inherit; padding: 2px 8px; border: 1px solid var(--linie); border-radius: var(--rund); background: var(--blatt); color: var(--tinte); cursor: pointer; }
 	.vorschau { position: absolute; inset: 0; z-index: 1; background: var(--grund, #eaeae9); }
 	canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
 	canvas:active { cursor: grabbing; }

@@ -2,6 +2,7 @@ import earcut from 'earcut';
 import { drin, amRahmen, gegenUhr, mitUhr, verschoben } from './schneiden';
 import { unterkante, type Objekt } from './osm';
 import { hatDach, dachKoerper } from './dach';
+import { festTeil, festKanten } from './fest';
 import type { Rahmen } from './geo/rahmen';
 
 /**
@@ -66,6 +67,7 @@ export function baukoerper(objekte: Objekt[], r: Rahmen, fuss: (o: Objekt) => nu
 
 	for (const o of objekte) {
 		if (!o.ringe.length) continue;
+		if (o.fest) { inAnsicht(festTeil(o.fest, fuss(o), r), r, punkte); continue; }
 		if (hatDach(o)) { inAnsicht(mitDach(o, r, fuss(o)).dreiecke, r, punkte); continue; }
 		const u = unterkante(o);
 		const h = fuss(o) + (o.hoeheM ?? 8);
@@ -168,6 +170,7 @@ export function baukanten(objekte: Objekt[], r: Rahmen, fuss: (o: Objekt) => num
 	};
 	for (const o of objekte) {
 		if (!o.ringe.length) continue;
+		if (o.fest) { inAnsicht(festKanten(o.fest, fuss(o), r), r, aus); continue; }
 		if (hatDach(o)) { inAnsicht(mitDach(o, r, fuss(o)).kanten, r, aus); continue; }
 		const h = fuss(o) + (o.hoeheM ?? 8);
 		const f = fuss(o) + unterkante(o);

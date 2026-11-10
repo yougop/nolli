@@ -34,7 +34,7 @@ export type Stift = {
 export const STIFTE: Stift[] = [
 	{ id: 'gruen',      name: 'Grün',           dxf: 'N_GRUEN',      mm: 0.13, hell: '#F0F0F0', dunkel: '#262626', fuellung: true,  dxfFarbe: 3 },
 	{ id: 'wasser',     name: 'Wasser',         dxf: 'N_WASSER',     mm: 0.13, hell: '#E6E6E6', dunkel: '#2E2E2E', fuellung: true,  dxfFarbe: 4 },
-	{ id: 'bahn',       name: 'Bahn',           dxf: 'N_BAHN',       mm: 0.35, hell: '#A6A6A6', dunkel: '#6E7276', fuellung: false, dxfFarbe: 8 },
+	{ id: 'bahn',       name: 'Bahn',           dxf: 'N_BAHN',       mm: 0.50, hell: '#A6A6A6', dunkel: '#6E7276', fuellung: false, dxfFarbe: 8 },
 	{ id: 'strasse',    name: 'Straßen',        dxf: 'N_STRASSE',    mm: 0.18, hell: '#CFCFCF', dunkel: '#4A4E52', fuellung: false, dxfFarbe: 9 },
 	/**
 	 * Einfriedungen (Volker, 07.11.2026): Zäune, Mauern, Hecken, Stadtmauern

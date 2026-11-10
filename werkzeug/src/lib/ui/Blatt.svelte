@@ -439,13 +439,13 @@
 		for (const { r, loch, k } of ringe)
 			r.forEach(([x, y], i) => {
 				const q = pixel(x, y), [nx, ny] = r[(i + 1) % r.length], n = pixel(nx, ny);
-				punkte.push({ st: { loch, r: k, i }, q });
+				if (!zi.o.fest) punkte.push({ st: { loch, r: k, i }, q });
 				const m: Punkt = [(q[0] + n[0]) / 2, (q[1] + n[1]) / 2];
-				mitten.push({ st: { loch, r: k, i }, q: m });
+				if (!zi.o.fest) mitten.push({ st: { loch, r: k, i }, q: m });
 				if (q[1] < oben) oben = q[1];
 				// Maße an den Außenkanten, nach außen versetzt, wo Platz ist
 				const lp = Math.hypot(n[0] - q[0], n[1] - q[1]);
-				if (!loch && lp > 46 && masse.length < 24) {
+				if (!zi.o.fest && !loch && lp > 46 && masse.length < 24) {
 					const ux = (n[0] - q[0]) / lp, uy = (n[1] - q[1]) / lp;
 					// Bildschirm-y zeigt nach unten: außen liegt hier rechts der Kante
 					// Abstand nach der Lage der Kante: Eine senkrechte Kante braucht die halbe Textbreite.

@@ -113,6 +113,7 @@ export const FELDER: Record<string, string> = {
 	kreuzt_rahmen: 'crosses_frame',
 	geschosse: 'storeys',
 	geschosshoehe_m: 'storey_height_m',
+	importiert_aus: 'imported_from',
 	denkmal: 'heritage',
 	adresse: 'address',
 	nutzung: 'osm_building',

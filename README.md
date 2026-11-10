@@ -54,8 +54,9 @@ Estimated and added trees go into the model, OBJ and 3DM; `data/trees.json` list
 
 **Project file.** **Save** writes everything — frame, data, clean-up, terrain, settings — into one `.nolli` file; **Open** reads it back without fetching. Saving again overwrites the open file; with Shift held it asks for a new name. (Chrome and Edge; other browsers download a copy.)
 
-![Step 1: frame, Prato (Tuscany)](docs/1-frame.png)
-![Step 2: figure-ground with the clean-up tools](docs/2-figure-ground.png)
+![Step 1: frame, HafenCity (Hamburg)](docs/1-frame.png)
+![Step 2: figure-ground with the clean-up tools, HafenCity](docs/2-figure-ground.png)
+![Step 3: a designed building with setback and courtyard, a green area and the live figures, HafenCity](docs/3-design.png)
 
 ## The 3D model
 
@@ -147,7 +148,7 @@ the X1 Carbon. Bambu Studio reports “invalid configuration, only geometry is l
 3MF it did not write itself — that is expected; printer settings belong in the
 slicer.
 
-![3D print preview of Rothenburg ob der Tauber at 1:2,000, 250 × 250 mm on its terrain, multicolour, with the print panel on the left](docs/print-preview.png)
+![3D print preview of Rothenburg ob der Tauber at 1:5,000, 200 × 200 mm on its terrain, multicolour, problem parts in red, with the print panel on the left](docs/print-preview.png)
 
 ## Gaps in OpenStreetMap: Overture
 
@@ -235,6 +236,13 @@ names lives in [`werkzeug/src/lib/vertrag.ts`](werkzeug/src/lib/vertrag.ts).
   as one body per storey band with `min_height_m`, all carrying the same
   `design_id`. Designed green areas lie on `N_NEW_GREEN`, are listed under
   `new_green` and counted as `new_green` in `areas_m2`.
+- **Designs can be imported** from DXF and 3DM in step 3. Closed outlines become normal
+  editable buildings. Meshes, breps, extrusions, polyface meshes and 3D faces keep their form:
+  they can be moved, rotated and deleted, carry `imported_from` in `data/bodies.json` and are
+  written as meshes to OBJ, 3DM and the print file. The place is recognised for Nolli exports
+  and georeferenced files (local grid or UTM); anything else lands in the middle of the sheet.
+  You can model in an exported file and bring it back: what Nolli wrote itself stays out,
+  recognised by its `body_id` and a height that still matches.
 - **Additions only.** New fields such as `min_height_m`, `replaced_by_parts`,
   `roof_shape` and `roof_height_m` are added without breaking older readers.
 

@@ -94,7 +94,8 @@ await melde('S3 Grün'); await bild('s3_gruen');
 await s.keyboard.press('Escape'); await warte(150); await bild('s3_gruen_abgewaehlt');
 await s.keyboard.press('t'); await warte(400);
 await zug([cx - 120, cy + 60], [cx + 40, cy + 66], [], 14);
-await zug([k.x + k.w * 0.22, k.y + k.h * 0.47], [k.x + k.w * 0.46, k.y + k.h * 0.45], [], 16);
+// Rechts neben der Arbeitsspalte beginnen, die den Druck sonst selbst fängt.
+await zug([k.x + 310, k.y + k.h * 0.47], [k.x + k.w * 0.46, k.y + k.h * 0.45], [], 16);
 await melde('S3 Bäume'); await bild('s3_baeume');
 console.log('gepflanzt:', await s.evaluate(() => document.querySelector('.arbeit .fkopf em')?.textContent.trim()));
 // Das Aussehen der Bäume: Fenster aus der Leiste, über der Arbeitsspalte
@@ -121,4 +122,18 @@ await bild('s4');
 await s.evaluate(() => [...document.querySelectorAll('.fuss button')].find(x => x.classList.contains('zweit'))?.click()); await warte(1200);
 console.log('S4 Druck:', await s.evaluate(() => { const f = document.querySelector('.druckfenster'); return f ? { ueberlauf: f.scrollHeight - f.clientHeight, schwarz: [...document.querySelectorAll('.fuss .haupt, .druckfuss .haupt')].filter(x => !x.classList.contains('zweit') || x.classList.contains('an')).map(x => x.textContent.trim().slice(0, 18)) } : null; }));
 await bild('s4_druck');
+// Ein neuer Schnitt des Rahmens leert den Verlauf: Er kennt den Vorrat nicht.
+await s.evaluate(() => document.querySelector('.druckfenster .zu')?.click());
+const schritt = (t) => s.evaluate((t) => [...document.querySelectorAll('button')].find(x => x.textContent.includes(t) && x.querySelector('.ziffer'))?.click(), t);
+const zurueckAus = () => s.evaluate(() => [...document.querySelectorAll('.palette button')].find(x => x.textContent.includes('Rückgängig'))?.disabled ?? 'kein Knopf');
+await schritt('Entwerfen'); await warte(600); const vorher = await zurueckAus();
+await schritt('Rahmen'); await warte(600);
+// Kleiner ziehen braucht keinen Abruf: eine Ecke des Rahmens zur Mitte.
+const [gx, gy, mx, my] = await s.evaluate(() => { const g = document.querySelector('.griff').getBoundingClientRect(), f = document.querySelector('.griff-flaeche').getBoundingClientRect(); return [g.x + g.width / 2, g.y + g.height / 2, f.x + f.width / 2, f.y + f.height / 2]; });
+await zug([gx, gy], [gx + (mx - gx) * 0.2, gy + (my - gy) * 0.2]);
+await warte(800); await schritt('Entwerfen');
+// Der Schritt baut den Plan neu auf; bis zu acht Sekunden auf die Palette warten.
+for (let i = 0; i < 40 && await zurueckAus() === 'kein Knopf'; i++) await warte(200);
+await bild('nach_rahmen');
+console.log('Rückgängig gesperrt, vor / nach neuem Rahmen:', vorher, '/', await zurueckAus());
 await b.close();

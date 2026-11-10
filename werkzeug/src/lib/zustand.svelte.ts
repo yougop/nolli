@@ -80,12 +80,12 @@ const kastenAus = (s: string | null): Kasten | null => {
  * Licht von kühl (−1) über neutral (0) bis warm (1).
  */
 export const SONNE_VORGABE: { azimut: number; hoehe: number; an: boolean; helligkeit: number; waerme: number } =
-	{ azimut: 315, hoehe: 49, an: true, helligkeit: 1, waerme: 0 };
+	{ azimut: 315, hoehe: 49, an: true, helligkeit: 1.5, waerme: 0 };
 
 /** Was eine Darstellung sich merkt: Karte, Gebäudekanten, Bäume. */
 type Look = { karte: Anpassung; kanten: typeof KANTEN_VORGABE; sonne: typeof SONNE_VORGABE };
 export const KANTEN_VORGABE: { an: boolean; dicke: number; deckkraft: number; karteDicke: number; karteDeckkraft: number; hell: boolean | null; flaeche: number | null } =
-	{ an: true, dicke: 0.75, deckkraft: 0.75, karteDicke: 1, karteDeckkraft: 1, hell: null, flaeche: null };
+	{ an: true, dicke: 0.75, deckkraft: 0.75, karteDicke: 1.5, karteDeckkraft: 1, hell: null, flaeche: null };
 
 /** Vor der Kennung eines Baums in der Auswahl, damit sie keinem Objekt gleicht. */
 export const BAUM_ID = 'baum:';
@@ -420,7 +420,7 @@ class Zustand {
 	 * es an, gilt das Aussehen von „Bestand" für Wald, Naturflächen und
 	 * Ergänzt mit. Je Satz, damit die Pläne das 3D-Modell nicht mitziehen.
 	 */
-	baumGleich = $state({ plan: false, raum: false });
+	baumGleich = $state({ plan: true, raum: true });
 	baumGleichSetzen(satz: 'plan' | 'raum', an: boolean) {
 		this.baumGleich[satz] = an;
 		if (an) this.baumAngleichen(satz);
@@ -501,6 +501,7 @@ class Zustand {
 		this.kanten = { ...KANTEN_VORGABE };
 		this.sonne = { ...SONNE_VORGABE };
 		this.baumLooks = { plan: satzKopie(SATZ_PLAN), raum: satzKopie(SATZ_RAUM) };
+		this.baumGleich = { plan: true, raum: true };
 	}
 	/**
 	 * Stände von vor dem 07.11.2026 führten Zäune und Mauern nur im Rest.
@@ -777,7 +778,9 @@ class Zustand {
 		return ({ bauen: 'gebaeude', gruen: 'gruen', aussparen: 'hof', aufsatz: 'aufsatz' } as const)[this.entwurfModus];
 	}
 	/** Gibt es ein Gebäude, an dem Hof und Aufstocken ansetzen können? */
-	get hatGebaeude() { return this.entwurf.some((o) => !o.typ); }
+	/** Mehrfarbig bekommt der Entwurf einen eigenen Körper, wenn er eine eigene Farbe hat. */
+	get druckNeubauFarbig() { return !!this.neubauFarbe && this.entwurf.some((o) => !o.typ); }
+	get hatGebaeude() { return this.entwurf.some((o) => !o.typ && !o.fest); }
 	absichtSetzen(a: Absicht, fest = false) {
 		if ((a === 'hof' || a === 'aufsatz') && !this.hatGebaeude) return;
 		this.entwurfLinie = [];
@@ -824,7 +827,7 @@ class Zustand {
 	/** Der Schnitt durch das gewählte Gebäude, mit Nachbarn und Umgebungshöhe (`schnittDurch`). */
 	schnitt = $derived.by(() => {
 		const zi = this.ziel;
-		if (!zi || zi.o.typ) return null;
+		if (!zi || zi.o.typ || zi.o.fest) return null;
 		return schnittDurch(zi.o, zi.form, this.objekte.filter((o) => this.sichtbar.has(sichtEbene(o))), this.schnittLaengs);
 	});
 	/** Die Fläche eines Gebäudes oder einer seiner Formen ersetzen, ohne zu merken (für Züge). */
@@ -907,7 +910,14 @@ class Zustand {
 	neubauDrehen(grad: number) {
 		const fw = this.formWahl;
 		if (fw) { this.formAendern(fw.id, fw.form, (f) => gedreht(f, grad)); return; }
-		this.neubauAendern((o) => neubauGedreht(o, grad));
+		// Mehrere drehen als Gruppe um ihre gemeinsame Mitte.
+		const liste = this.gewaehlteNeubauten;
+		let um: Punkt | undefined;
+		if (liste.length > 1) {
+			const h = liste.map((o) => huelle(o));
+			um = [(Math.min(...h.map((b) => b[0])) + Math.max(...h.map((b) => b[2]))) / 2, (Math.min(...h.map((b) => b[1])) + Math.max(...h.map((b) => b[3]))) / 2];
+		}
+		this.neubauAendern((o) => neubauGedreht(o, grad, um));
 	}
 	/** Verschieben: die gewählte Form allein, sonst die Gebäude samt ihren Formen. */
 	neubauVerschieben(dx: number, dy: number, merken = true) {
@@ -958,6 +968,42 @@ class Zustand {
 	/** Alles Entworfene weg: Gebäude, Grünflächen und gepflanzte Bäume. Strg+Z holt es zurück. */
 	/** Anderer Ort, anderes Projekt: Die Neubauten des alten bleiben nicht stehen. */
 	private entwurfVergessen() { this.entwurf = []; this.entwurfAuswahl = new Set(); this.formWahl = null; this.entwurfLinie = []; this.naechsterNeubau = 1; this.naechsteForm = 1; }
+	/** Wie der letzte Import gelesen wurde; steht in der Arbeitsspalte, bis man es wegklickt. */
+	importInfo = $state.raw<{ text: string[] } | null>(null);
+	importLaeuft = $state(false);
+	/** Einen Entwurf aus DXF oder 3DM holen. Alles Neue ist danach gewählt, zum Schieben und Drehen. */
+	async importieren(datei: File) {
+		const k = this._kasten;
+		if (!k || this.importLaeuft) return;
+		this.importLaeuft = true; this.fehler = null; this.importInfo = null;
+		await atmen();
+		try {
+			const { lesenDxf, lesen3dm, einordnen, neubauAus } = await import('./import');
+			const g = /\.3dm$/i.test(datei.name) ? await lesen3dm(new Uint8Array(await datei.arrayBuffer())) : lesenDxf(await datei.text());
+			const dreiecke = g.koerper.reduce((s, r) => s + (r.dreiecke?.length ?? 0) / 9, 0);
+			if (dreiecke > 400000) throw new Error(t().entwerfen.importZuViel(Math.round(dreiecke)));
+			const e = einordnen(g, k);
+			const neu: Neubau[] = [];
+			let huellen = 0;
+			for (const r of e.koerper) {
+				const x = neubauAus(`neu${this.naechsterNeubau}`, r, $state.snapshot(this.entwurfWahl), datei.name);
+				if (!x) continue;
+				this.naechsterNeubau++; neu.push(x.o); if (x.huelle) huellen++;
+				if (neu.length % 20 === 0) await atmen();
+			}
+			if (!neu.length) throw new Error(g.aufNolli ? t().entwerfen.importNurNolli : t().entwerfen.importLeer);
+			this.merken();
+			this.entwurf = [...this.entwurf, ...neu];
+			this.gebaeudeWaehlen(new Set(neu.map((o) => o.id)));
+			this.absichtSetzen('waehlen');
+			const w = t().entwerfen;
+			this.importInfo = { text: [w.importGelesen(neu.length, datei.name), w.importLage[e.lage],
+				...(e.millimeterAngenommen ? [w.importMm] : []), ...(g.ohneNetz ? [w.importOhneNetz(g.ohneNetz)] : []),
+				...(huellen ? [w.importHuelle(huellen)] : []), ...(g.uebersprungen ? [w.importSkip(g.uebersprungen)] : [])] };
+		} catch (x) {
+			this.fehler = x instanceof Error && x.message !== '3dm' ? x.message : t().entwerfen.importFehler;
+		} finally { this.importLaeuft = false; }
+	}
 	entwurfLeeren() {
 		if (!this.entwurf.length && !this.pflanzGebiete.length) return;
 		this.entwurfMerken();
@@ -1009,7 +1055,7 @@ class Zustand {
 		const form = { ringe: [ring.map(([x, y]) => [x, y] as Punkt)] } as Gestalt;
 		const fm = alsMulti(form);
 		const ziele = this.entwurf.filter((o) => {
-			if (o.typ) return false;
+			if (o.typ || o.fest) return false;
 			if (this.entwurfAuswahl.size && !this.entwurfAuswahl.has(o.id)) return false;
 			const mps = teileVon(o).map(alsMulti).filter((m) => m.length);
 			return mps.some((m) => multiFlaeche(polygonClipping.intersection(m, fm)) > 0.5);
@@ -1042,7 +1088,7 @@ class Zustand {
 		const form = { ringe: [ring.map(([x, y]) => [x, y] as Punkt)] } as Gestalt;
 		const fm = alsMulti(form);
 		const ueber = (g: Gestalt) => { const m = alsMulti(g); return m.length ? multiFlaeche(polygonClipping.intersection(m, fm)) : 0; };
-		const o = this.entwurf.filter((x) => !x.typ && (!this.entwurfAuswahl.size || this.entwurfAuswahl.has(x.id)))
+		const o = this.entwurf.filter((x) => !x.typ && !x.fest && (!this.entwurfAuswahl.size || this.entwurfAuswahl.has(x.id)))
 			.map((x) => ({ x, f: teileVon(x).reduce((sum, t) => sum + ueber(t), 0) })).filter((k) => k.f > 0.5).sort((a, b) => b.f - a.f)[0]?.x;
 		if (!o) return false;
 		// Worauf die Fläche steht: der Grundkörper und jede Aufstockung, die sie berührt.
@@ -1072,7 +1118,7 @@ class Zustand {
 	 */
 	staffelgeschoss(d = 2.5): boolean {
 		const o = this.ziel?.o;
-		if (!o || o.typ) return false;
+		if (!o || o.typ || o.fest) return false;
 		const massen = (o.formen ?? []).filter((f) => f.art === 'masse' && !f.aus);
 		const oberste = massen.sort((a, b) => (b.bis ?? 0) - (a.bis ?? 0))[0];
 		const basis: Gestalt = oberste && (oberste.bis ?? 0) > o.geschosse ? oberste : o;
@@ -1797,7 +1843,7 @@ class Zustand {
 		return JSON.stringify([this._kasten, this.verhaeltnis.name, this.ausgabeBreite, this.darstellung, this.beschriftung,
 			this.bereinigt, this.baeume, this.gelaende, [...this.sichtbar].sort(), this.plangebiet, this.alleLooks(),
 			this.sonne, this.baumLooks, this.baumGleich, this.bestandAn, this.waldAn, this.waldAbstand, this.naturAn, this.naturWahl, this.druck, this.bild3d, this.datenStand, this.objekte.length, this.vorrat.length,
-			gestrichen, erhalt, beschnitten, overture, this.places.length, this.gepflanzt.length, this.gepflanztAn, this.entwurf, this.neubauFarbe]);
+			gestrichen, erhalt, beschnitten, overture, this.places.length, this.gepflanzt.length, this.gepflanztAn, this.entwurf.map((o) => (o.fest ? { ...o, fest: { ...o.fest, p: o.fest.p.length } } : o)), this.neubauFarbe]);
 	}
 	get projektGeaendert() { return !!this.projektName && this.abdruck() !== this.projektAbdruck; }
 	/** Nach Speichern unter diesem Namen. */

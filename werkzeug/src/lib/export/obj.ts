@@ -5,6 +5,7 @@ import { kronenKoerper } from './baeume';
 import type { Baum } from '$lib/analysedaten';
 import { unterkante, umrisseMitTeilen, istBau, type Objekt } from '../osm';
 import { hatDach, dachKoerper } from '../dach';
+import { festTeil } from '../fest';
 import type { Rahmen } from '../geo/rahmen';
 import { drin, amRahmen, gegenUhr, mitUhr, verschoben } from '../schneiden';
 import { MATERIALIEN, materialFuer, kd } from '../material';
@@ -93,15 +94,16 @@ export function alsObj(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | null =
 		 * eigener Normale, damit Rhino die Dachflächen nicht verschmiert.
 		 * Innen und vor der Kante wie bei den flachen Körpern getrennt.
 		 */
-		if (hatDach(o)) {
+		if (hatDach(o) || o.fest) {
 			const boden = gelaende ? bodenUnter(gelaende, o) : 0;
 			const ganz = o.ringe.length === 1 && !nachAussen;
 			const marke = o.hoeheGeschaetzt ? '_hoehe_geschaetzt' : '';
 			const stuecke = teil === 'innen'
 				? zerlegt.filter((t) => t.innen.length >= 3).map((t) => t.innen)
 				: zerlegt.flatMap((t) => t.aussen).filter((a) => a.length >= 3);
-			if (!stuecke.length) continue;
-			const { dreiecke } = dachKoerper(o, stuecke, boden, unterkante(o), ganz);
+			if (!o.fest && !stuecke.length) continue;
+			const dreiecke = o.fest ? festTeil(o.fest, boden, r, teil === 'innen') : dachKoerper(o, stuecke, boden, unterkante(o), ganz).dreiecke;
+			if (!dreiecke.length) continue;
 			zeilen.push(`o ${objName(`${o.ebene}_${o.id}${marke}${teil === 'aussen' ? '_ausserhalb' : ''}`)}`);
 			if (material) zeilen.push(`usemtl ${materialFuer(o)}`);
 			for (let k = 0; k < dreiecke.length; k += 9) {

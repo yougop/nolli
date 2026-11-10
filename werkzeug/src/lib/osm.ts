@@ -71,6 +71,8 @@ export type Objekt = {
 	entwurf?: string;
 	/** Alle Grundrisse eines Neubaus: Daran hängt der gemeinsame Boden seiner Teile. */
 	fussRinge?: [number, number][][];
+	/** Importiert (`import.ts`): die feste 3D-Form aus der Datei, statt Umriss mal Höhe. */
+	fest?: import('./fest').Fest;
 	quelleGeometrie?: string;
 	/**
 	 * Denkmalstatus, wie OpenStreetMap ihn fuehrt.

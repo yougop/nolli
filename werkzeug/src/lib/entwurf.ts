@@ -120,6 +120,8 @@ export function neubau(id: string, ring: Punkt[], w: Entwurfswahl, rechteck?: Re
 
 export function mitWahl(o: Neubau, w: Partial<Entwurfswahl>): Neubau {
 	if (o.typ) return o;
+	// Die Höhe eines importierten Körpers steht in der Datei; die Geschosse zählen nur für die BGF.
+	if (o.fest) return { ...o, geschosse: w.geschosse ?? o.geschosse, klasse: w.klasse ?? o.klasse };
 	const geschosse = w.geschosse ?? o.geschosse, gh = w.geschossHoeheM ?? o.geschossHoeheM;
 	// Was aufgestockt ist, steht auf dem Gebäude und geht mit, wenn es wächst oder schrumpft.
 	const d = geschosse - o.geschosse;
@@ -165,11 +167,16 @@ export function gedreht<T extends Gestalt>(o: T, grad: number, um: Punkt = drehM
 /** Ein Gebäude samt seinen Formen verschieben. */
 export function neubauVerschoben(o: Neubau, dx: number, dy: number): Neubau {
 	const v = verschoben(o, dx, dy);
+	if (o.fest) return { ...v, fest: { ...o.fest, mitte: [o.fest.mitte[0] + dx, o.fest.mitte[1] + dy] } };
 	return o.formen?.length ? { ...v, formen: o.formen.map((f) => verschoben(f, dx, dy)) } : v;
 }
 /** Ein Gebäude samt seinen Formen um seine Mitte drehen. */
-export function neubauGedreht(o: Neubau, grad: number): Neubau {
-	const m = drehMitte(o), d = gedreht(o, grad, m);
+export function neubauGedreht(o: Neubau, grad: number, m: Punkt = drehMitte(o)): Neubau {
+	const d = gedreht(o, grad, m);
+	if (o.fest) {
+		const c = Math.cos(rad(grad)), s = Math.sin(rad(grad)), dx = o.fest.mitte[0] - m[0], dy = o.fest.mitte[1] - m[1];
+		return { ...d, fest: { ...o.fest, grad: o.fest.grad + grad, mitte: [m[0] + dx * c - dy * s, m[1] + dx * s + dy * c] } };
+	}
 	return o.formen?.length ? { ...d, formen: o.formen.map((f) => gedreht(f, grad, m)) } : d;
 }
 

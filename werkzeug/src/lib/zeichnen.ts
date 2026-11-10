@@ -4,6 +4,7 @@ import { STIFTE, stift, type StiftId } from './stifte';
 import { darstellung, type Darstellung } from './darstellung';
 import { baumForm, herkunftVon, type Baumwahl, type Baumsatz } from './export/baeume';
 import type { Baum } from './analysedaten';
+import { festAufsicht } from './fest';
 
 export type Zeichenwunsch = {
 	darstellung: string;
@@ -605,6 +606,14 @@ export function zeichneBlatt(
 		ctx.lineWidth = w.federKanten ? r.strich((0.18 * w.kanten.dicke) / 0.75) : w.kanten.dicke * Math.max(1, W / 1200);
 		ctx.beginPath();
 		for (const o of bauten) if (!(o.ebene === 'neubau' && o.unterM && d.bauweise !== 'weissmodell')) ringeZeichnen(ctx, o, r, 0, 0);
+		// Importierte Körper zeigen auch ihre Innenkanten, mit derselben Feder wie der Umriss.
+		for (const o of bauten) if (o.fest) {
+			const q = festAufsicht(o.fest);
+			for (let i = 0; i < q.length; i += 4) {
+				const [ax, ay] = r.utmZuPixel(q[i], q[i + 1]), [bx, by] = r.utmZuPixel(q[i + 2], q[i + 3]);
+				ctx.moveTo(ax, ay); ctx.lineTo(bx, by);
+			}
+		}
 		ctx.stroke();
 		ctx.restore();
 	}

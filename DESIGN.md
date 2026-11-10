@@ -181,7 +181,7 @@ Die Zeichnung hat ihre eigene Tabelle: jede Ebene hat einen Grauwert, eine Stric
 | Wasser | `#E6E6E6` | 0.13 | `N_WASSER` |
 | Straßen | `#CFCFCF` | 0.18 | `N_STRASSE` |
 | Gestrichen | `#C3C3C3` | 0.18 | `N_GESTRICHEN` |
-| Bahn | `#A6A6A6` | 0.35 | `N_BAHN` |
+| Bahn | `#A6A6A6` | 0.50 | `N_BAHN` |
 | Gebäude | `#111111` | 0.25 | `N_GEBAEUDE` |
 | Erhalt | `#111111` | 0.50 | `N_ERHALT` |
 | Plangebiet | `#8CA82F` | 0.70 | `N_PLANGEBIET` |

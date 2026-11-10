@@ -3,6 +3,7 @@ import polygonClipping, { type MultiPolygon } from 'polygon-clipping';
 import { zipSync, strToU8 } from 'fflate';
 import { unterkante, umrisseMitTeilen, istBau, type Objekt } from '../osm';
 import { hatDach, dachKoerper, rechteck } from '../dach';
+import { festImKasten } from '../fest';
 import { amRahmen, drin, gegenUhr, mitUhr } from '../schneiden';
 import { type Gelaende, bodenUnter, feldImRahmen, netzHoehe, type Feld } from '../geo/gelaende';
 import type { Rahmen } from '../geo/rahmen';
@@ -43,6 +44,8 @@ export type Druckwahl = {
 	schwebend: 'durchziehen' | 'weglassen' | 'belassen';
 	/** `ein`: ein Objekt; `mehr`: Platte, Häuser und Straßen getrennt, für mehrere Farben. */
 	farben: 'ein' | 'mehr';
+	/** Mehrfarbig: Neubauten als eigener Körper, wenn der Entwurf eine eigene Farbe hat (Volker, 10.11.2026). */
+	neubauEigen?: boolean;
 	/** Straßen als flache Streifen über der Platte, damit man sie auch einfarbig erkennt. */
 	strassen: boolean;
 	/** Grünflächen als eigener Körper in der Platte, 0,2 mm erhaben. */
@@ -368,7 +371,7 @@ export function druckModell(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | n
 	const nb = nachbarn(objekte, ersetzt, weg, w);
 	const { g, kb, kh } = m;
 	/** `kleine`: zu kleine Teile, die behalten werden; gehören beim Schreiben zu den Häusern. */
-	const kacheln: { name: string; i: number; j: number; bMm: number; hMm: number; ox: number; oy: number; platte: Netz; wasser: Netz; see: Netz; haeuser: Netz; kleine: Netz; strassen: Netz; gruen: Netz }[] = [];
+	const kacheln: { name: string; i: number; j: number; bMm: number; hMm: number; ox: number; oy: number; platte: Netz; wasser: Netz; see: Netz; haeuser: Netz; neubau: Netz; kleine: Netz; strassen: Netz; gruen: Netz }[] = [];
 
 	for (let j = 0; j < m.ny; j++)
 		for (let i = 0; i < m.nx; i++) {
@@ -379,7 +382,7 @@ export function druckModell(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | n
 			const tief = see ? Math.min(WASSER_MM, Math.max(0, w.sockelMm - 0.8)) : 0;
 			const flaeche = rs.hoehe;
 			const { netz: platte, wasser } = grundplatte(rs, m.k, see && tief > 0 ? see : null, tief, x0, y0, x1, y1);
-			const haeuser: Netz = [], kleine: Netz = [];
+			const haeuser: Netz = [], neubau: Netz = [], kleine: Netz = [];
 			for (const roh of objekte) {
 				if (!istBau(roh)) continue;
 				if (roh.zustand === 'gestrichen' || !roh.ringe.length || ersetzt.has(roh.id) || weg.has(roh.id)) continue;
@@ -394,7 +397,7 @@ export function druckModell(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | n
 				let klein = zuKlein(teile, ganz, o.hoeheM ?? 8, m.k);
 				if (klein && gestuetzt(klein, teile, o, nb, m.k)) klein = null;
 				if (klein && w.klein === 'weglassen') continue;
-				const ziel = klein ? kleine : haeuser;
+				const ziel = klein ? kleine : w.farben === 'mehr' && w.neubauEigen && o.ebene === 'neubau' ? neubau : haeuser;
 				const boden = gelaende ? bodenUnter(gelaende, o) : 0;
 				// Fuß in mm, versenkt; darüber zählen die Meter des Hauses unverzerrt.
 				const fussMm = plattenZ(boden) - VERSENKT_MM;
@@ -420,7 +423,9 @@ export function druckModell(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | n
 					}
 				};
 				const hMm = Math.max(VERSENKT_MM + 0.4, (o.hoeheM ?? 8) * m.k + VERSENKT_MM);
-				if (hatDach(o)) {
+				if (o.fest) {
+					hinein(festImKasten(o.fest, 0, { x0: cx0, y0: cy0, x1: cx1, y1: cy1 }));
+				} else if (hatDach(o)) {
 					hinein(dachKoerper({ ...o, hoeheM: hMm / m.k }, teile, 0, 0, ganz, 20, true).dreiecke);
 				} else {
 					const loecher = (o.loecher ?? []).map((x) => sauber(amRahmen(x, cx0, cy0, cx1, cy1).innen)).filter((x) => x.length >= 3);
@@ -441,7 +446,7 @@ export function druckModell(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | n
 				aufPlatte(seeKoerper, dreieckeAus(innen), rs, x0, y0, m.k, -Math.min(WASSER_UNTER_LAND_MM, tief / 2), tief + 0.6);
 			}
 			const gruen: Netz = w.gruen ? gruenFlaechen(objekte, x0, y0, x1, y1, m.k, rs, see && tief > 0 ? see : null) : [];
-			kacheln.push({ name: m.nx * m.ny > 1 ? `kachel_${String.fromCharCode(65 + j)}${i + 1}` : 'modell', i, j, bMm: (x1 - x0) * m.k, hMm: (y1 - y0) * m.k, ox: (x0 - g.x0) * m.k, oy: (y0 - g.y0) * m.k, platte, wasser, see: seeKoerper, haeuser, kleine, strassen, gruen });
+			kacheln.push({ name: m.nx * m.ny > 1 ? `kachel_${String.fromCharCode(65 + j)}${i + 1}` : 'modell', i, j, bMm: (x1 - x0) * m.k, hMm: (y1 - y0) * m.k, ox: (x0 - g.x0) * m.k, oy: (y0 - g.y0) * m.k, platte, wasser, see: seeKoerper, haeuser, neubau, kleine, strassen, gruen });
 		}
 	return { kacheln, masse: m };
 }

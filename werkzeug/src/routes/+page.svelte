@@ -817,6 +817,7 @@
 				geschosse: o.geschosse ?? null,
 				// Neubau: die Geschosshöhe, aus der die Höhe gerechnet ist.
 				...(o.ebene === 'neubau' ? { geschosshoehe_m: (o as Neubau).geschossHoeheM, entwurf_id: o.entwurf ?? o.id } : {}),
+				...(o.fest ? { importiert_aus: o.fest.datei } : {}),
 				denkmal: o.denkmal ?? null,
 				adresse: o.adresse ?? null,
 				nutzung: o.herkunft ? null : (o.nutzung ?? null),
@@ -1176,12 +1177,19 @@
 	/** Maße des Druckmodells für die Anzeige, ohne es zu bauen. */
 	const druckJetzt = $derived(r ? druckMasse(bestand, r, z.druck) : null);
 	let druckOffen = $state(false);
+	let fensterH = $state(typeof window !== 'undefined' ? window.innerHeight : 900);
 	/**
 	 * Die Bänder des Druckfensters klappen (Kritik, 09.11.2026): Das Fenster war
 	 * 1.416 px lang. Auf einem flachen Schirm ist nur „Größe" offen.
 	 */
 	const hoch = typeof window !== 'undefined' && window.innerHeight >= 1000;
 	let druckBand = $state({ groesse: true, farben: hoch, platte: hoch });
+	/** Auf einem flachen Schirm bleibt nur ein Band offen; das Fenster lief sonst weit über. */
+	function bandUm(k: keyof typeof druckBand) {
+		const auf = !druckBand[k];
+		if (auf && window.innerHeight < 1000) druckBand = { groesse: false, farben: false, platte: false };
+		druckBand[k] = auf;
+	}
 	/** Ab Werk unberührt? Dann bekommt das Fenster beim Öffnen den Vorschlag statt des ganzen Rahmens. */
 	const druckUnberuehrt = () => {
 		const d = z.druck, v = DRUCK_VORGABE, a = d.ausschnitt;
@@ -1210,7 +1218,7 @@
 	 */
 	async function druckDatei(rr: Rahmen, art: '3mf' | 'stl', basis: string) {
 		const { druckModell, als3mf, als3mfPlatten, alsStl } = await import('$lib/export/druck');
-		const { kacheln } = druckModell(bestand, rr, z.gelaendeJetzt, $state.snapshot(z.druck));
+		const { kacheln } = druckModell(bestand, rr, z.gelaendeJetzt, { ...$state.snapshot(z.druck), neubauEigen: z.druckNeubauFarbig });
 		const mehr = z.druck.farben === 'mehr';
 		/**
 		 * Einfarbig ein Objekt. Mehrfarbig im 3MF bis zu fünf Objekte, je eines
@@ -1220,7 +1228,7 @@
 		 * man im Slicer als Teile eines Modells lädt.
 		 */
 		const teileVon = (k: (typeof kacheln)[number]) =>
-			[{ name: 'base', netz: k.platte }, { name: 'buildings', netz: [...k.haeuser, ...k.kleine] }, { name: 'streets', netz: k.strassen }, { name: 'green', netz: k.gruen }, { name: 'water', netz: k.see }]
+			[{ name: 'base', netz: k.platte }, { name: 'buildings', netz: [...k.haeuser, ...k.kleine] }, { name: 'new_buildings', netz: k.neubau }, { name: 'streets', netz: k.strassen }, { name: 'green', netz: k.gruen }, { name: 'water', netz: k.see }]
 				.filter((x) => x.netz.length);
 		const dateien = (k: (typeof kacheln)[number], vor: string): Record<string, Uint8Array> => {
 			const teile = teileVon(k);
@@ -1252,6 +1260,7 @@
 
 	// ---- Projektdatei ------------------------------------------------------
 	let projektWahl = $state<HTMLInputElement | null>(null);
+	let importWahl = $state<HTMLInputElement | null>(null);
 	// Offen, wenn das Fenster hoch genug ist; sonst fand man SVG, DXF und Modell nicht (Impeccable, 07.11.2026).
 	let weitereOffen = $state(typeof window !== 'undefined' && window.innerHeight >= 860);
 	let vertragOffen = $state(false);
@@ -1392,6 +1401,7 @@
 		{:else if id === 'hof'}<path fill-rule="evenodd" d="M3.5 3.5h13v13h-13zM7.5 7.5v5h5v-5z" fill="currentColor" />
 		{:else if id === 'staffel'}<path d="M3 16.5h14M5 16.5V9h5V5.5h5v11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
 		{:else if id === 'aufsatz'}<path d="M3.5 16.5v-5h13v5zM9 11.5v-8h5v8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
+		{:else if id === 'import'}<path d="M10 3.5v9M6.5 9l3.5 3.5L13.5 9M4 16.5h12" fill="none" stroke="currentColor" stroke-width="1.6" />
 		{:else if id === 'baeume'}<circle cx="10" cy="7.5" r="4.8" fill="currentColor" /><path d="M10 11v6M6.5 17h7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
 		{:else if id === 'rueck'}<path d="M7.5 5l-4 4 4 4M4 9h7.5a4 4 0 0 1 0 8H9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />{/if}
 	</svg>
@@ -1512,7 +1522,7 @@
 	{@const sn = z.schnitt}
 	{#if sn && neuBau}
 		{@const W = 244}
-		{@const HH = 52}
+		{@const HH = fensterH < 760 ? 36 : 52}
 		{@const sx = W / (sn.t1 - sn.t0)}
 		{@const sy = Math.min(HH / sn.hoch, sx * 4)}
 		{@const basis = 14 + HH}
@@ -1693,6 +1703,24 @@
 			</div>
 			{#if !raeumlich}<p class="tasten">{t().werk.tastenAuswahl}</p>{/if}
 		</div>
+	{:else if neuGewaehlt.length && neuGewaehlt.every((o) => o.fest)}
+		<!-- Importiert: Die Form steht in der Datei. Schieben, drehen, löschen; die Geschosse zählen nur für die BGF. -->
+		<div class="fenster entwurf" role="region" aria-label={t().entwerfen.importiert}>
+			<div class="fkopf">
+				<span>{neuEiner ? t().entwerfen.importiert : t().entwerfen.importiertN(neuGewaehlt.length)}</span>
+				<em class="mono">{#if neuEiner}{zahl(Math.round((neuEiner.hoeheM ?? 0) * 10) / 10)} m · {/if}{m2(neuGewaehlt.reduce((s, o) => s + grundflaeche(o), 0))}</em>
+			</div>
+			{#if neuEiner}
+				<div class="zahlen"><label><span>{t().entwerfen.geschosse}</span><span class="mit"><input type="number" min="1" step="1" value={neuEiner.geschosse}
+					onchange={(e) => { const v = Math.round(zahlAus(e)); if (v >= 1) z.entwurfWahlSetzen({ geschosse: v }); }} /></span></label></div>
+				<p class="hinweis leise">{t().entwerfen.importForm(neuEiner.fest!.datei)}</p>
+			{/if}
+			{@render drehKnoepfe()}
+			<div class="tatzeile">
+				<button type="button" onclick={() => z.neubauDuplizieren()}>{t().entwerfen.duplizieren}</button>
+				<button type="button" onclick={() => z.neubauLoeschen()}>{t().entwerfen.loeschen}</button>
+			</div>
+		</div>
 	{:else if neuGewaehlt.length}
 		<div class="fenster entwurf" role="region" aria-label={t().entwerfen.auswahl}>
 			<div class="fkopf">
@@ -1701,6 +1729,7 @@
 			</div>
 			{#if neuGewaehlt.some((o) => !o.typ)}{@render geschossFelder()}{/if}
 			{#if neuEiner?.rechteck}{@render masseFelder(neuEiner.rechteck)}{/if}
+			{#if !neuEiner}{@render drehKnoepfe()}{/if}
 			{@render schnittAnsicht(!neuEiner?.formen?.length)}
 			{@render formListe()}
 			<div class="tatzeile">
@@ -1759,6 +1788,9 @@
 							{@render werkKnopf(w.id, t().werkName[w.id], w.kuerzel, z.absicht === w.id, false, () => z.absichtSetzen(w.id as Absicht), () => z.absichtSetzen(w.id as Absicht, true))}
 						{/each}
 					</div>
+					<div class="reihe zwei">
+						{@render werkKnopf('import', z.importLaeuft ? t().entwerfen.importLiest : t().entwerfen.importieren, undefined, false, z.importLaeuft, () => importWahl?.click())}
+					</div>
 					<div class="gruppe"><span>{t().werk.formen}</span></div>
 					<div class="reihe zwei">
 						{#each WERK_FORMEN as w}
@@ -1767,7 +1799,22 @@
 					</div>
 				{/if}
 			</div>
+		<input bind:this={importWahl} type="file" accept=".dxf,.3dm" hidden
+			onchange={(e) => { const i = e.currentTarget, d = i.files?.[0]; if (d) z.importieren(d); i.value = ''; }} />
+		{#if z.importInfo && z.schritt === 3}
+			<div class="wink importwink">
+				{#each z.importInfo.text as x}<span>{x}</span>{/each}
+				<button type="button" onclick={() => (z.importInfo = null)} aria-label={t().meldungSchliessen}>×</button>
+			</div>
+		{/if}
 		{@render arbeitsfenster()}
+	</div>
+{/snippet}
+
+{#snippet drehKnoepfe()}
+	<!-- Mehrere drehen als Gruppe um ihre gemeinsame Mitte. -->
+	<div class="wahl schmal" role="group" aria-label={t().entwerfen.drehung}>
+		{#each [-90, -15, 15, 90] as g}<button type="button" onclick={() => z.neubauDrehen(g)}>{g > 0 ? '+' : '−'}{Math.abs(g)}°</button>{/each}
 	</div>
 {/snippet}
 
@@ -1793,7 +1840,7 @@
 {/snippet}
 
 <svelte:head><title>Nolli</title></svelte:head>
-<svelte:window bind:innerWidth={fensterBreite} onpointerdown={kartenZu} onkeydown={(e) => { kartenZu(e); verlaufTaste(e); }} />
+<svelte:window bind:innerWidth={fensterBreite} bind:innerHeight={fensterH} onpointerdown={kartenZu} onkeydown={(e) => { kartenZu(e); verlaufTaste(e); }} />
 
 {#snippet overtureKnopf()}
 	{#if z.ergaenzungLaedt}
@@ -1948,7 +1995,7 @@
 						-->
 						<div class="klapp" bind:this={kartenKlapp}>
 							<button type="button" class="einzeln klappknopf" class:offen={kartenRegler}
-								class:veraendert={!istNeutral(z.karte) || z.kanten.karteDicke !== 1 || z.kanten.karteDeckkraft !== 1}
+								class:veraendert={!istNeutral(z.karte) || z.kanten.karteDicke !== KANTEN_VORGABE.karteDicke || z.kanten.karteDeckkraft !== 1}
 								aria-expanded={kartenRegler}
 								onclick={() => (kartenRegler = !kartenRegler)}
 								title={t().sicht.karteTitel}
@@ -1984,8 +2031,8 @@
 										<input type="range" min="0" max="1" step="0.01" bind:value={z.kanten.karteDeckkraft} />
 										<em class="mono">{Math.round(z.kanten.karteDeckkraft * 100)} %</em>
 									</label>
-									<button type="button" class="zurueck" disabled={istNeutral(z.karte) && z.kanten.karteDicke === 1 && z.kanten.karteDeckkraft === 1}
-										onclick={() => { z.karte = { ...NEUTRAL }; z.kanten.karteDicke = 1; z.kanten.karteDeckkraft = 1; }}>{t().sicht.karteZurueck}</button>
+									<button type="button" class="zurueck" disabled={istNeutral(z.karte) && z.kanten.karteDicke === KANTEN_VORGABE.karteDicke && z.kanten.karteDeckkraft === 1}
+										onclick={() => { z.karte = { ...NEUTRAL }; z.kanten.karteDicke = KANTEN_VORGABE.karteDicke; z.kanten.karteDeckkraft = 1; }}>{t().sicht.karteZurueck}</button>
 									<button type="button" class="zurueck" onclick={() => z.lookFuerAlle()} title={t().sicht.aufAlleTitel}>{t().sicht.aufAlle}</button>
 								</div>
 							{/if}
@@ -2143,7 +2190,7 @@
 		-->
 		{#snippet aussehen(h: Herkunft)}
 			<span class="unter">{t().baeume.aussehen}</span>
-			{#if raeumlich && h !== 'natur'}
+			{#if raeumlich}
 				<div class="wahl schmal" role="group" aria-label={t().sicht.baumForm}>
 					<button type="button" class:an={z.baumLooks[satzName][h].art === 'ikosaeder'} aria-pressed={z.baumLooks[satzName][h].art === 'ikosaeder'} onclick={() => (z.baumLooks[satzName][h].art = 'ikosaeder')}>{t().sicht.baumIkosaeder}</button>
 					<button type="button" class:an={z.baumLooks[satzName][h].art === 'kugel'} aria-pressed={z.baumLooks[satzName][h].art === 'kugel'} onclick={() => (z.baumLooks[satzName][h].art = 'kugel')}>{t().sicht.baumKugel}</button>
@@ -2295,7 +2342,7 @@
 							onclick={() => (z.druckBuehne = z.druckBuehne === 'ausschnitt' ? null : 'ausschnitt')}>{t().ausgeben.druckAusschnitt}</button>
 					</div>
 					<!-- Größe, Maßstab und Rechteck hier statt auf einer zweiten Tafel rechts (Impeccable, 05.11.2026). -->
-					<button type="button" class="band" aria-expanded={druckBand.groesse} onclick={() => (druckBand.groesse = !druckBand.groesse)}>{t().ausgeben.druckGroesse}</button>
+					<button type="button" class="band" aria-expanded={druckBand.groesse} onclick={() => bandUm('groesse')}>{t().ausgeben.druckGroesse}</button>
 					{#if druckBand.groesse}
 					<div class="wahl schmal" role="group" aria-label={t().ausgeben.druckGroesse}>
 						<button type="button" class:an={z.druck.groesse === 'bett'} aria-pressed={z.druck.groesse === 'bett'} onclick={() => (z.druck.groesse = 'bett')}>{t().ausgeben.druckBett}</button>
@@ -2329,11 +2376,11 @@
 						<button type="button" disabled={druckGanz} onclick={() => (z.druck.ausschnitt = { x0: 0, y0: 0, x1: 1, y1: 1 })}>{t().ausgeben.druckGanz}</button>
 					</div>
 					{/if}
-					<button type="button" class="band" aria-expanded={druckBand.farben} onclick={() => (druckBand.farben = !druckBand.farben)}>{t().ausgeben.druckFarben}</button>
+					<button type="button" class="band" aria-expanded={druckBand.farben} onclick={() => bandUm('farben')}>{t().ausgeben.druckFarben}</button>
 					{#if druckBand.farben}
 					<div class="wahl schmal" role="group" aria-label={t().ausgeben.druckFarben}>
 						<button type="button" class:an={z.druck.farben === 'ein'} aria-pressed={z.druck.farben === 'ein'} onclick={() => (z.druck.farben = 'ein')}>{t().ausgeben.druckEin}</button>
-						<button type="button" class:an={z.druck.farben === 'mehr'} aria-pressed={z.druck.farben === 'mehr'} onclick={() => (z.druck.farben = 'mehr')}>{t().ausgeben.druckMehr}</button>
+						<button type="button" class:an={z.druck.farben === 'mehr'} aria-pressed={z.druck.farben === 'mehr'} onclick={() => (z.druck.farben = 'mehr')}>{t().ausgeben.druckMehr(z.druckNeubauFarbig ? 6 : 5)}</button>
 					</div>
 					<span class="unter">{t().ausgeben.druckGruen}</span>
 					<div class="wahl schmal" role="group" aria-label={t().ausgeben.druckGruen}>
@@ -2351,7 +2398,7 @@
 						<button type="button" class:an={!z.druck.strassen} aria-pressed={!z.druck.strassen} onclick={() => (z.druck.strassen = false)}>{t().sicht.kantenAus}</button>
 					</div>
 					{/if}
-					<button type="button" class="band" aria-expanded={druckBand.platte} onclick={() => (druckBand.platte = !druckBand.platte)}>{t().ausgeben.druckPlatte}</button>
+					<button type="button" class="band" aria-expanded={druckBand.platte} onclick={() => bandUm('platte')}>{t().ausgeben.druckPlatte}</button>
 					{#if druckBand.platte}
 					<label class="regelzeile">
 						<span>{t().ausgeben.druckSockel}</span>
@@ -2760,7 +2807,7 @@
 						<label class="hakenzeile"><input type="checkbox" checked={z.sichtbar.has('neubau')} onchange={() => z.umschalten('neubau')} />{t().entwerfen.zeigen}</label>
 					</div>
 				{/if}
-				{#if raeumlich && z.entwurf.length}
+				{#if raeumlich && z.entwurf.length && !z.konflikte.length}
 					<div class="teil"><p class="hinweis leise">{t().entwerfen.nurPlan}</p></div>
 				{/if}
 
@@ -3719,8 +3766,15 @@
 	.druckkopf .zurueck { border: 1px solid var(--linie); background: var(--blatt); color: var(--tinte-2); font: inherit; font-size: 11px; padding: 2px 7px; border-radius: var(--rund); cursor: pointer; }
 	.druckkopf .zu { border: 0; background: none; font-size: 18px; line-height: 1; cursor: pointer; color: var(--tinte-2); padding: 0 2px; }
 	.druckfenster .bildrahmen { margin-bottom: 0; }
-	.druckfuss { display: grid; gap: 8px; margin-top: 6px; padding-top: 12px; border-top: 1px solid var(--linie); }
+	/* Die Datei bleibt zu sehen, wie weit das Fenster auch rollt. Das −14px gleicht den Innenabstand aus, wie beim Kopf. */
+	.druckfuss {
+		position: sticky; bottom: -14px; z-index: 2; display: grid; gap: 8px;
+		margin: 6px -16px -14px; padding: 12px 16px 14px; background: var(--blatt); border-top: 1px solid var(--linie);
+	}
+	@media (max-height: 760px) { .druckfuss .hinweis { display: none; } }
 	.druckfuss .zweit { background: var(--blatt); color: var(--tinte); }
+	.importwink { position: relative; display: grid; gap: 3px; padding-right: 26px; }
+	.importwink button { position: absolute; top: 4px; right: 4px; border: 0; background: none; color: var(--tinte-2); cursor: pointer; font-size: 15px; line-height: 1; padding: 2px 5px; }
 	.druckfuss .hinweis { margin: 0; }
 	.druckfenster .masse { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 	.druckfenster .masse label { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 4px; font-size: 12px; color: var(--tinte-2); }

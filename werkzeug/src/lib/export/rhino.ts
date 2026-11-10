@@ -30,6 +30,7 @@ import wasmUrl from 'rhino3dm/rhino3dm.wasm?url';
 import earcut from 'earcut';
 import { unterkante, umrisseMitTeilen, istBau, type Objekt } from '../osm';
 import { hatDach, dachKoerper, DACH_NAME } from '../dach';
+import { festTeil } from '../fest';
 import type { Rahmen } from '../geo/rahmen';
 import { type Gelaende, bodenUnter, feldImRahmen, hoeheBei, aufsNetz } from '../geo/gelaende';
 import { amRahmen, drin, gegenUhr, mitUhr, verschoben } from '../schneiden';
@@ -270,6 +271,13 @@ export async function als3dm(e: Rhino3dmEingabe): Promise<Uint8Array> {
 			? ebene('overture', { eltern: BAU, farbe: KANTE, material: mat })
 			: ebene(mat, { eltern: BAU, farbe: KANTE, material: mat });
 		const marke = o.hoeheGeschaetzt ? '_hoehe_geschaetzt' : '';
+		// Importiert: die Form aus der Datei, als Netz.
+		if (o.fest) {
+			const boden = fuss - u, rein = festTeil(o.fest, boden, r, true), raus = festTeil(o.fest, boden, r, false);
+			if (rein.length) f.objects().addMesh(dachNetz(rein), merkmale(o, klasseEbene, objName(`${o.ebene}_${o.id}${marke}`), boden));
+			if (raus.length) f.objects().addMesh(dachNetz(raus), merkmale(o, ebene(DRAUSSEN, { eltern: BAU, farbe: '#6E6E6B', sichtbar: false }), objName(`${o.ebene}_${o.id}${marke}_ausserhalb`), boden));
+			continue;
+		}
 		// Mit Dach als Netz: Eine Extrusion kann keine geneigten Flächen.
 		if (hatDach(o)) {
 			const boden = fuss - u, ganz = o.ringe.length === 1 && zer.every((t) => !t.aussen.length);

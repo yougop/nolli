@@ -85,13 +85,13 @@ export const HERKUENFTE: Herkunft[] = ['bestand', 'wald', 'natur', 'ergaenzt'];
 export type Baumsatz = Record<Herkunft, Baumwahl>;
 export const herkunftVon = (b: Baum): Herkunft => (b.busch ? 'natur' : b.wald ? 'wald' : b.ergaenzt ? 'ergaenzt' : 'bestand');
 
-/** 3D ab Werk wie von Volker am 06.11.2026 eingestellt: Kugel, 110 %, rund, ±30 %, Sättigung 55 %. */
-const RAUM: Baumwahl = { art: 'kugel', groesse: 1.1, hoehe: 1, streuung: 1, saettigung: 0.55, helligkeit: 1, farbStreuung: 0.3 };
+/** 3D ab Werk (Volker, 10.11.2026): kantig, 100 %, rund, ±30 %, Sättigung 55 %. */
+const RAUM: Baumwahl = { art: 'ikosaeder', groesse: 1, hoehe: 1, streuung: 1, saettigung: 0.55, helligkeit: 1, farbStreuung: 0.3 };
 /** Pläne ab Werk wie bisher: Kreis im Kronendurchmesser, ohne Variation, Farbe der Darstellung. */
 const PLAN: Baumwahl = { art: 'kugel', groesse: 1, hoehe: 1, streuung: 0, saettigung: 1, helligkeit: 1, farbStreuung: 0 };
-export const SATZ_RAUM: Baumsatz = { bestand: { ...RAUM }, wald: { ...RAUM }, natur: { ...RAUM, streuung: 0, saettigung: 0.5, helligkeit: 1.1, farbStreuung: 0.4 }, ergaenzt: { ...RAUM } };
-/** Der Wald in den Plänen etwas heller, damit erfundene Bäume nicht wie eingetragene wirken. */
-export const SATZ_PLAN: Baumsatz = { bestand: { ...PLAN }, wald: { ...PLAN, helligkeit: 1.15 }, natur: { ...PLAN, helligkeit: 1.15 }, ergaenzt: { ...PLAN } };
+export const SATZ_RAUM: Baumsatz = { bestand: { ...RAUM }, wald: { ...RAUM }, natur: { ...RAUM }, ergaenzt: { ...RAUM } };
+/** Ab Werk gilt „alle gleich“: Alle vier Herkünfte beginnen mit demselben Aussehen. */
+export const SATZ_PLAN: Baumsatz = { bestand: { ...PLAN }, wald: { ...PLAN }, natur: { ...PLAN }, ergaenzt: { ...PLAN } };
 export const satzKopie = (s: Baumsatz): Baumsatz => ({ bestand: { ...s.bestand }, wald: { ...s.wald }, natur: { ...s.natur }, ergaenzt: { ...s.ergaenzt } });
 /** Einen gespeicherten Satz einlesen, Fehlendes aus der Vorgabe. */
 export function satzAus(roh: Partial<Record<Herkunft, Partial<Baumwahl>>> | undefined, vorgabe: Baumsatz): Baumsatz {
@@ -153,7 +153,7 @@ export function baumForm(b: Baum, satz: Baumsatz = aktiv) {
 	// Nadelbäume mindestens 12 % des Kronenradius: Unter dem schmalen Kegel wirkte der Stamm sonst verloren.
 	const gezeichnet = Math.max(Math.min(0.6, Math.max(0.18, nenn * s * BAUM_BILD.stamm)), nadel ? rx * 0.12 : 0);
 	const stammR = b.busch ? 0.05 : b.stamm !== undefined ? Math.max(gezeichnet, b.stamm / (2 * Math.PI)) : gezeichnet;
-	return { rx, rz, mitte: ansatz + rz * (b.busch ? 0.8 : 1), stammR, stammH: b.busch ? 0 : ansatz + rz * 0.5, dreh: Math.PI * zufall(b.x, b.y, 1), nadel, art: b.busch ? 'kugel' as const : w.art };
+	return { rx, rz, mitte: ansatz + rz * (b.busch ? 0.8 : 1), stammR, stammH: b.busch ? 0 : ansatz + rz * 0.5, dreh: Math.PI * zufall(b.x, b.y, 1), nadel, art: w.art };
 }
 
 /** Ein Netz mit Y nach oben, Flächen eins-basiert, nach außen gewunden. */

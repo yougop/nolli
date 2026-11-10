@@ -24,6 +24,7 @@ export function paketLiesmich(v: V, sprache: Sprache): string {
 	const ter = v.terrain;
 	const ov = v.overture;
 	const pl = v.places;
+	const neu: string[] = v.new ?? [];
 	const un: V[] = v.implausible_buildings ?? [];
 	const unZeilen = un.map((u) => `| [\`${u.id}\`](${u.osm_url}) | ${u.area_ha} | ${u.contains_buildings} | ${u.removed ? '✓' : ''} |`).join('\n');
 	const ort = v.place ? [v.place.name, v.place.region].filter(Boolean).join(', ') : '—';
@@ -87,6 +88,9 @@ ${un.length ? `
 | OSM | ha | enthält | gestrichen |
 |---|---|---|---|
 ${unZeilen}
+` : ''}
+${neu.length ? `
+**Eigene Gebäude:** ${neu.length === 1 ? 'Ein Gebäude ist' : `${neu.length} Gebäude sind`} in Nolli entworfen, nicht erfasst. Sie tragen \`origin: design\`, \`source: design\` und \`storey_height_m\` in \`data/bodies.json\`, heißen \`new_…\` im OBJ, liegen in \`drawing.dxf\` auf \`N_NEW\` und in \`model.3dm\` auf der Ebene \`new\`. Die Liste steht in \`frame.json\` unter \`new\`; die Höhe ist Geschosse mal Geschosshöhe. Ein Gebäude mit Rücksprüngen, Aussparungen oder Aufsätzen steht als ein Körper je Geschossband da, mit \`min_height_m\` und gemeinsamer \`design_id\`. Eigene Grünflächen liegen in \`drawing.dxf\` auf \`N_NEW_GREEN\` und stehen in \`frame.json\` unter \`new_green\`.
 ` : ''}
 \`roofs_flat\` oder \`roofs_partial\`: Ohne Dachangabe in OpenStreetMap hat ein Baukörper ein waagerechtes Dach; mit \`roof:shape\` seine Form (\`roof_shape\`, \`roof_height_m\` in \`data/bodies.json\`). Der First von Sattel- und Walmdach ist bei verwinkelten Grundrissen eine Annäherung. Höhen ohne Messung kommen aus der Geschosszahl oder sind mit 8 m angenommen; solche Körper tragen \`_height_estimated\` im Namen.
 
@@ -166,6 +170,9 @@ ${un.length ? `
 | OSM | ha | contains | removed |
 |---|---|---|---|
 ${unZeilen}
+` : ''}
+${neu.length ? `
+**Own buildings:** ${neu.length === 1 ? 'One building was' : `${neu.length} buildings were`} designed in Nolli, not surveyed. They carry \`origin: design\`, \`source: design\` and \`storey_height_m\` in \`data/bodies.json\`, are named \`new_…\` in the OBJ, lie on \`N_NEW\` in \`drawing.dxf\` and on the layer \`new\` in \`model.3dm\`. The list is in \`frame.json\` under \`new\`; the height is storeys times storey height. A building with setbacks, cut-outs or extra volumes is one body per storey band, with \`min_height_m\` and a shared \`design_id\`. Designed green areas lie on \`N_NEW_GREEN\` in \`drawing.dxf\` and are listed in \`frame.json\` under \`new_green\`.
 ` : ''}
 \`roofs_flat\` or \`roofs_partial\`: without a roof tag in OpenStreetMap a body has a flat roof; with \`roof:shape\` it has that shape (\`roof_shape\`, \`roof_height_m\` in \`data/bodies.json\`). The ridge of gabled and hipped roofs is an approximation on irregular footprints. Heights that are not measured come from the number of storeys or are assumed at 8 m; such bodies carry \`_height_estimated\` in their name.
 

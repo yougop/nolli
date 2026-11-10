@@ -67,9 +67,13 @@ export type Zeichenwunsch = {
 	baumGestrichen?: Set<string>;
 	/** Gewählte Bäume nach Kennung, für die Markierung. */
 	baumGewaehlt?: Set<string>;
+	/** Füllung der eigenen Gebäude aus „Entwerfen"; `null`: wie der Bestand (09.11.2026). */
+	neubauFarbe?: string | null;
 };
 
 const AKZENT = '#8CA82F';
+/** Die Farbe der Neubauten, wenn ein Wunsch keine nennt; die Seite hält sie auf dem Stand von `z.neubauFarbe`. */
+export const neubauStandard: { farbe: string | null } = { farbe: '#D0563B' };
 
 /**
  * Schattenwurf je Meter Bauhoehe, nach Osten und nach Sueden.
@@ -317,7 +321,10 @@ export function zeichneBlatt(
 	 */
 	const naturGruen = naturTon(farbe('gruen'));
 	for (const id of ['gruen', 'wasser'] as StiftId[])
-		for (const o of nach(id)) flaeche(o, farbeVon(o, o.natur ? naturGruen : farbe(id)), undefined, undefined, true);
+		for (const o of nach(id)) {
+			// Eigene Grünflächen aus „Entwerfen“ zeichnen sich wie jede andere, ohne eigene Kante (Volker, 09.11.2026).
+			flaeche(o, farbeVon(o, o.natur ? naturGruen : farbe(id)), undefined, undefined, true);
+		}
 	ebene('Strassen und Bahn');
 	/**
 	 * 2 Strassen als Netz mit Rangfolge, dann Bahn.
@@ -437,8 +444,10 @@ export function zeichneBlatt(
 	const eigeneFlaeche = w.kanten?.flaeche != null
 		? (() => { const v = Math.round(Math.max(0, Math.min(1, w.kanten!.flaeche!)) * 255); return `rgb(${v},${v},${v})`; })()
 		: null;
+	/** Neubauten tragen ihre eigene Farbe, in jeder Darstellung (09.11.2026). */
+	const neuFarbe = w.neubauFarbe === undefined ? neubauStandard.farbe : w.neubauFarbe;
 	const bauten = w.ohneBauten ? [] : objekte.filter(
-		(o) => (o.ebene === 'gebaeude' || o.ebene === 'erhalt')
+		(o) => (o.ebene === 'gebaeude' || o.ebene === 'erhalt' || o.ebene === 'neubau')
 			&& w.sichtbar.has(sichtEbene(o)) && o.zustand !== 'gestrichen'
 	);
 	if (d.bauweise === 'weissmodell') {
@@ -539,18 +548,40 @@ export function zeichneBlatt(
 				auflegen(grob.leinwand, 0.2);
 			}
 
-			ctx.fillStyle = eigeneFlaeche ?? farbe('gebaeude');
 			ctx.strokeStyle = d.kante?.gebaeude ?? '#3A3C3E';
 			ctx.lineWidth = kante;
-			for (const o of band) { pfad(o, true); ctx.fill('evenodd'); ctx.stroke(); }
+			for (const o of band) {
+				ctx.fillStyle = o.ebene === 'neubau' && neuFarbe ? neuFarbe : eigeneFlaeche ?? farbe('gebaeude');
+				pfad(o, true); ctx.fill('evenodd'); ctx.stroke();
+			}
 		}
 	} else {
 		for (const o of bauten) {
+			// Teile über dem Erdgeschoss (Rücksprung, Aufsatz, Überbauung): gestrichelt, unten.
+			if (o.ebene === 'neubau' && o.unterM) continue;
+			if (o.ebene === 'neubau' && neuFarbe) { flaeche(o, neuFarbe, nurLinie ? neuFarbe : undefined, nurLinie ? dick('neubau') : undefined); continue; }
 			const f = eigeneFlaeche ?? (d.nachTiefe
 				? nachTiefe(o)
-				: d.nachNutzung ? d.nachNutzung[o.klasse ?? 'unbestimmt'] : farbe(o.ebene));
-			flaeche(o, f, nurLinie ? f : d.kante?.[o.ebene], nurLinie ? dick('gebaeude') : undefined);
+				: d.nachNutzung ? d.nachNutzung[o.klasse ?? 'unbestimmt'] : farbe(o.ebene === 'neubau' ? 'gebaeude' : o.ebene));
+			// Neubau „wie Bestand“: dieselbe Füllung und Kante wie ein Gebäude.
+			flaeche(o, f, nurLinie ? f : d.kante?.[o.ebene === 'neubau' ? 'gebaeude' : o.ebene], nurLinie ? dick('gebaeude') : undefined);
 		}
+	}
+	/**
+	 * Neubauteile über dem Erdgeschoss, wie im Lageplan üblich gestrichelt:
+	 * Staffelgeschosse, Aufsätze, Überbauungen einer Arkade (09.11.2026). Im
+	 * Weißmodell stehen sie als Körper mit ihrem Schatten. Mittleres Grau, das
+	 * auf schwarzen Häusern, rotem Neubau und hellem Grund gleich gut liest.
+	 */
+	const oben = d.bauweise === 'weissmodell' ? [] : bauten.filter((o) => o.ebene === 'neubau' && o.unterM);
+	if (oben.length) {
+		ctx.save();
+		ctx.strokeStyle = nurLinie ? (neuFarbe ?? d.kante?.gebaeude ?? '#111111') : '#9A9A98';
+		ctx.lineWidth = r.strich(0.25);
+		ctx.setLineDash([r.strich(1.2), r.strich(0.8)]);
+		for (const o of oben) { pfad(o, true); ctx.stroke(); }
+		ctx.setLineDash([]);
+		ctx.restore();
 	}
 	// Erhaltungsbestand bekommt die dicke Feder
 	ctx.strokeStyle = d.kante?.erhalt ?? farbe('gebaeude');
@@ -573,7 +604,7 @@ export function zeichneBlatt(
 		// übrigen Gebäudeumrisse. In Bild und Ansicht wie bisher in Punkten.
 		ctx.lineWidth = w.federKanten ? r.strich((0.18 * w.kanten.dicke) / 0.75) : w.kanten.dicke * Math.max(1, W / 1200);
 		ctx.beginPath();
-		for (const o of bauten) ringeZeichnen(ctx, o, r, 0, 0);
+		for (const o of bauten) if (!(o.ebene === 'neubau' && o.unterM && d.bauweise !== 'weissmodell')) ringeZeichnen(ctx, o, r, 0, 0);
 		ctx.stroke();
 		ctx.restore();
 	}

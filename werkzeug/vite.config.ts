@@ -2,6 +2,15 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 // @ts-expect-error -- Node-Typen sind im Projekt nicht installiert; gebraucht wird nur execSync.
 import { execSync } from 'node:child_process';
+// @ts-expect-error -- wie oben
+import { readFileSync } from 'node:fs';
+
+/**
+ * Die Versionsnummer, aus `package.json` (seit 09.11.2026, 1.0.0 mit dem
+ * Schritt „Entwerfen“). Hauptversion: der Datenvertrag bricht; zweite Stelle:
+ * neue Funktion; dritte: Korrektur. Die Git-Kennung (`stand`) bleibt daneben.
+ */
+const version: string = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version;
 
 /**
  * Der Stand des Builds als Git-Kennung, für die Herkunft im Vertrag
@@ -18,7 +27,7 @@ const stand = (() => {
 
 export default defineConfig({
 	plugins: [sveltekit()],
-	define: { __NOLLI_STAND__: JSON.stringify(stand) },
+	define: { __NOLLI_STAND__: JSON.stringify(stand), __NOLLI_VERSION__: JSON.stringify(version) },
 	// MapLibre bringt einen eigenen Web Worker mit. Vorgebündelt findet Vite ihn
 	// im Entwicklungsbetrieb nicht, dann bleibt die Karte leer.
 	optimizeDeps: { exclude: ['maplibre-gl'] },

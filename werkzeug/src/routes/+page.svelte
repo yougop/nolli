@@ -8,18 +8,19 @@
 	import { DACH_NAME } from '$lib/dach';
 	import { druckMasse, druckVorschlag, ausschnittGroesse, DRUCK_VORGABE } from '$lib/export/druck';
 	import { baumSatzSetzen, SATZ_PLAN, SATZ_RAUM, HERKUENFTE, type Herkunft } from '$lib/export/baeume';
-	import { z, VERHAELTNISSE, AUSGABEBREITEN, KANTEN_VORGABE, SONNE_VORGABE } from '$lib/zustand.svelte';
+	import { z, VERHAELTNISSE, AUSGABEBREITEN, KANTEN_VORGABE, SONNE_VORGABE, type Absicht } from '$lib/zustand.svelte';
 	import { breiteName, BILDFORMATE, gedreht } from '$lib/geo/rahmen';
 	import { STIFTE, FAHRBAHN } from '$lib/stifte';
-	import { ebenenZaehlen } from '$lib/zeichnen';
-	import { hoehenDeckung, istTeil, gebaeudeLuecke, sichtEbene, ZWEIFEL_ENTHAELT, unterkante, umrisseMitTeilen } from '$lib/osm';
+	import { ebenenZaehlen, neubauStandard } from '$lib/zeichnen';
+	import { hoehenDeckung, istTeil, istBau, gebaeudeLuecke, sichtEbene, ZWEIFEL_ENTHAELT, unterkante, umrisseMitTeilen } from '$lib/osm';
+	import { kennzahlen, ringFlaeche, drinRing, grundflaeche, mitWahl, mitte as ringMitte, NEUBAU_FARBE, type Neubau } from '$lib/entwurf';
 	import { ringflaeche } from '$lib/schneiden';
 	import { PLACES_ZUVERSICHT } from '$lib/overture';
 	import { amRahmen } from '$lib/schneiden';
 	import { MATERIALIEN, materialFuer, materialDatei } from '$lib/material';
 	import { istNeutral, NEUTRAL } from '$lib/anpassen';
 	import { BAUM } from '$lib/analysedaten';
-	import { feldImRahmen, aequidistanz, tiefsteUnter } from '$lib/geo/gelaende';
+	import { feldImRahmen, aequidistanz, bodenUnter } from '$lib/geo/gelaende';
 	import type { Rahmen } from '$lib/geo/rahmen';
 	import { DARSTELLUNGEN, darstellung as darstellungVon } from '$lib/darstellung';
 	import { laden, stempel, bild, planSvg, dxf, dxfAufGelaende, obj, alsMtl, paket, WEBP } from '$lib/ui/ausgeben';
@@ -28,7 +29,7 @@
 	import { aufV2, vertragV2, pfadV2, darstellungV2, VERTRAG_NAME, VERTRAG_VERSION } from '$lib/vertrag';
 	import { paketLiesmich } from '$lib/liesmich';
 
-	const SCHRITTE = [1, 2, 3] as const;
+	const SCHRITTE = [1, 2, 3, 4] as const;
 
 	$effect(() => { spracheAnfangen(); });
 
@@ -77,6 +78,7 @@
 		z.objekte; z.sichtbar; z.plangebiet; z.darstellung;
 		z.beschriftung; z.bereinigt; z.geladenFuer; z.datenFlaeche; z.vorrat; z.datenStand; z.gelaende; z.gelaendeFuer; z.ergaenzung; z.placesInfo;
 		z.karte.saettigung; z.karte.kontrast; z.karte.helligkeit; z.looks; z.gepflanzt; z.gepflanztAn;
+		z.entwurf; z.neubauFarbe; z.entwurfWahl.geschosse; z.entwurfWahl.geschossHoeheM; z.entwurfWahl.klasse;
 		z.sichern();
 	});
 
@@ -131,7 +133,110 @@
 	 * Ebene abschaltet, will die Häuser nicht; die anderen Ebenen sind
 	 * dagegen Darstellung, ihre Objekte bleiben im Paket.
 	 */
-	const bestand = $derived(z.sichtbar.has('overture') ? z.objekte : z.objekte.filter((o) => sichtEbene(o) !== 'overture'));
+	const bestand = $derived.by(() => {
+		const osm = z.sichtbar.has('overture') ? z.objekte : z.objekte.filter((o) => sichtEbene(o) !== 'overture');
+		// Mit den eigenen Gebäuden aus „Entwerfen", solange ihre Ebene an ist (09.11.2026).
+		return z.neubauTeile.length && z.sichtbar.has('neubau') ? [...osm, ...z.neubauTeile] : osm;
+	});
+	/** Entwerfen: Kennzahlen der Neubauten, im Ganzen und im Plangebiet (gerechnet). */
+	const neuZahlen = $derived(kennzahlen(z.entwurf));
+	const gebietM2 = $derived(z.plangebiet ? ringFlaeche(z.plangebiet) : 0);
+	const neuImGebiet = $derived(z.plangebiet && gebietM2 ? kennzahlen(z.entwurf.filter((o) => drinRing(ringMitte(o.ringe[0]), z.plangebiet!))) : null);
+	const neuGewaehlt = $derived(z.gewaehlteNeubauten);
+	const neuEiner = $derived(neuGewaehlt.length === 1 ? neuGewaehlt[0] : null);
+	/** Was die Felder zeigen: das gewählte Gebäude, sonst die Werte für das nächste. */
+	const neuErstes = $derived(neuGewaehlt.find((o) => !o.typ));
+	const neuWerte = $derived(neuErstes ? { geschosse: neuErstes.geschosse, geschossHoeheM: neuErstes.geschossHoeheM, klasse: neuErstes.klasse ?? 'wohnen' } : z.entwurfWahl);
+	/** Das geklickte Polygon abschließen: Gebäude, Grünfläche, Hof oder Aufsatz, je nach Werkzeug. */
+	function linieSchliessen() {
+		const l = z.entwurfLinie.map(([x, y]) => [x, y] as [number, number]);
+		z.entwurfLinie = [];
+		if (z.entwurfModus === 'aussparen') z.aussparen(l);
+		else if (z.entwurfModus === 'aufsatz') z.aufstocken(l);
+		else z.neubauSetzen(l);
+	}
+	/**
+	 * Strg+Z und Strg+Y in jedem Schritt und jeder Darstellung (Volker,
+	 * 09.11.2026). In einem Eingabefeld gehört die Taste dem Feld.
+	 */
+	function verlaufTaste(e: KeyboardEvent) {
+		if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+		if ((e.target as HTMLElement | null)?.closest?.('input, textarea, select, [contenteditable]')) return;
+		const k = e.key.toLowerCase();
+		if (k === 'z' && !e.shiftKey) { e.preventDefault(); z.rueckgaengig(); }
+		else if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); z.wiederholen(); }
+	}
+	/** „Was die Daten hergeben" ist Nachschlagewerk, kein Arbeitsschritt: zugeklappt (Kritik, 09.11.2026). */
+	let datenOffen = $state(false);
+	$effect(() => { if (!z.hatGebaeude && (z.absicht === 'hof' || z.absicht === 'aufsatz')) untrack(() => z.absichtSetzen('waehlen')); });
+
+	// ---- Entwerfen: Palette, Inspektor, Schnitt (09.11.2026) ----------------
+	/**
+	 * Die Arbeitsspalte links am Blatt (Impeccable-Kritik, 09.11.2026). Eine
+	 * Regel für alle Schritte: Oben steht, was das Blatt zeigt; links am Blatt
+	 * wird getan; rechts wird gelesen; unten steht der Rahmen. Die Palette
+	 * trägt die Werkzeuge mit Wort, darunter erscheint das Arbeitsfenster, wenn
+	 * es etwas zu tun gibt: bei einer Auswahl oder einem Werkzeug mit Optionen.
+	 * Das Blatt weicht der Spalte aus (`--blatt-links`), statt verdeckt zu werden.
+	 */
+	type Werk = { id: string; kuerzel?: string };
+	const WERK_NEU: Werk[] = [{ id: 'gebaeude', kuerzel: 'B' }, { id: 'gruen', kuerzel: 'G' }, { id: 'baeume', kuerzel: 'T' }];
+	const WERK_FORMEN: Werk[] = [{ id: 'aufsatz', kuerzel: 'U' }, { id: 'hof', kuerzel: 'A' }];
+	const zeichnet = $derived(z.entwurfWerkzeug === 'rechteck' || z.entwurfWerkzeug === 'polygon');
+	/** Die Spalte steht in Bereinigen und Entwerfen, solange ein Plan gezeigt wird. */
+	function bereinigenWerkzeug(w: string) {
+		if (w === 'zeigen') z.polygonAbbrechen();
+		else { z.fanglinie = []; z.werkzeug = 'polygon'; }
+	}
+	const neuZiel = $derived(z.ziel);
+	const neuBau = $derived(neuZiel && !neuZiel.o.typ ? neuZiel.o : null);
+	const neuForm = $derived(neuZiel?.form ?? null);
+	/** Geschoss als Wort: 0 ist das EG. */
+	const geschossName = (n: number) => (n <= 0 ? t().entwerfen.eg : t().entwerfen.og(n));
+	/**
+	 * Der Schnitt des gewählten Gebäudes: eine Spalte je Form, die Grundmasse
+	 * zuerst. Ober- und Unterkante lassen sich ziehen, ganze Geschosse.
+	 */
+	const schnitt = $derived.by(() => {
+		const o = neuBau;
+		if (!o) return null;
+		const formen = o.formen ?? [];
+		const oben = Math.max(o.geschosse, ...formen.filter((f) => f.art === 'masse').map((f) => f.bis ?? o.geschosse), 1);
+		const H = 80, s = H / oben;
+		const spalten = [
+			{ id: null as string | null, art: 'masse' as const, von: 0, bis: o.geschosse, offen: false, name: t().entwerfen.grundmasse, aus: false },
+			...formen.map((f) => ({ id: f.id as string | null, art: f.art, von: f.von, bis: Math.min(oben, f.bis ?? oben), offen: f.bis === null, name: f.name ?? '', aus: !!f.aus }))
+		];
+		return { o, oben, H, s, spalten };
+	});
+	// Der Maßstab vom Beginn des Zugs: Er ändert sich, wenn das Gebäude wächst, und sonst liefe der Zug davon.
+	let schnittZug: { id: string | null; kante: 'von' | 'bis'; y0: number; wert0: number; s: number; oben: number } | null = null;
+	function schnittRunter(e: PointerEvent, id: string | null, kante: 'von' | 'bis', wert: number, pxJeGeschoss: number) {
+		e.preventDefault(); e.stopPropagation();
+		(e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+		z.neubauZugBeginnen();
+		schnittZug = { id, kante, y0: e.clientY, wert0: wert, s: Math.max(1, pxJeGeschoss), oben: schnitt?.oben ?? 1 };
+		if (schnitt) z.formWaehlen(schnitt.o.id, id);
+	}
+	function schnittZiehen(e: PointerEvent) {
+		const zg = schnittZug, sc = schnitt;
+		if (!zg || !sc) return;
+		const v = zg.wert0 - Math.round((e.clientY - zg.y0) / zg.s);
+		if (zg.id === null) { z.neubauAendern((o) => mitWahl(o, { geschosse: Math.max(1, Math.min(200, v)) }), false, new Set([sc.o.id])); return; }
+		const f = sc.o.formen?.find((x) => x.id === zg.id);
+		if (!f) return;
+		if (zg.kante === 'von') z.formSetzen(sc.o.id, f.id, { von: Math.max(0, Math.min((f.bis ?? sc.oben) - 1, v)) }, false);
+		else {
+			const bis = Math.max(f.von + 1, Math.min(200, v));
+			// Eine Aussparung, die bis zur Oberkante reicht, gilt bis oben, auch wenn das Gebäude wächst.
+			z.formSetzen(sc.o.id, f.id, { bis: f.art === 'aussparung' && bis >= zg.oben ? null : bis }, false);
+		}
+	}
+	function schnittHoch() { schnittZug = null; z.neubauZugEnde(); }
+	const zahlAus = (e: Event) => Number((e.currentTarget as HTMLInputElement).value.replace(',', '.'));
+	const m2 = (v: number) => `${zahl(Math.round(v))} m²`;
+	// Die Farbe der Neubauten gilt für jedes Bild, das Nolli zeichnet.
+	$effect(() => { neubauStandard.farbe = z.neubauFarbe; });
 	const osmLink = (id: string) => `https://www.openstreetmap.org/${id[0] === 'r' ? 'relation' : 'way'}/${id.slice(1)}`;
 	const overtureAn = $derived(!!z.ergaenzung?.anzahl && z.sichtbar.has('overture'));
 	const zaehler = $derived(ebenenZaehlen(z.objekte));
@@ -231,8 +336,11 @@
 	);
 	let raum = $state<Raum | null>(null);
 	/** Die Druckvorschau oder der Druckausschnitt statt der Ansicht, nur in Schritt 3. */
-	const druckAuf = $derived(z.schritt === 3 && !!z.druckBuehne && !!r);
-	$effect(() => { if (z.schritt !== 3 && z.druckBuehne) z.druckBuehne = null; });
+	const druckAuf = $derived(z.schritt === 4 && !!z.druckBuehne && !!r);
+	/** Die Arbeitsspalte steht in Bereinigen und Entwerfen, solange ein Plan gezeigt wird; das Blatt weicht ihr aus. */
+	let fensterBreite = $state(typeof window !== 'undefined' ? window.innerWidth : 1280);
+	const spalteAn = $derived((z.schritt === 2 || z.schritt === 3) && !raeumlich && !druckAuf);
+	$effect(() => { if (z.schritt !== 4 && z.druckBuehne) z.druckBuehne = null; });
 	const raumSichtbar = $derived(z.schritt > 1 && raeumlich && !druckAuf);
 	let raumGeoeffnet = $state(false);
 	$effect(() => { if (raumSichtbar) raumGeoeffnet = true; });
@@ -278,10 +386,6 @@
 	let baumRegler = $state(false);
 	/** Das Pflanzfenster auf oder zu; beim Öffnen die Bäume an und das 3D-Druck-Fenster zu. */
 	/** Pflanzen: das Fenster auf, „Ergänzt“ aufgeklappt, Bäume an, 3D-Druck zu. */
-	function pflanzUmschalten(auf = !z.pflanzOffen) {
-		if (auf) { baumFenster = true; bandAuf.ergaenzt = true; z.baeume = true; druckOffen = false; if (z.werkzeug === 'polygon') z.polygonAbbrechen(); }
-		else bandAuf.ergaenzt = false;
-	}
 	let baumKlapp = $state<HTMLDivElement | null>(null);
 	/** Die Ausgänge (OBJ, 3DM) lesen den 3D-Satz aus `export/baeume`; hier wird er gesetzt. */
 	$effect(() => { baumSatzSetzen($state.snapshot(z.baumLooks.raum)); });
@@ -301,7 +405,17 @@
 	};
 	let bandAuf = $state<Record<Herkunft, boolean>>({ bestand: true, wald: false, natur: false, ergaenzt: false });
 	const satzName: 'raum' | 'plan' = $derived(raeumlich ? 'raum' : 'plan');
-	$effect(() => { z.pflanzOffen = baumFenster && bandAuf.ergaenzt && !raeumlich && z.schritt >= 2; });
+	// „Alle gleich": Jede Änderung am Aussehen von Bestand geht an die anderen drei Herkünfte mit.
+	$effect(() => {
+		const satz = satzName;
+		if (!z.baumGleich[satz]) return;
+		const q = z.baumLooks[satz].bestand;
+		q.art; q.groesse; q.hoehe; q.streuung; q.saettigung; q.helligkeit; q.farbStreuung;
+		untrack(() => z.baumAngleichen(satz));
+	});
+	// Bereinigen nimmt weg, Entwerfen fügt hinzu (Volker, 09.11.2026): Gepflanzt wird nur beim Entwerfen.
+	$effect(() => { z.pflanzOffen = !raeumlich && !druckAuf && z.schritt === 3 && z.entwurfWerkzeug === 'baeume'; });
+	$effect(() => { if (z.pflanzOffen) untrack(() => { z.baeume = true; }); });
 	const baumVorgabe = (h: Herkunft) => {
 		const v = (satzName === 'raum' ? SATZ_RAUM : SATZ_PLAN)[h], w = z.baumLooks[satzName][h];
 		return (Object.keys(v) as (keyof typeof v)[]).every((k) => w[k] === v[k]);
@@ -352,7 +466,9 @@
 		const aus: Record<string, number> = {};
 		for (const o of bestand) {
 			if (o.art !== 'flaeche' || o.zustand === 'gestrichen') continue;
-			const schluessel = o.ebene === 'erhalt' ? 'gebaeude' : o.ebene;
+			// Teile über dem Erdgeschoss überdecken keinen Boden ein zweites Mal.
+			if (o.ebene === 'neubau' && o.unterM) continue;
+			const schluessel = o.ebene === 'erhalt' ? 'gebaeude' : o.herkunft === 'design' && o.ebene === 'gruen' ? 'neu_gruen' : o.ebene;
 			let a = 0;
 			for (const ring of o.ringe) a += Math.abs(ringflaeche(ring));
 			for (const loch of o.loecher ?? []) a -= Math.abs(ringflaeche(loch));
@@ -423,12 +539,12 @@
 		const v = rr.vertrag({}) as Record<string, any>;
 		return als3dm({
 			objekte: bestand, r: rr, gelaende: z.gelaendeJetzt, baeume: modellKronen ? baeume3d : [],
-			textur: new Uint8Array(await t.arrayBuffer()), kantenHell: z.lookFuer('modell3d').kanten.hell ?? false,
+			textur: new Uint8Array(await t.arrayBuffer()), kantenHell: z.lookFuer('modell3d').kanten.hell ?? false, neubauFarbe: z.neubauFarbe,
 			ecke: { lat: v.bbox_wgs84.sued, lon: v.bbox_wgs84.west },
 			kopf: {
 				contract: VERTRAG_NAME, contract_version: VERTRAG_VERSION,
 				grid: { proj4: v.gitter.proj4, central_meridian: v.gitter.mittelmeridian }, bbox_grid: v.bbox_gitter, units: 'metres, Z up, Y north, origin at the lower-left frame corner',
-				provenance: { generated: { tool: 'nolli', version: __NOLLI_STAND__, at: jetztMitZone() } },
+				provenance: { generated: { tool: 'nolli', release: __NOLLI_VERSION__, version: __NOLLI_STAND__, at: jetztMitZone() } },
 				authoritative: 'data/*.json in the UCX package; this file is derived'
 			}
 		});
@@ -617,7 +733,7 @@
 	 */
 	function baumliste() {
 		const rr = r!;
-		return [...z.baeumeStehend, ...(z.gepflanztAn ? z.gepflanzt : [])]
+		return z.unterNeubauWeg([...z.baeumeStehend, ...(z.gepflanztAn ? z.gepflanzt : [])])
 			.filter((b) => b.x >= rr.x0 && b.x <= rr.x1 && b.y >= rr.y0 && b.y <= rr.y1)
 			.map((b) => ({
 				x: b.x, y: b.y,
@@ -634,7 +750,7 @@
 		const rr = r!;
 		const ersetzt = umrisseMitTeilen(bestand);
 		return bestand
-			.filter((o) => (o.ebene === 'gebaeude' || o.ebene === 'erhalt') && o.zustand !== 'gestrichen')
+			.filter((o) => istBau(o) && o.zustand !== 'gestrichen')
 			.map((o) => ({
 				// Ein ergänzter Körper hat keine OSM-Kennung, sondern die von Overture.
 				osm_id: o.herkunft ? null : o.id,
@@ -692,13 +808,15 @@
 				 * tiefste Geländehöhe unter seinem Grundriss. Ohne Gelände fehlt das Feld,
 				 * und null ist der Boden.
 				 */
-				...(z.gelaendeJetzt ? { fuss_m: Math.round(tiefsteUnter(z.gelaendeJetzt, o.ringe) * 100) / 100 } : {}),
-				quelle: !o.hoeheGeschaetzt ? 'gemessen' : o.geschosse ? 'geschosse'
+				...(z.gelaendeJetzt ? { fuss_m: Math.round(bodenUnter(z.gelaendeJetzt, o) * 100) / 100 } : {}),
+				quelle: o.herkunft === 'design' ? 'entwurf' : !o.hoeheGeschaetzt ? 'gemessen' : o.geschosse ? 'geschosse'
 					: o.herkunft && o.hoeheM !== undefined ? 'luftbild' : 'annahme',
 				// Woher der Umriss kommt: OpenStreetMap oder, ergänzt, Overture.
 				herkunft: o.herkunft ?? 'osm',
 				...(o.quelleGeometrie ? { herkunft_umriss: o.quelleGeometrie } : {}),
 				geschosse: o.geschosse ?? null,
+				// Neubau: die Geschosshöhe, aus der die Höhe gerechnet ist.
+				...(o.ebene === 'neubau' ? { geschosshoehe_m: (o as Neubau).geschossHoeheM, entwurf_id: o.entwurf ?? o.id } : {}),
 				denkmal: o.denkmal ?? null,
 				adresse: o.adresse ?? null,
 				nutzung: o.herkunft ? null : (o.nutzung ?? null),
@@ -730,13 +848,16 @@
 			 * von `erstellt` ist und das Paketdatum oben trägt.
 			 */
 			provenance: {
-				generated: { tool: 'nolli', version: __NOLLI_STAND__, at: jetztMitZone() },
+				generated: { tool: 'nolli', release: __NOLLI_VERSION__, version: __NOLLI_STAND__, at: jetztMitZone() },
 				edits: []
 			},
 			ort: z.ort ? { name: z.ort.name, wo: z.ort.wo } : null,
 			objekte: bestand.length,
 			gestrichen: bestand.filter((o) => o.zustand === 'gestrichen').map((o) => o.id),
 			erhalt: bestand.filter((o) => o.zustand === 'erhalt').map((o) => o.id),
+			// Eigene Gebäude aus „Entwerfen“, mit `origin: design` in den Körpern.
+			neubau: [...new Set(bestand.filter((o) => o.ebene === 'neubau').map((o) => o.entwurf ?? o.id))],
+			neu_gruen: bestand.filter((o) => o.ebene === 'gruen' && o.herkunft === 'design').map((o) => o.id),
 			/**
 			 * Die beiden angenommenen Zahlen am Baum.
 			 *
@@ -1055,6 +1176,12 @@
 	/** Maße des Druckmodells für die Anzeige, ohne es zu bauen. */
 	const druckJetzt = $derived(r ? druckMasse(bestand, r, z.druck) : null);
 	let druckOffen = $state(false);
+	/**
+	 * Die Bänder des Druckfensters klappen (Kritik, 09.11.2026): Das Fenster war
+	 * 1.416 px lang. Auf einem flachen Schirm ist nur „Größe" offen.
+	 */
+	const hoch = typeof window !== 'undefined' && window.innerHeight >= 1000;
+	let druckBand = $state({ groesse: true, farben: hoch, platte: hoch });
 	/** Ab Werk unberührt? Dann bekommt das Fenster beim Öffnen den Vorschlag statt des ganzen Rahmens. */
 	const druckUnberuehrt = () => {
 		const d = z.druck, v = DRUCK_VORGABE, a = d.ausschnitt;
@@ -1254,6 +1381,408 @@
 	}
 </script>
 
+{#snippet werkIcon(id: string)}
+	<!-- Eine Strichstärke, eine Farbe: Die Oberfläche bleibt Grauleiter, Farbe trägt nur das Blatt. -->
+	<svg class="ikon" viewBox="0 0 20 20" width="16" height="16" aria-hidden="true">
+		{#if id === 'waehlen' || id === 'zeigen'}<path d="M5 3l10 7-4.4 1 2.6 5-1.8.9-2.6-5L5 15z" fill="currentColor" />
+		{:else if id === 'polygon'}<path d="M4 15l1.5-9 6-2.5 5 6-4 6.5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
+		{:else if id === 'rechteck'}<rect x="3.5" y="5.5" width="13" height="9" fill="none" stroke="currentColor" stroke-width="1.6" />
+		{:else if id === 'gebaeude'}<rect x="4" y="4" width="12" height="12" fill="currentColor" />
+		{:else if id === 'gruen'}<rect x="3.8" y="3.8" width="12.4" height="12.4" rx="3.2" fill="none" stroke="currentColor" stroke-width="1.6" /><path d="M7.2 12.8c0-3.2 2.2-5 5.6-5.6 0 3.4-1.8 5.6-5.6 5.6z" fill="currentColor" />
+		{:else if id === 'hof'}<path fill-rule="evenodd" d="M3.5 3.5h13v13h-13zM7.5 7.5v5h5v-5z" fill="currentColor" />
+		{:else if id === 'staffel'}<path d="M3 16.5h14M5 16.5V9h5V5.5h5v11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
+		{:else if id === 'aufsatz'}<path d="M3.5 16.5v-5h13v5zM9 11.5v-8h5v8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
+		{:else if id === 'baeume'}<circle cx="10" cy="7.5" r="4.8" fill="currentColor" /><path d="M10 11v6M6.5 17h7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+		{:else if id === 'rueck'}<path d="M7.5 5l-4 4 4 4M4 9h7.5a4 4 0 0 1 0 8H9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />{/if}
+	</svg>
+{/snippet}
+
+{#snippet werkKnopf(id: string, name: string, kuerzel: string | undefined, an: boolean, aus: boolean, klick: () => void, doppel?: () => void)}
+	<button type="button" class="werk" class:an class:fest={an && z.entwurfFest && !!doppel} aria-pressed={an} disabled={aus}
+		aria-label={name} aria-keyshortcuts={kuerzel}
+		title={`${name}${kuerzel ? ` (${kuerzel})` : ''}${doppel ? ` · ${t().entwerfen.festHinweis}` : ''}`}
+		onclick={klick} ondblclick={doppel}>
+		{@render werkIcon(id)}<span class="wort">{name}</span>{#if kuerzel && kuerzel.length === 1}<kbd class="mono">{kuerzel}</kbd>{/if}
+	</button>
+{/snippet}
+
+{#snippet pflanzOptionen()}
+	<div class="wahl schmal" role="group" aria-label={t().pflanzen.werkzeug}>
+		{#each [['pinsel', t().pflanzen.pinsel], ['lasso', t().pflanzen.lasso], ['einzel', t().pflanzen.einzel]] as [id, name]}
+			<button type="button" class:an={z.pflanzWahl.werkzeug === id} aria-pressed={z.pflanzWahl.werkzeug === id} onclick={() => (z.pflanzWahl.werkzeug = id as 'pinsel')}>{name}</button>
+		{/each}
+	</div>
+	<div class="wahl schmal" role="group">
+		<button type="button" class:an={!z.pflanzWahl.radieren} aria-pressed={!z.pflanzWahl.radieren} onclick={() => (z.pflanzWahl.radieren = false)}>{t().pflanzen.pflanzen}</button>
+		<button type="button" class:an={z.pflanzWahl.radieren} aria-pressed={z.pflanzWahl.radieren} onclick={() => (z.pflanzWahl.radieren = true)}>{t().pflanzen.radieren}</button>
+	</div>
+	{#if z.pflanzWahl.werkzeug === 'pinsel'}
+		<label class="regelzeile">
+			<span>{t().pflanzen.pinselGroesse}</span>
+			<input type="range" min="5" max="100" step="1" bind:value={z.pflanzWahl.pinselM} />
+			<em class="mono">{z.pflanzWahl.pinselM} m</em>
+		</label>
+	{/if}
+	<!-- Mit Auswahl wirken die Regler auf die gewählten Gebiete; der Rand zeigt es. -->
+	<div class="pflanzwerte" class:bearbeitet={z.pflanzAuswahl.size > 0}>
+		{#if z.pflanzAuswahl.size}
+			<div class="gewaehlt">
+				<span>{t().pflanzen.gewaehlt(z.pflanzAuswahl.size, z.gepflanzt.filter((b) => b.gebiet !== undefined && z.pflanzAuswahl.has(b.gebiet)).length)}</span>
+				<button type="button" class="zurueck" onclick={() => (z.pflanzAuswahl = new Set())}>{t().pflanzen.abwaehlen}</button>
+				<button type="button" class="zurueck" onclick={() => z.pflanzAuswahlWeg()}>{t().pflanzen.gewaehlteWeg}</button>
+			</div>
+		{/if}
+		<label class="regelzeile">
+			<span>{t().pflanzen.abstand}</span>
+			<input type="range" min="3" max="20" step="0.5" disabled={z.pflanzWahl.radieren && !z.pflanzAuswahl.size} value={z.pflanzWahl.abstandM}
+				onpointerdown={() => z.pflanzAenderungBeginnen()} oninput={(e) => z.pflanzSetzen('abstandM', Number((e.currentTarget as HTMLInputElement).value))} />
+			<em class="mono">{z.pflanzWahl.abstandM} m</em>
+		</label>
+		<label class="regelzeile">
+			<span>{t().pflanzen.krone}</span>
+			<input type="range" min="2" max="16" step="0.5" disabled={z.pflanzWahl.radieren && !z.pflanzAuswahl.size} value={z.pflanzWahl.kroneM}
+				onpointerdown={() => z.pflanzAenderungBeginnen()} oninput={(e) => z.pflanzSetzen('kroneM', Number((e.currentTarget as HTMLInputElement).value))} />
+			<em class="mono">{z.pflanzWahl.kroneM} m</em>
+		</label>
+		<label class="regelzeile">
+			<span>{t().pflanzen.variation}</span>
+			<input type="range" min="0" max="0.6" step="0.05" disabled={z.pflanzWahl.radieren && !z.pflanzAuswahl.size} value={z.pflanzWahl.variation}
+				onpointerdown={() => z.pflanzAenderungBeginnen()} oninput={(e) => z.pflanzSetzen('variation', Number((e.currentTarget as HTMLInputElement).value))} />
+			<em class="mono">±{Math.round(z.pflanzWahl.variation * 100)} %</em>
+		</label>
+		<div class="wahl schmal" role="group" aria-label={t().pflanzen.art}>
+			{#each [['laub', t().pflanzen.laub], ['nadel', t().pflanzen.nadel], ['misch', t().pflanzen.misch]] as [id, name]}
+				<button type="button" class:an={z.pflanzWahl.art === id} aria-pressed={z.pflanzWahl.art === id} disabled={z.pflanzWahl.radieren && !z.pflanzAuswahl.size} onclick={() => { z.pflanzAenderungBeginnen(); z.pflanzSetzen('art', id as 'laub'); }}>{name}</button>
+			{/each}
+		</div>
+		{#if z.pflanzWahl.art === 'misch'}
+			<label class="regelzeile">
+				<span>{t().pflanzen.nadelAnteil}</span>
+				<input type="range" min="0.05" max="0.95" step="0.05" disabled={z.pflanzWahl.radieren && !z.pflanzAuswahl.size} value={z.pflanzWahl.nadelAnteil}
+					onpointerdown={() => z.pflanzAenderungBeginnen()} oninput={(e) => z.pflanzSetzen('nadelAnteil', Number((e.currentTarget as HTMLInputElement).value))} />
+				<em class="mono">{Math.round(z.pflanzWahl.nadelAnteil * 100)} %</em>
+			</label>
+		{/if}
+		<span class="unter">{t().pflanzen.frei}</span>
+		<div class="wahl schmal" role="group" aria-label={t().pflanzen.frei}>
+			<button type="button" class:an={z.pflanzWahl.freiGebaeude} aria-pressed={z.pflanzWahl.freiGebaeude} onclick={() => { z.pflanzAenderungBeginnen(); z.pflanzSetzen('freiGebaeude', !z.pflanzWahl.freiGebaeude); }}>{t().pflanzen.freiGebaeude}</button>
+			<button type="button" class:an={z.pflanzWahl.freiWasser} aria-pressed={z.pflanzWahl.freiWasser} onclick={() => { z.pflanzAenderungBeginnen(); z.pflanzSetzen('freiWasser', !z.pflanzWahl.freiWasser); }}>{t().pflanzen.freiWasser}</button>
+			<button type="button" class:an={z.pflanzWahl.freiStrassen} aria-pressed={z.pflanzWahl.freiStrassen} onclick={() => { z.pflanzAenderungBeginnen(); z.pflanzSetzen('freiStrassen', !z.pflanzWahl.freiStrassen); }}>{t().pflanzen.freiStrassen}</button>
+		</div>
+	</div>
+	<div class="wahl schmal">
+		<button type="button" disabled={!z.pflanzSchritte} onclick={() => z.pflanzRueckgaengig()}>{t().pflanzen.zurueck}</button>
+		<button type="button" disabled={!z.gepflanzt.length} onclick={() => z.pflanzAlleWeg()}>{t().pflanzen.alleWeg}</button>
+	</div>
+{/snippet}
+
+{#snippet geschossFelder()}
+	<!-- Geschosse, Geschosshöhe, Nutzung: am gewählten Gebäude, sonst für das nächste -->
+	<div class="zahlen zwei">
+		<label><span>{t().entwerfen.geschosse}</span>
+			<span class="stufen">
+				<button type="button" aria-label={t().entwerfen.geschossWeniger} disabled={neuWerte.geschosse <= 1}
+					onclick={() => z.entwurfWahlSetzen({ geschosse: Math.max(1, neuWerte.geschosse - 1) })}>−</button>
+				<input type="number" min="1" max="200" step="1" aria-label={t().entwerfen.geschosse} value={neuWerte.geschosse}
+					onchange={(e) => { const v = Math.round(zahlAus(e)); if (v >= 1) z.entwurfWahlSetzen({ geschosse: Math.min(200, v) }); }} />
+				<button type="button" aria-label={t().entwerfen.geschossMehr}
+					onclick={() => z.entwurfWahlSetzen({ geschosse: Math.min(200, neuWerte.geschosse + 1) })}>+</button>
+			</span></label>
+		<label><span>{t().entwerfen.geschosshoehe}</span>
+			<span class="mit"><input type="number" min="2" max="10" step="0.1" value={neuWerte.geschossHoeheM}
+				onchange={(e) => { const v = zahlAus(e); if (v >= 2 && v <= 10) z.entwurfWahlSetzen({ geschossHoeheM: Math.round(v * 100) / 100 }); }} /><em>m</em></span></label>
+	</div>
+	<div class="zahlen">
+		<label><span>{t().entwerfen.nutzung}</span>
+			<select value={neuWerte.klasse} onchange={(e) => z.entwurfWahlSetzen({ klasse: (e.currentTarget as HTMLSelectElement).value as Neubau['klasse'] & string })}>
+				{#each ['wohnen', 'gewerbe', 'oeffentlich', 'neben'] as const as k}
+					<option value={k}>{t().nutzung[k]}</option>
+				{/each}
+			</select></label>
+	</div>
+{/snippet}
+
+{#snippet schnittAnsicht(mitUmfeld: boolean)}
+	<!--
+		Ein echter Schnitt durch das Gebäude (Volker, 09.11.2026: „Macht der
+		Schnitt so Sinn?"): quer oder längs, mit den Nachbarn, die die Linie
+		trifft, und der mittleren Höhe der Umgebung. Die Linie liegt gestrichelt
+		im Plan. Kanten ziehen ändert die Geschosse.
+	-->
+	{@const sn = z.schnitt}
+	{#if sn && neuBau}
+		{@const W = 244}
+		{@const HH = 52}
+		{@const sx = W / (sn.t1 - sn.t0)}
+		{@const sy = Math.min(HH / sn.hoch, sx * 4)}
+		{@const basis = 14 + HH}
+		{@const X = (t: number) => (t - sn.t0) * sx}
+		{@const Y = (h: number) => basis - h * sy}
+		{@const gh = neuBau.geschossHoeheM}
+		{@const mitte = sn.eigen.length ? (Math.min(...sn.eigen.map((e) => e.a)) + Math.max(...sn.eigen.map((e) => e.b))) / 2 : 0}
+		{@const gipfel = Math.max(0, ...sn.eigen.map((e) => e.oben))}
+		<div class="schnittkopf">
+			<span class="unterfeld">{t().entwerfen.schnitt}{#if sy / sx > 1.15}<em class="mono"> · {t().entwerfen.ueberhoeht(Math.round((sy / sx) * 10) / 10)}</em>{/if}</span>
+			<span class="richtung" role="group" aria-label={t().entwerfen.schnittRichtung}>
+				<button type="button" class:an={!z.schnittLaengs} aria-pressed={!z.schnittLaengs} onclick={() => (z.schnittLaengs = false)}>{t().entwerfen.quer}</button>
+				<button type="button" class:an={z.schnittLaengs} aria-pressed={z.schnittLaengs} onclick={() => (z.schnittLaengs = true)}>{t().entwerfen.laengs}</button>
+			</span>
+		</div>
+		<div class="schnitt">
+			<svg width={W} height={basis + 6} role="img" aria-label={t().entwerfen.schnittWas(Math.round(gipfel * 10) / 10, sn.umgebung.mittel)}
+				onpointermove={schnittZiehen} onpointerup={schnittHoch} onpointercancel={schnittHoch}>
+				{#each sn.nachbarn as n}
+					<rect class="nachbar" x={X(n.a)} y={Y(n.oben)} width={Math.max(1, (n.b - n.a) * sx)} height={Math.max(1, (n.oben - n.unten) * sy)} />
+				{/each}
+				{#each sn.eigen as e}
+					<rect class="eigen" x={X(e.a)} y={Y(e.oben)} width={Math.max(1, (e.b - e.a) * sx)} height={Math.max(1, (e.oben - e.unten) * sy)}
+						style:fill={z.neubauFarbe ?? null} />
+					{#if sy * gh >= 4}
+						{#each Array.from({ length: Math.max(0, Math.round((e.oben - e.unten) / gh) - 1) }, (_, i) => e.unten + (i + 1) * gh) as h}
+							<line class="geschoss" x1={X(e.a)} y1={Y(h)} x2={X(e.b)} y2={Y(h)} />
+						{/each}
+					{/if}
+				{/each}
+				{#each sn.form as f}
+					<rect class="form" class:spart={f.art === 'aussparung'} x={X(f.a)} y={Y(f.oben)} width={Math.max(2, (f.b - f.a) * sx)} height={Math.max(2, (f.oben - f.unten) * sy)} />
+				{/each}
+				{#if sn.umgebung.mittel !== null}
+					<line class="umgebung" x1="0" y1={Y(sn.umgebung.mittel)} x2={W} y2={Y(sn.umgebung.mittel)} />
+					<text class="marke rechts" x={W - 1} y={Y(sn.umgebung.mittel) - 3}>{t().entwerfen.umgebung(Math.round(sn.umgebung.mittel))}</text>
+				{/if}
+				<line class="boden" x1="0" y1={basis} x2={W} y2={basis} />
+				{#if sn.eigen.length}
+					<text class="marke eig" x={Math.max(22, Math.min(W - 22, X(mitte)))} y={Math.max(10, Y(gipfel) - 4)}>{zahl(Math.round(gipfel * 10) / 10)} m</text>
+				{/if}
+				<!-- Mit der Tastatur geht dasselbe über die Geschossfelder darüber. -->
+				{#if neuForm}
+					{#each sn.form as f}
+						<rect class="zug" role="presentation" x={X(f.a) - 2} y={Y(f.oben) - 4} width={Math.max(8, (f.b - f.a) * sx + 4)} height="8"
+							onpointerdown={(e) => schnittRunter(e, neuForm.id, 'bis', neuForm.bis ?? Math.round(f.oben / gh), sy * gh)} />
+						{#if neuForm.art === 'aussparung'}
+							<rect class="zug" role="presentation" x={X(f.a) - 2} y={Y(f.unten) - 4} width={Math.max(8, (f.b - f.a) * sx + 4)} height="8"
+								onpointerdown={(e) => schnittRunter(e, neuForm.id, 'von', neuForm.von, sy * gh)} />
+						{/if}
+					{/each}
+				{:else}
+					{#each sn.eigen.filter((e) => Math.abs(e.oben - sn.traufe) < 0.01) as e}
+						<rect class="zug" role="presentation" x={X(e.a) - 2} y={Y(e.oben) - 4} width={Math.max(8, (e.b - e.a) * sx + 4)} height="8"
+							onpointerdown={(ev) => schnittRunter(ev, null, 'bis', neuBau.geschosse, sy * gh)} />
+					{/each}
+				{/if}
+			</svg>
+		</div>
+		{#if mitUmfeld && sn.umgebung.max !== null}<p class="umfeld mono">{t().entwerfen.umfeld(Math.round(sn.umgebung.mittel ?? 0), Math.round(sn.umgebung.max), sn.umgebung.n)}</p>{/if}
+	{/if}
+{/snippet}
+
+{#snippet formListe()}
+	{#if schnitt}
+		<!--
+			Die Formen des Gebäudes als Marken: Ein Klick wählt die Form, ihre
+			Geschosse stehen dann im Fenster und im Schnitt. Die letzte Marke setzt
+			ein Staffelgeschoss obenauf, ringsum eingerückt.
+		-->
+		<div class="formmarken" role="group" aria-label={t().entwerfen.formen}>
+			{#each schnitt.spalten.slice(1) as sp}
+				<button type="button" class:aus={sp.aus} title={`${sp.name} · ${geschossName(sp.von)}–${sp.offen ? t().entwerfen.oben : geschossName(sp.bis - 1)}`}
+					onclick={() => z.formWaehlen(schnitt.o.id, sp.id)}>
+					<span class="probe" class:spart={sp.art === 'aussparung'}></span>{sp.name}
+				</button>
+			{/each}
+			<button type="button" class="dazu" title={t().entwerfen.staffelgeschossTitel} onclick={() => z.staffelgeschoss()}>{t().entwerfen.staffelgeschoss}</button>
+		</div>
+	{/if}
+{/snippet}
+
+{#snippet arbeitsfenster()}
+	{#if z.schritt === 2}
+		{#if z.werkzeug === 'polygon' && !raeumlich}
+			<div class="fenster" role="region" aria-label={t().werkName.polygon}>
+				<div class="fkopf"><span>{t().werkName.polygon}</span><em class="mono">{t().bereinigen.punkte(z.fanglinie.length)}</em></div>
+				<div class="tatzeile">
+					<button type="button" disabled={z.fanglinie.length < 3} onclick={() => z.auswahlAusPolygon()}>{t().bereinigen.auswaehlen}</button>
+					<button type="button" disabled={z.fanglinie.length < 3} onclick={() => z.alsPlangebiet()}>{t().bereinigen.alsPlangebiet}</button>
+				</div>
+				<div class="tatzeile zweite">
+					<button type="button" onclick={() => z.polygonAbbrechen()}>{t().bereinigen.abbrechen}</button>
+				</div>
+				<p class="tasten">{t().werk.tastenFanglinie}</p>
+			</div>
+		{:else if z.ausgewaehlt.size}
+			<div class="fenster" role="region" aria-label={t().bereinigen.auswahl}>
+				<div class="fkopf"><span>{t().bereinigen.auswahl}</span><em class="mono lebt">{zahl(z.ausgewaehlt.size)}</em></div>
+				<div class="tatzeile">
+					<button type="button" onclick={() => z.zustandSetzen('gestrichen')}>{t().bereinigen.streichen}</button>
+					<button type="button" onclick={() => z.zustandSetzen('erhalt')}>{t().bereinigen.erhalten}</button>
+					<button type="button" onclick={() => z.zustandSetzen('normal')}>{t().bereinigen.zurueck}</button>
+				</div>
+				<div class="tatzeile zweite">
+					<button type="button" onclick={() => z.auswahlUmkehren()}>{t().bereinigen.umkehren}</button>
+					<button type="button" onclick={() => (z.ausgewaehlt = new Set())}>{t().bereinigen.aufheben}</button>
+				</div>
+				<p class="tasten">{t().werk.tastenAuswahl2}</p>
+			</div>
+		{:else if !raeumlich}
+			<p class="wink">{t().werk.winkZeigen}</p>
+		{/if}
+	{:else if z.entwurfLinie.length && !raeumlich}
+		<div class="fenster" role="region" aria-label={t().werkName.polygon}>
+			<div class="fkopf"><span>{t().werkName[z.absicht]}</span><em class="mono">{t().bereinigen.punkte(z.entwurfLinie.length)}</em></div>
+			<div class="tatzeile">
+				<button type="button" disabled={z.entwurfLinie.length < 3} onclick={linieSchliessen}>{t().entwerfen.schliessen}</button>
+				<button type="button" onclick={() => (z.entwurfLinie = [])}>{t().entwerfen.abbrechen}</button>
+			</div>
+			<p class="tasten">{t().werk.tastenPolygon}</p>
+		</div>
+	{:else if z.absicht === 'baeume' && !raeumlich}
+		<div class="fenster" role="region" aria-label={t().pflanzen.knopf}>
+			<div class="fkopf"><span>{t().pflanzen.knopf}</span><em class="mono">{zahl(z.gepflanzt.length)} {t().baeume.ergaenztKurz}</em></div>
+			<div class="bildrahmen">{@render pflanzOptionen()}</div>
+			<p class="tasten">{t().werk.tastenBaeume}</p>
+		</div>
+	{:else if neuForm && neuZiel}
+		<!-- Eine Form im Stapel: Art, Geschosse, Maße -->
+		{@const f = neuForm}
+		{@const o = neuZiel.o}
+		<div class="fenster entwurf" role="region" aria-label={f.name || t().entwerfen.form}>
+			<div class="fkopf">
+				<span>{f.name || t().entwerfen.form}{#if f.art === 'masse'}<em class="mono"> · {t().entwerfen.stehtAuf(geschossName(f.von - 1))}</em>{/if}</span>
+				<button type="button" class="zurueck" onclick={() => (z.formWahl = null)}>{t().entwerfen.zumGebaeude}</button>
+			</div>
+			{#if f.art === 'masse'}
+				<!-- Eine Aufstockung: wie viele Geschosse die Fläche weitergeht. Sie steht auf dem, was darunter ist. -->
+				<div class="zahlen">
+					<label><span>{t().entwerfen.geschosseDarauf}</span>
+						<span class="stufen">
+							<button type="button" aria-label={t().entwerfen.geschossWeniger} disabled={(f.bis ?? f.von + 1) - f.von <= 1}
+								onclick={() => z.formSetzen(o.id, f.id, { bis: Math.max(f.von + 1, (f.bis ?? f.von + 1) - 1) })}>−</button>
+							<input type="number" min="1" max="150" step="1" aria-label={t().entwerfen.geschosseDarauf} value={(f.bis ?? f.von + 1) - f.von}
+								onchange={(e) => { const v = Math.round(zahlAus(e)); if (v >= 1) z.formSetzen(o.id, f.id, { bis: f.von + Math.min(150, v) }); }} />
+							<button type="button" aria-label={t().entwerfen.geschossMehr}
+								onclick={() => z.formSetzen(o.id, f.id, { bis: (f.bis ?? f.von + 1) + 1 })}>+</button>
+						</span></label>
+				</div>
+			{:else}
+				<div class="zahlen zwei">
+					<label><span>{t().entwerfen.ab}</span>
+						<select value={f.von} onchange={(e) => z.formSetzen(o.id, f.id, { von: Number((e.currentTarget as HTMLSelectElement).value) })}>
+							{#each Array.from({ length: Math.max(1, (f.bis ?? schnitt?.oben ?? o.geschosse)) }, (_, i) => i) as i}<option value={i}>{geschossName(i)}</option>{/each}
+						</select></label>
+					<label><span>{t().entwerfen.bis}</span>
+						<select value={f.bis === null ? 'oben' : String(f.bis)} onchange={(e) => { const v = (e.currentTarget as HTMLSelectElement).value; z.formSetzen(o.id, f.id, { bis: v === 'oben' ? null : Number(v) }); }}>
+							{#each Array.from({ length: Math.max(0, (schnitt?.oben ?? o.geschosse) - f.von - 1) }, (_, i) => f.von + i + 1) as b}<option value={String(b)}>{geschossName(b - 1)}</option>{/each}
+							<option value="oben">{t().entwerfen.oben}</option>
+						</select></label>
+				</div>
+			{/if}
+			{#if f.rechteck}{@render masseFelder(f.rechteck)}{/if}
+			{@render schnittAnsicht(false)}
+			<div class="tatzeile">
+				<button type="button" onclick={() => z.formSetzen(o.id, f.id, { aus: !f.aus })}>{f.aus ? t().entwerfen.einblenden : t().entwerfen.ausblenden}</button>
+				<button type="button" onclick={() => z.formLoeschen(o.id, f.id)}>{t().entwerfen.loeschen}</button>
+			</div>
+		</div>
+	{:else if neuZiel?.o.typ === 'gruen'}
+		<div class="fenster entwurf" role="region" aria-label={t().entwerfen.gruenflaeche}>
+			<div class="fkopf"><span>{t().entwerfen.gruenflaeche}</span><em class="mono">{m2(grundflaeche(neuZiel.o))}</em></div>
+			{#if neuZiel.o.rechteck}{@render masseFelder(neuZiel.o.rechteck)}{/if}
+			<div class="tatzeile">
+				<button type="button" onclick={() => z.neubauDuplizieren()}>{t().entwerfen.duplizieren}</button>
+				<button type="button" onclick={() => z.neubauLoeschen()}>{t().entwerfen.loeschen}</button>
+			</div>
+			{#if !raeumlich}<p class="tasten">{t().werk.tastenAuswahl}</p>{/if}
+		</div>
+	{:else if neuGewaehlt.length}
+		<div class="fenster entwurf" role="region" aria-label={t().entwerfen.auswahl}>
+			<div class="fkopf">
+				<span>{neuEiner ? t().werkName.gebaeude : t().entwerfen.auswahl}</span>
+				<em class="mono" class:lebt={!neuEiner}>{#if neuEiner}{zahl(Math.round((schnitt ? schnitt.oben : neuWerte.geschosse) * neuWerte.geschossHoeheM * 10) / 10)} m · {m2(grundflaeche(neuEiner))}{:else}{zahl(neuGewaehlt.length)}{/if}</em>
+			</div>
+			{#if neuGewaehlt.some((o) => !o.typ)}{@render geschossFelder()}{/if}
+			{#if neuEiner?.rechteck}{@render masseFelder(neuEiner.rechteck)}{/if}
+			{@render schnittAnsicht(!neuEiner?.formen?.length)}
+			{@render formListe()}
+			<div class="tatzeile">
+				<button type="button" onclick={() => z.neubauDuplizieren()}>{t().entwerfen.duplizieren}</button>
+				<button type="button" onclick={() => z.neubauLoeschen()}>{t().entwerfen.loeschen}</button>
+			</div>
+			<!-- Mit Schnitt ist das Fenster voll; die Tasten stehen dann nur noch für ein aktives Werkzeug da. -->
+			{#if !raeumlich && (t().werk.wink[z.absicht] || !neuBau)}<p class="tasten">{t().werk.wink[z.absicht] || t().werk.tastenAuswahl}</p>{/if}
+		</div>
+	{:else if !raeumlich}
+		{#if z.absicht === 'gebaeude'}
+			<div class="fenster entwurf" role="region" aria-label={t().entwerfen.neues}>
+				<div class="fkopf"><span>{t().entwerfen.neues}</span><em class="mono">{zahl(Math.round((schnitt ? schnitt.oben : neuWerte.geschosse) * neuWerte.geschossHoeheM * 10) / 10)} m</em></div>
+				{@render geschossFelder()}
+				<p class="tasten">{z.entwurfForm === 'rechteck' ? t().werk.tastenRechteck : t().werk.tastenPolygon}</p>
+			</div>
+		{:else if z.absicht !== 'waehlen'}
+			<p class="wink">{t().werk.wink[z.absicht]} {zeichnet ? (z.entwurfForm === 'rechteck' ? t().werk.tastenRechteck : t().werk.tastenPolygon) : ''}</p>
+		{:else}
+			<p class="wink">{z.entwurf.length ? t().entwerfen.waehlenHinweis : t().entwerfen.leer}</p>
+		{/if}
+	{/if}
+{/snippet}
+
+{#snippet arbeitsspalte()}
+	<div class="arbeit">
+		<!-- Im 3D-Modell bleibt die Palette stehen und ruht, damit beim Umschalten nichts springt. -->
+			<div class="palette" class:ruht={raeumlich} inert={raeumlich} role="toolbar" aria-orientation="vertical" aria-label={t().entwerfen.werkzeug}>
+				{#if z.schritt === 2}
+					<div class="reihe zwei">
+						{@render werkKnopf('zeigen', t().werkName.zeigen, 'V', z.werkzeug === 'zeigen', false, () => bereinigenWerkzeug('zeigen'))}
+						{@render werkKnopf('rueck', t().entwerfen.rueckgaengig, t().werk.strgZ, false, !z.schritteZurueck, () => z.rueckgaengig())}
+					</div>
+					<div class="reihe zwei">
+						{@render werkKnopf('polygon', t().werkName.polygon, 'P', z.werkzeug === 'polygon', false, () => bereinigenWerkzeug('polygon'))}
+					</div>
+				{:else}
+					<div class="reihe zwei">
+						{@render werkKnopf('waehlen', t().werkName.waehlen, 'V', z.absicht === 'waehlen', false, () => z.absichtSetzen('waehlen'))}
+						{@render werkKnopf('rueck', t().entwerfen.rueckgaengig, t().werk.strgZ, false, !z.schritteZurueck, () => z.rueckgaengig())}
+					</div>
+					<div class="gruppe">
+						<span>{t().werk.neu}</span>
+						<!-- Rechteck oder Polygon gilt für alles, was gezeichnet wird: Gebäude, Grün, Hof, Aufsatz. -->
+						<span class="formwahl" role="group" aria-label={t().werk.form}>
+							{#each [['rechteck', 'R'], ['polygon', 'P']] as [f, k]}
+								<button type="button" class:an={z.entwurfForm === f} aria-pressed={z.entwurfForm === f} aria-label={t().werkName[f]}
+									title={`${t().werkName[f]} (${k})`} onclick={() => z.zeichenFormSetzen(f as 'rechteck' | 'polygon')}>
+									{@render werkIcon(f)}<kbd class="mono">{k}</kbd>
+								</button>
+							{/each}
+						</span>
+					</div>
+					<div class="reihe">
+						{#each WERK_NEU as w}
+							{@render werkKnopf(w.id, t().werkName[w.id], w.kuerzel, z.absicht === w.id, false, () => z.absichtSetzen(w.id as Absicht), () => z.absichtSetzen(w.id as Absicht, true))}
+						{/each}
+					</div>
+					<div class="gruppe"><span>{t().werk.formen}</span></div>
+					<div class="reihe zwei">
+						{#each WERK_FORMEN as w}
+							{@render werkKnopf(w.id, t().werkName[w.id], w.kuerzel, z.absicht === w.id, !z.hatGebaeude, () => z.absichtSetzen(w.id as Absicht), () => z.absichtSetzen(w.id as Absicht, true))}
+						{/each}
+					</div>
+				{/if}
+			</div>
+		{@render arbeitsfenster()}
+	</div>
+{/snippet}
+
+{#snippet masseFelder(re: { l: number; t: number; winkel: number })}
+	<!-- Länge, Tiefe, Drehung eines Rechtecks: am Gebäude oder an der gewählten Form -->
+	<div class="zahlen drei">
+		<label><span>{t().entwerfen.laenge}</span><span class="mit"><input type="number" min="0.5" step="0.5" value={Math.round(re.l * 10) / 10}
+			onchange={(e) => { const v = zahlAus(e); if (v >= 0.5) z.neubauMasse({ l: v }); }} /><em>m</em></span></label>
+		<label><span>{t().entwerfen.tiefe}</span><span class="mit"><input type="number" min="0.5" step="0.5" value={Math.round(re.t * 10) / 10}
+			onchange={(e) => { const v = zahlAus(e); if (v >= 0.5) z.neubauMasse({ t: v }); }} /><em>m</em></span></label>
+		<label><span>{t().entwerfen.drehung}</span><span class="mit"><input type="number" min="-90" max="90" step="1" value={Math.round(re.winkel * 10) / 10}
+			onchange={(e) => { const v = zahlAus(e); if (Number.isFinite(v)) z.neubauMasse({ winkel: v }); }} /><em>°</em></span></label>
+	</div>
+{/snippet}
+
 {#snippet meldung()}
 	{#if z.fehler}
 		<p class="fehler" role="alert">
@@ -1264,7 +1793,7 @@
 {/snippet}
 
 <svelte:head><title>Nolli</title></svelte:head>
-<svelte:window onpointerdown={kartenZu} onkeydown={kartenZu} />
+<svelte:window bind:innerWidth={fensterBreite} onpointerdown={kartenZu} onkeydown={(e) => { kartenZu(e); verlaufTaste(e); }} />
 
 {#snippet overtureKnopf()}
 	{#if z.ergaenzungLaedt}
@@ -1286,7 +1815,7 @@
 
 <div class="werk">
 	<header class="kopf">
-		<h1>nolli</h1>
+		<h1>nolli <span class="version mono" title={t().kopf.versionTitel(__NOLLI_VERSION__, __NOLLI_STAND__)}>{__NOLLI_VERSION__}</span></h1>
 
 		<!-- Projektdatei (06.11.2026): Speichern schreibt `.nolli`, Öffnen liest sie. -->
 		<div class="projekt" role="group" aria-label={t().projekt.gruppe}>
@@ -1592,8 +2121,13 @@
 					<Karte bind:this={karte} {schema} />
 				{:else if druckAuf && r}
 					{#if z.druckBuehne === 'vorschau'}<DruckVorschau objekte={bestand} {r} />{:else}<DruckAusschnitt objekte={bestand} {r} masse={druckJetzt!} />{/if}
-				{:else if !raeumlich}
-					<Blatt waehlbar={z.schritt === 2} />
+				{:else}
+					<!-- Bleibt hinter dem 3D-Modell stehen und ruht, wie das 3D-Modell hinter dem Plan. -->
+					<Blatt waehlbar={z.schritt === 2} entwirft={z.schritt === 3} aktiv={!raeumlich}
+						links={(z.schritt === 2 || z.schritt === 3) && fensterBreite > 940 ? 286 : 0} />
+				{/if}
+				{#if (z.schritt === 2 || z.schritt === 3) && !druckAuf}
+					{@render arbeitsspalte()}
 				{/if}
 				<!--
 					Das 3D-Modell bleibt nach dem ersten Öffnen bestehen und ruht nur:
@@ -1666,7 +2200,7 @@
 			</div>
 		{/snippet}
 		{#if baumFenster && z.schritt >= 2}
-			<div class="druckfenster baumfenster" role="dialog" aria-label={t().baeume.titel}>
+			<div class="druckfenster baumfenster" class:schmal={spalteAn} role="dialog" aria-label={t().baeume.titel}>
 				<div class="druckkopf">
 					<span class="feld">{t().baeume.titel}</span>
 					<button type="button" class="zu" onclick={() => (baumFenster = false)} aria-label={t().meldungSchliessen}>×</button>
@@ -1676,11 +2210,19 @@
 					{#if !z.baeume}<button type="button" class="zurueck" onclick={() => (z.baeume = true)}>{t().baeume.anschalten}</button>{/if}
 				</div>
 				<div class="bildrahmen" class:gedimmt={!z.baeume}>
+					<!-- Ein Aussehen für alles: Bestand, Wald, Naturflächen und Ergänzt folgen denselben Reglern. -->
+					<div class="wahl schmal" role="group" aria-label={t().baeume.gleichGruppe}>
+						<button type="button" class:an={!z.baumGleich[satzName]} aria-pressed={!z.baumGleich[satzName]} onclick={() => z.baumGleichSetzen(satzName, false)}>{t().baeume.jeHerkunft}</button>
+						<button type="button" class:an={z.baumGleich[satzName]} aria-pressed={z.baumGleich[satzName]} onclick={() => z.baumGleichSetzen(satzName, true)}>{t().baeume.alleGleich}</button>
+					</div>
+					{#if z.baumGleich[satzName]}
+						{@render aussehen('bestand')}
+					{/if}
 					<!-- Bestand -->
 					{@render bandKopf('bestand', z.baeumeStehend.length, z.bestandAn, () => (z.bestandAn = !z.bestandAn))}
 					{#if bandAuf.bestand}
 						<p class="hinweis leise">{t().baeume.bestandWas(z.baeumeStehend.filter((b) => b.reihe).length)}</p>
-						{@render aussehen('bestand')}
+						{#if !z.baumGleich[satzName]}{@render aussehen('bestand')}{/if}
 					{/if}
 					<!-- Wald -->
 					{@render bandKopf('wald', z.waldListe.baeume.length, z.waldAn, () => (z.waldAn = !z.waldAn))}
@@ -1691,7 +2233,7 @@
 							<em class="mono">{z.waldAbstand} m</em>
 						</label>
 						<p class="hinweis leise">{t().baeume.waldWas(Math.round(z.waldListe.abstandM))}</p>
-						{@render aussehen('wald')}
+						{#if !z.baumGleich[satzName]}{@render aussehen('wald')}{/if}
 					{/if}
 					<!-- Naturflächen: Gehölze ohne Stamm auf Gebüsch und Heide, mit Ballung (07.11.2026). -->
 					{@render bandKopf('natur', z.naturListe.length, z.naturAn, () => (z.naturAn = !z.naturAn))}
@@ -1717,84 +2259,13 @@
 							<em class="mono">{Math.round(z.naturWahl.ballung * 100)} %</em>
 						</label>
 						<p class="hinweis leise">{t().baeume.naturWas}</p>
-						{@render aussehen('natur')}
+						{#if !z.baumGleich[satzName]}{@render aussehen('natur')}{/if}
 					{/if}
 					<!-- Ergänzt -->
 					{@render bandKopf('ergaenzt', z.gepflanzt.length, z.gepflanztAn, () => (z.gepflanztAn = !z.gepflanztAn))}
 					{#if bandAuf.ergaenzt}
-						{#if raeumlich}
-							<p class="hinweis leise">{t().baeume.pflanzenNurPlan}</p>
-						{:else}
-							<div class="wahl schmal" role="group" aria-label={t().pflanzen.werkzeug}>
-								{#each [['pinsel', t().pflanzen.pinsel], ['lasso', t().pflanzen.lasso], ['einzel', t().pflanzen.einzel]] as [id, name]}
-									<button type="button" class:an={z.pflanzWahl.werkzeug === id} aria-pressed={z.pflanzWahl.werkzeug === id} onclick={() => (z.pflanzWahl.werkzeug = id as 'pinsel')}>{name}</button>
-								{/each}
-							</div>
-							<div class="wahl schmal" role="group">
-								<button type="button" class:an={!z.pflanzWahl.radieren} aria-pressed={!z.pflanzWahl.radieren} onclick={() => (z.pflanzWahl.radieren = false)}>{t().pflanzen.pflanzen}</button>
-								<button type="button" class:an={z.pflanzWahl.radieren} aria-pressed={z.pflanzWahl.radieren} onclick={() => (z.pflanzWahl.radieren = true)}>{t().pflanzen.radieren}</button>
-							</div>
-							{#if z.pflanzWahl.werkzeug === 'pinsel'}
-								<label class="regelzeile">
-									<span>{t().pflanzen.pinselGroesse}</span>
-									<input type="range" min="5" max="100" step="1" bind:value={z.pflanzWahl.pinselM} />
-									<em class="mono">{z.pflanzWahl.pinselM} m</em>
-								</label>
-							{/if}
-							<!-- Mit Auswahl wirken die Regler auf die gewählten Gebiete; der Rand zeigt es. -->
-							<div class="pflanzwerte" class:bearbeitet={z.pflanzAuswahl.size > 0}>
-								{#if z.pflanzAuswahl.size}
-									<div class="gewaehlt">
-										<span>{t().pflanzen.gewaehlt(z.pflanzAuswahl.size, z.gepflanzt.filter((b) => b.gebiet !== undefined && z.pflanzAuswahl.has(b.gebiet)).length)}</span>
-										<button type="button" class="zurueck" onclick={() => (z.pflanzAuswahl = new Set())}>{t().pflanzen.abwaehlen}</button>
-										<button type="button" class="zurueck" onclick={() => z.pflanzAuswahlWeg()}>{t().pflanzen.gewaehlteWeg}</button>
-									</div>
-								{/if}
-								<label class="regelzeile">
-									<span>{t().pflanzen.abstand}</span>
-									<input type="range" min="3" max="20" step="0.5" disabled={z.pflanzWahl.radieren && !z.pflanzAuswahl.size} value={z.pflanzWahl.abstandM}
-										onpointerdown={() => z.pflanzAenderungBeginnen()} oninput={(e) => z.pflanzSetzen('abstandM', Number((e.currentTarget as HTMLInputElement).value))} />
-									<em class="mono">{z.pflanzWahl.abstandM} m</em>
-								</label>
-								<label class="regelzeile">
-									<span>{t().pflanzen.krone}</span>
-									<input type="range" min="2" max="16" step="0.5" disabled={z.pflanzWahl.radieren && !z.pflanzAuswahl.size} value={z.pflanzWahl.kroneM}
-										onpointerdown={() => z.pflanzAenderungBeginnen()} oninput={(e) => z.pflanzSetzen('kroneM', Number((e.currentTarget as HTMLInputElement).value))} />
-									<em class="mono">{z.pflanzWahl.kroneM} m</em>
-								</label>
-								<label class="regelzeile">
-									<span>{t().pflanzen.variation}</span>
-									<input type="range" min="0" max="0.6" step="0.05" disabled={z.pflanzWahl.radieren && !z.pflanzAuswahl.size} value={z.pflanzWahl.variation}
-										onpointerdown={() => z.pflanzAenderungBeginnen()} oninput={(e) => z.pflanzSetzen('variation', Number((e.currentTarget as HTMLInputElement).value))} />
-									<em class="mono">±{Math.round(z.pflanzWahl.variation * 100)} %</em>
-								</label>
-								<div class="wahl schmal" role="group" aria-label={t().pflanzen.art}>
-									{#each [['laub', t().pflanzen.laub], ['nadel', t().pflanzen.nadel], ['misch', t().pflanzen.misch]] as [id, name]}
-										<button type="button" class:an={z.pflanzWahl.art === id} aria-pressed={z.pflanzWahl.art === id} disabled={z.pflanzWahl.radieren && !z.pflanzAuswahl.size} onclick={() => { z.pflanzAenderungBeginnen(); z.pflanzSetzen('art', id as 'laub'); }}>{name}</button>
-									{/each}
-								</div>
-								{#if z.pflanzWahl.art === 'misch'}
-									<label class="regelzeile">
-										<span>{t().pflanzen.nadelAnteil}</span>
-										<input type="range" min="0.05" max="0.95" step="0.05" disabled={z.pflanzWahl.radieren && !z.pflanzAuswahl.size} value={z.pflanzWahl.nadelAnteil}
-											onpointerdown={() => z.pflanzAenderungBeginnen()} oninput={(e) => z.pflanzSetzen('nadelAnteil', Number((e.currentTarget as HTMLInputElement).value))} />
-										<em class="mono">{Math.round(z.pflanzWahl.nadelAnteil * 100)} %</em>
-									</label>
-								{/if}
-								<span class="unter">{t().pflanzen.frei}</span>
-								<div class="wahl schmal" role="group" aria-label={t().pflanzen.frei}>
-									<button type="button" class:an={z.pflanzWahl.freiGebaeude} aria-pressed={z.pflanzWahl.freiGebaeude} onclick={() => { z.pflanzAenderungBeginnen(); z.pflanzSetzen('freiGebaeude', !z.pflanzWahl.freiGebaeude); }}>{t().pflanzen.freiGebaeude}</button>
-									<button type="button" class:an={z.pflanzWahl.freiWasser} aria-pressed={z.pflanzWahl.freiWasser} onclick={() => { z.pflanzAenderungBeginnen(); z.pflanzSetzen('freiWasser', !z.pflanzWahl.freiWasser); }}>{t().pflanzen.freiWasser}</button>
-									<button type="button" class:an={z.pflanzWahl.freiStrassen} aria-pressed={z.pflanzWahl.freiStrassen} onclick={() => { z.pflanzAenderungBeginnen(); z.pflanzSetzen('freiStrassen', !z.pflanzWahl.freiStrassen); }}>{t().pflanzen.freiStrassen}</button>
-								</div>
-							</div>
-							<div class="wahl schmal">
-								<button type="button" disabled={!z.pflanzSchritte} onclick={() => z.pflanzRueckgaengig()}>{t().pflanzen.zurueck}</button>
-								<button type="button" disabled={!z.gepflanzt.length} onclick={() => z.pflanzAlleWeg()}>{t().pflanzen.alleWeg}</button>
-							</div>
-							<p class="hinweis leise">{t().pflanzen.wink}</p>
-						{/if}
-						{@render aussehen('ergaenzt')}
+						<p class="hinweis leise">{t().baeume.ergaenztWas}</p>
+						{#if !z.baumGleich[satzName]}{@render aussehen('ergaenzt')}{/if}
 					{/if}
 				</div>
 			</div>
@@ -1804,7 +2275,7 @@
 			Schließt mit × oder Escape; Vorschau und Ausschnitt bleiben auf der
 			Bühne stehen, bis man sie abschaltet.
 		-->
-		{#if druckOffen && druckJetzt && z.schritt === 3}
+		{#if druckOffen && druckJetzt && z.schritt === 4}
 			<div class="druckfenster" role="dialog" aria-label={t().ausgeben.druck}>
 				<div class="druckkopf">
 					<span class="feld">{t().ausgeben.druck}</span>
@@ -1824,7 +2295,8 @@
 							onclick={() => (z.druckBuehne = z.druckBuehne === 'ausschnitt' ? null : 'ausschnitt')}>{t().ausgeben.druckAusschnitt}</button>
 					</div>
 					<!-- Größe, Maßstab und Rechteck hier statt auf einer zweiten Tafel rechts (Impeccable, 05.11.2026). -->
-					<span class="band">{t().ausgeben.druckGroesse}</span>
+					<button type="button" class="band" aria-expanded={druckBand.groesse} onclick={() => (druckBand.groesse = !druckBand.groesse)}>{t().ausgeben.druckGroesse}</button>
+					{#if druckBand.groesse}
 					<div class="wahl schmal" role="group" aria-label={t().ausgeben.druckGroesse}>
 						<button type="button" class:an={z.druck.groesse === 'bett'} aria-pressed={z.druck.groesse === 'bett'} onclick={() => (z.druck.groesse = 'bett')}>{t().ausgeben.druckBett}</button>
 						<button type="button" class:an={z.druck.groesse === 'massstab'} aria-pressed={z.druck.groesse === 'massstab'} onclick={() => massstabSetzen(z.druck.massstab)}>{t().ausgeben.druckMassstab}</button>
@@ -1856,7 +2328,9 @@
 						{#if z.druck.groesse === 'massstab'}<button type="button" onclick={() => { if (r) z.druck.ausschnitt = ausschnittGroesse(r, z.druck, z.druck.bettMm, z.druck.bettMm); }}>{t().ausgeben.druckAufsBett}</button>{/if}
 						<button type="button" disabled={druckGanz} onclick={() => (z.druck.ausschnitt = { x0: 0, y0: 0, x1: 1, y1: 1 })}>{t().ausgeben.druckGanz}</button>
 					</div>
-					<span class="band">{t().ausgeben.druckFarben}</span>
+					{/if}
+					<button type="button" class="band" aria-expanded={druckBand.farben} onclick={() => (druckBand.farben = !druckBand.farben)}>{t().ausgeben.druckFarben}</button>
+					{#if druckBand.farben}
 					<div class="wahl schmal" role="group" aria-label={t().ausgeben.druckFarben}>
 						<button type="button" class:an={z.druck.farben === 'ein'} aria-pressed={z.druck.farben === 'ein'} onclick={() => (z.druck.farben = 'ein')}>{t().ausgeben.druckEin}</button>
 						<button type="button" class:an={z.druck.farben === 'mehr'} aria-pressed={z.druck.farben === 'mehr'} onclick={() => (z.druck.farben = 'mehr')}>{t().ausgeben.druckMehr}</button>
@@ -1876,7 +2350,9 @@
 						<button type="button" class:an={z.druck.strassen} aria-pressed={z.druck.strassen} onclick={() => (z.druck.strassen = true)}>{t().sicht.kantenAn}</button>
 						<button type="button" class:an={!z.druck.strassen} aria-pressed={!z.druck.strassen} onclick={() => (z.druck.strassen = false)}>{t().sicht.kantenAus}</button>
 					</div>
-					<span class="band">{t().ausgeben.druckPlatte}</span>
+					{/if}
+					<button type="button" class="band" aria-expanded={druckBand.platte} onclick={() => (druckBand.platte = !druckBand.platte)}>{t().ausgeben.druckPlatte}</button>
+					{#if druckBand.platte}
 					<label class="regelzeile">
 						<span>{t().ausgeben.druckSockel}</span>
 						<input type="range" min="1" max="10" step="0.5" bind:value={z.druck.sockelMm} />
@@ -1911,6 +2387,7 @@
 					<p class="hinweis leise">{t().ausgeben.druckWegZahl(z.druck.weglassen.length)}</p>
 					<div class="wahl schmal"><button type="button" onclick={() => (z.druck.weglassen = [])}>{t().ausgeben.druckWegAlle}</button></div>
 				{/if}
+					{/if}
 					<p class="hinweis leise">{t().ausgeben.druckWas}</p>
 					<!-- Die Datei ist die Hauptaktion des Fensters und sieht auch so aus (Impeccable, 05.11.2026). -->
 					<div class="druckfuss">
@@ -2079,10 +2556,27 @@
 						{@render overtureKnopf()}
 					</div>
 				{/if}
+				<!-- Die Buchführung zuerst: Was bereinigt ist, steht oben; getan wird links am Blatt. -->
+				<div class="teil">
+					<span class="feld">{t().bereinigen.buch}</span>
+					<dl class="buch">
+						<div><dt>{t().bereinigen.gestrichen}</dt><dd class="mono">{z.gestrichene}</dd></div>
+						<div><dt>{t().bereinigen.erhalt}</dt><dd class="mono">{z.erhaltene}</dd></div>
+					</dl>
+					<div class="wahl schmal">
+						<button type="button" class:an={!z.bereinigt} aria-pressed={!z.bereinigt} onclick={() => (z.bereinigt = false)}>{t().bereinigen.zeigeGestrichen}</button>
+						<button type="button" class:an={z.bereinigt} aria-pressed={z.bereinigt} onclick={() => (z.bereinigt = true)}>{t().bereinigen.ausblenden}</button>
+					</div>
+					{#if z.gestrichene || z.erhaltene}
+						<div class="tatzeile zweite">
+							<button type="button" onclick={() => z.alleZuruecksetzen()}>{t().bereinigen.allesZurueck}</button>
+						</div>
+					{/if}
+				</div>
 				<div class="teil">
 					<span class="feld">{t().bereinigen.ebenen}<em class="mono">{zahl(z.objekte.length)}</em></span>
 					<ul class="ebenen">
-						{#each STIFTE.filter((s) => !['rahmen', 'gestrichen'].includes(s.id) && (s.id !== 'overture' || !!z.ergaenzung)) as s}
+						{#each STIFTE.filter((s) => !['rahmen', 'gestrichen', 'neubau'].includes(s.id) && (s.id !== 'overture' || !!z.ergaenzung)) as s}
 							{@const n = zaehler.get(s.id) ?? 0}
 							<li>
 								<button
@@ -2111,91 +2605,7 @@
 						<p class="hinweis leise">
 							{t().bereinigen.auswahl3dLeise}
 						</p>
-						<dl class="buch">
-							<div><dt>{t().bereinigen.gestrichen}</dt><dd class="mono">{z.gestrichene}</dd></div>
-							<div><dt>{t().bereinigen.erhalt}</dt><dd class="mono">{z.erhaltene}</dd></div>
-						</dl>
 					</div>
-				{:else}
-
-				<div class="teil">
-					<span class="feld">{t().bereinigen.werkzeug}</span>
-					<div class="wahl">
-						<button type="button" class:an={z.werkzeug === 'zeigen'} aria-pressed={z.werkzeug === 'zeigen'}
-							onclick={() => z.polygonAbbrechen()}>{t().bereinigen.zeigen}</button>
-						<button type="button" class:an={z.werkzeug === 'polygon'} aria-pressed={z.werkzeug === 'polygon'}
-							onclick={() => (z.werkzeug = 'polygon')}>{t().bereinigen.polygon}</button>
-					</div>
-					{#if z.werkzeug === 'polygon'}
-						<p class="hinweis">
-							{t().bereinigen.polygonHinweis(z.fanglinie.length)}
-						</p>
-						<div class="tatzeile">
-							<button type="button" disabled={z.fanglinie.length < 3}
-								onclick={() => z.auswahlAusPolygon()}>{t().bereinigen.auswaehlen}</button>
-							<button type="button" disabled={z.fanglinie.length < 3}
-								onclick={() => z.alsPlangebiet()}>{t().bereinigen.alsPlangebiet}</button>
-							<button type="button" disabled={!z.fanglinie.length}
-								onclick={() => z.polygonAbbrechen()}>{t().bereinigen.abbrechen}</button>
-						</div>
-					{:else}
-						<p class="hinweis leise">
-							{t().bereinigen.einzelnHinweis}
-						</p>
-					{/if}
-				</div>
-				<!-- Bäume als eigenes Band (Impeccable, 07.11.2026), nicht unter Werkzeug. -->
-				<div class="teil">
-					<span class="feld">{t().baeume.titel}<em class="mono">{zahl(z.gepflanzt.length)} {t().baeume.ergaenztKurz}</em></span>
-					<div class="wahl">
-						<button type="button" class:an={z.pflanzOffen} aria-pressed={z.pflanzOffen} onclick={() => pflanzUmschalten()}>{t().pflanzen.knopf}</button>
-					</div>
-				</div>
-
-				<div class="teil">
-					<span class="feld">{t().bereinigen.auswahl}{#if z.ausgewaehlt.size}<em class="mono lebt">{z.ausgewaehlt.size}</em>{/if}</span>
-					<p class="hinweis">
-						{#if z.ausgewaehlt.size}
-							{t().bereinigen.gewaehlt(z.ausgewaehlt.size)}
-						{:else}
-							{t().bereinigen.nichts}
-						{/if}
-					</p>
-					<div class="tatzeile">
-						<button type="button" disabled={!z.ausgewaehlt.size} onclick={() => z.zustandSetzen('gestrichen')}>{t().bereinigen.streichen}</button>
-						<button type="button" disabled={!z.ausgewaehlt.size} onclick={() => z.zustandSetzen('erhalt')}>{t().bereinigen.erhalten}</button>
-						<button type="button" disabled={!z.ausgewaehlt.size} onclick={() => z.zustandSetzen('normal')}>{t().bereinigen.zurueck}</button>
-					</div>
-					<div class="tatzeile zweite">
-						<button type="button" disabled={!z.objekte.length} onclick={() => z.auswahlUmkehren()}>{t().bereinigen.umkehren}</button>
-						<button type="button" disabled={!z.ausgewaehlt.size} onclick={() => (z.ausgewaehlt = new Set())}>{t().bereinigen.aufheben}</button>
-					</div>
-					<dl class="buch">
-						<div><dt>{t().bereinigen.gestrichen}</dt><dd class="mono">{z.gestrichene}</dd></div>
-						<div><dt>{t().bereinigen.erhalt}</dt><dd class="mono">{z.erhaltene}</dd></div>
-					</dl>
-					{#if z.gestrichene || z.erhaltene}
-						<div class="tatzeile zweite">
-							<button type="button" onclick={() => z.alleZuruecksetzen()}>{t().bereinigen.allesZurueck}</button>
-						</div>
-					{/if}
-				</div>
-
-				<div class="teil">
-					<span class="feld">{t().bereinigen.sichtbarkeit}</span>
-					<div class="wahl">
-						<button type="button" class:an={!z.bereinigt} aria-pressed={!z.bereinigt} onclick={() => (z.bereinigt = false)}>
-							{t().bereinigen.zeigeGestrichen}
-						</button>
-						<button type="button" class:an={z.bereinigt} aria-pressed={z.bereinigt} onclick={() => (z.bereinigt = true)}>
-							{t().bereinigen.ausblenden}
-						</button>
-					</div>
-					<p class="hinweis leise">
-						{t().bereinigen.sichtbarkeitHinweis}
-					</p>
-				</div>
-
 				{/if}
 
 				{#if z.plangebiet}
@@ -2223,8 +2633,9 @@
 				{/if}
 
 				{#if deckung.gesamt}
-					<div class="teil">
-						<span class="feld">{t().bereinigen.daten}</span>
+					<div class="teil" class:zu={!datenOffen}>
+						<button type="button" class="feld klappkopf" aria-expanded={datenOffen} onclick={() => (datenOffen = !datenOffen)}>{t().bereinigen.daten}</button>
+						{#if datenOffen}
 						<dl class="buch">
 							<div><dt>{t().bereinigen.gebaeude}</dt><dd class="mono">{deckungHaeuser.gesamt}</dd></div>
 							{#if deckung.gesamt > deckungHaeuser.gesamt}
@@ -2288,6 +2699,7 @@
 								{t().bereinigen.baustellenHinweis}
 							</p>
 						{/if}
+						{/if}
 					</div>
 				{/if}
 
@@ -2295,6 +2707,67 @@
 					{@render meldung()}
 					<button class="haupt" type="button" onclick={() => (z.schritt = 3)}>
 						<span class="ring" aria-hidden="true"></span>{t().bereinigen.weiter}
+					</button>
+				</div>
+
+			{:else if z.schritt === 3}
+				<!-- Entwerfen: Rechts wird gelesen. Getan wird links am Blatt (Palette und Arbeitsfenster). -->
+				{#if z.konflikte.length}
+					<!-- Bestand unter einem Neubau, der noch nicht gestrichen ist -->
+					<div class="urteil mahnt luecke" role="status">
+						<p>{t().entwerfen.konflikt(z.konflikte.length)}</p>
+						<div class="tatzeile"><button type="button" onclick={() => z.konflikteStreichen()}>{t().entwerfen.konfliktStreichen}</button></div>
+					</div>
+				{/if}
+				<div class="teil entwurf">
+					<span class="feld">{t().entwerfen.kennzahlen}</span>
+					{#if z.entwurf.length || z.gepflanzt.length}
+						<dl class="buch">
+							{#if neuZahlen.anzahl}
+								<div><dt>{t().entwerfen.anzahl}</dt><dd class="mono">{neuZahlen.anzahl}</dd></div>
+								<div><dt>{t().entwerfen.grund}</dt><dd class="mono">{m2(neuZahlen.grund)}</dd></div>
+								<div class="gross"><dt>{t().entwerfen.bgf}</dt><dd class="mono">{m2(neuZahlen.bgf)}</dd></div>
+							{/if}
+							{#if neuZahlen.gruen}<div><dt>{t().entwerfen.gruen}</dt><dd class="mono">{m2(neuZahlen.gruen)}</dd></div>{/if}
+							{#if z.gepflanzt.length}<div><dt>{t().baeume.titel}</dt><dd class="mono">{zahl(z.gepflanzt.length)} {t().baeume.ergaenztKurz}</dd></div>{/if}
+							{#if neuImGebiet}
+								<div><dt>{t().entwerfen.grz}</dt><dd class="mono">{zahl(neuImGebiet.grund / gebietM2, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</dd></div>
+								<div><dt>{t().entwerfen.gfz}</dt><dd class="mono">{zahl(neuImGebiet.bgf / gebietM2, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</dd></div>
+							{/if}
+						</dl>
+						<p class="hinweis leise">{t().entwerfen.kennzahlenHinweis}</p>
+						<div class="tatzeile">
+							{#if raeumlich}<button type="button" disabled={!z.entwurfSchritte} onclick={() => z.entwurfRueckgaengig()}>{t().entwerfen.rueckgaengig}</button>{/if}
+							<button type="button" onclick={() => z.entwurfLeeren()}>{t().entwerfen.alleLoeschen}</button>
+						</div>
+					{:else}
+						<p class="hinweis leise">{raeumlich ? t().entwerfen.nurPlan : t().entwerfen.leer}</p>
+					{/if}
+				</div>
+				{#if z.entwurf.some((o) => !o.typ)}
+					<div class="teil entwurf">
+						<span class="feld">{t().entwerfen.farbeNeubau}</span>
+						<div class="farbzeile">
+							<!-- Eigene Farbe oder „wie Bestand“: dann gilt die Gebäudefarbe der Darstellung. -->
+							<input type="color" aria-label={t().entwerfen.farbe} value={z.neubauFarbe ?? NEUBAU_FARBE} class:still={!z.neubauFarbe}
+								oninput={(e) => (z.neubauFarbe = (e.currentTarget as HTMLInputElement).value)} />
+							<button type="button" class:an={!!z.neubauFarbe && z.neubauFarbe.toLowerCase() === NEUBAU_FARBE.toLowerCase()}
+								aria-pressed={!!z.neubauFarbe && z.neubauFarbe.toLowerCase() === NEUBAU_FARBE.toLowerCase()}
+								onclick={() => (z.neubauFarbe = NEUBAU_FARBE)}>{t().entwerfen.farbeZurueck}</button>
+							<button type="button" class:an={!z.neubauFarbe} aria-pressed={!z.neubauFarbe}
+								onclick={() => (z.neubauFarbe = null)}>{t().entwerfen.wieBestand}</button>
+						</div>
+						<label class="hakenzeile"><input type="checkbox" checked={z.sichtbar.has('neubau')} onchange={() => z.umschalten('neubau')} />{t().entwerfen.zeigen}</label>
+					</div>
+				{/if}
+				{#if raeumlich && z.entwurf.length}
+					<div class="teil"><p class="hinweis leise">{t().entwerfen.nurPlan}</p></div>
+				{/if}
+
+				<div class="fuss">
+					{@render meldung()}
+					<button class="haupt" type="button" onclick={() => (z.schritt = 4)}>
+						<span class="ring" aria-hidden="true"></span>{t().entwerfen.weiter}
 					</button>
 				</div>
 
@@ -2426,8 +2899,9 @@
 
 				<div class="fuss">
 					{@render meldung()}
+					<!-- Ist das Druckfenster offen, ist dessen Datei die Hauptaktion; dieser Knopf tritt zurück. -->
 					<button
-						class="haupt" class:arbeitet={!!arbeitet} type="button" disabled={!r || !!arbeitet}
+						class="haupt" class:leise={druckOffen} class:arbeitet={!!arbeitet} type="button" disabled={!r || !!arbeitet}
 						onclick={() => ausgeben('bild')}
 					>
 						<span class="ring" aria-hidden="true"></span>
@@ -2510,6 +2984,7 @@
 	   das helle Grün auf Weiß bei 15 px nur auf 2:1 Kontrast kommt; im dunklen
 	   Schema ist die tiefe Stufe die helle. */
 	h1 { font-size: 15px; letter-spacing: -0.03em; white-space: nowrap; color: var(--akzent-tief); }
+	h1 .version { margin-left: 3px; font-size: 11px; font-weight: 500; letter-spacing: 0; color: var(--tinte-3); vertical-align: 1px; }
 
 	.schritte { display: flex; gap: 2px; margin-inline: auto; }
 	.schritt {
@@ -2525,7 +3000,7 @@
 	.schritt:disabled { color: var(--tinte-3); cursor: not-allowed; }
 	.ziffer {
 		display: grid; place-items: center;
-		width: 18px; height: 18px; font-size: 10px;
+		width: 18px; height: 18px; font-size: 11px;
 		border: 1px solid var(--linie-stark); border-radius: 50%;
 		color: var(--tinte-2);
 	}
@@ -2741,7 +3216,6 @@
 	.teil > .feld:first-child em {
 		font-style: normal; font-weight: 400; font-size: 11px; letter-spacing: 0; color: var(--tinte-2);
 	}
-	.teil > .feld:first-child em.lebt { color: var(--akzent-tief); font-weight: 500; }
 	/* Aufklappbarer Kopf: dasselbe Band, als Knopf, mit Pfeil vor dem Wert. */
 	.teil > .klappkopf {
 		width: calc(100% + 36px); border: 0; border-bottom: 1px solid var(--linie);
@@ -2761,7 +3235,7 @@
 
 	.feld {
 		display: block; margin-bottom: 9px;
-		font-size: 10.5px; font-weight: 500; letter-spacing: 0.11em;
+		font-size: 11px; font-weight: 500; letter-spacing: 0.11em;
 		text-transform: uppercase; color: var(--tinte-2);
 	}
 
@@ -2800,7 +3274,7 @@
 		border: 1px solid var(--linie); border-radius: var(--rund);
 		transition: color 120ms, border-color 120ms;
 	}
-	.wahl button em { font-size: 10.5px; font-style: normal; color: var(--tinte-3); }
+	.wahl button em { font-size: 11px; font-style: normal; color: var(--tinte-3); }
 	.wahl button:hover { color: var(--tinte); border-color: var(--linie-stark); }
 	.wahl button.an { background: var(--tinte); border-color: var(--tinte); color: var(--blatt); }
 	/* Gesperrt muss gesperrt aussehen (Impeccable, 07.11.2026): vorher sah ein
@@ -2868,16 +3342,164 @@
 	.ebenen button:disabled { opacity: 0.3; cursor: default; }
 	.probe { width: 14px; height: 14px; border: 1.5px solid; border-radius: 2px; }
 	.ebname { font-size: 12.5px; }
-	.ebenen em { font-size: 10.5px; font-style: normal; color: var(--tinte-3); }
+	.ebenen em { font-size: 11px; font-style: normal; color: var(--tinte-3); }
 	.anzahl { font-size: 11.5px; color: var(--tinte-2); min-width: 34px; text-align: right; }
 
 	/* ---------- Auswahl ---------- */
 	.hinweis { margin: 0 0 10px; font-size: 12px; line-height: 1.45; color: var(--tinte-2); }
 	.hinweis.leise { margin: 10px 0 0; color: var(--tinte-3); }
 	.tatzeile { display: flex; gap: 4px; }
+	/* Entwerfen (09.11.2026) */
+	.entwurf .zahlen { display: grid; gap: 7px; margin-bottom: 12px; }
+	.entwurf .unterfeld { display: block; margin: 4px 0 6px; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--tinte-3); }
+	.entwurf .schnitt { overflow-x: auto; margin-bottom: 8px; }
+	.entwurf .schnitt svg { display: block; touch-action: none; }
+	.schnittkopf { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 2px 0 4px; }
+	.schnittkopf .unterfeld { margin: 0; }
+	.schnittkopf .unterfeld em { font-style: normal; letter-spacing: 0; text-transform: none; }
+	.schnittkopf .richtung { display: flex; gap: 2px; }
+	.schnittkopf .richtung button {
+		padding: 1px 7px; font: inherit; font-size: 11px; color: var(--tinte-2); background: none;
+		border: 1px solid transparent; border-radius: var(--rund); cursor: pointer;
+	}
+	.schnittkopf .richtung button:hover { color: var(--tinte); }
+	.schnittkopf .richtung button.an { color: var(--tinte); border-color: var(--tinte); }
+	.schnitt .boden { stroke: var(--tinte); stroke-width: 1.25; }
+	.schnitt .nachbar { fill: var(--linie-stark); }
+	.schnitt .eigen { fill: var(--tinte-2); }
+	.schnitt .geschoss { stroke: var(--blatt); stroke-width: 0.75; opacity: 0.55; }
+	.schnitt .form { fill: none; stroke: var(--akzent-tief); stroke-width: 2; }
+	.schnitt .form.spart { fill: var(--blatt); fill-opacity: 0.7; stroke: #d2453a; stroke-width: 1.5; stroke-dasharray: 4 2; }
+	.schnitt .umgebung { stroke: var(--tinte-2); stroke-width: 1; stroke-dasharray: 5 3; }
+	.schnitt .marke { font: 500 11px/1 var(--mono, ui-monospace, monospace); fill: var(--tinte-2); paint-order: stroke; stroke: var(--blatt); stroke-width: 3px; }
+	.schnitt .marke.rechts { text-anchor: end; }
+	.schnitt .marke.eig { text-anchor: middle; fill: var(--tinte); font-weight: 600; }
+	.schnitt .zug { fill: transparent; cursor: ns-resize; }
+	.schnitt .zug:hover { fill: var(--akzent); fill-opacity: 0.45; }
+	.entwurf .umfeld { margin: 0 0 8px; font-size: 11px; color: var(--tinte-2); }
+	.entwurf .formmarken { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 10px; }
+	.entwurf .formmarken button {
+		display: flex; align-items: center; gap: 5px; padding: 3px 8px; font: inherit; font-size: 11.5px; color: var(--tinte-2);
+		background: var(--blatt); border: 1px solid var(--linie); border-radius: var(--rund); cursor: pointer;
+	}
+	.entwurf .formmarken button:hover { color: var(--tinte); border-color: var(--linie-stark); }
+	.entwurf .formmarken button.aus { opacity: 0.45; }
+	.entwurf .formmarken button.dazu { border-style: dashed; color: var(--tinte); }
+	.entwurf .formmarken .probe { width: 9px; height: 9px; background: var(--tinte-2); }
+	.entwurf .formmarken .probe.spart { background: none; border: 1.5px dashed #d2453a; }
+	/*
+	 * Die Arbeitsspalte links am Blatt: Palette mit Wort, darunter das
+	 * Arbeitsfenster. Sie liegt über der Bühne, das Blatt weicht ihr aus.
+	 */
+	.arbeit {
+		position: absolute; left: 14px; top: 14px; bottom: 14px; width: 270px; z-index: 4;
+		display: flex; flex-direction: column; gap: 8px; pointer-events: none;
+	}
+	.arbeit > * { pointer-events: auto; }
+	.palette {
+		display: grid; gap: 2px; padding: 4px; flex: none;
+		background: var(--blatt); border: 1px solid var(--linie); border-radius: var(--rund);
+		box-shadow: var(--heben-klein);
+	}
+	/* Nur die Inhalte blasser: Der Grund bleibt deckend, sonst scheint das 3D-Modell durch. */
+	.palette.ruht > * { opacity: 0.45; }
+	.palette .reihe { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; }
+	.palette .reihe.zwei { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+	/* Drei in einer Reihe: Wort und Kürzel müssen beide stehen, also etwas enger gesetzt. */
+	.palette .reihe:not(.zwei) .werk { gap: 4px; padding: 0 3px 0 4px; font-size: 11.5px; }
+	.palette .werk {
+		position: relative; display: flex; align-items: center; gap: 5px; min-width: 0; height: 30px; padding: 0 5px;
+		font: inherit; font-size: 12px; font-weight: 500; text-align: left; color: var(--tinte-2);
+		background: none; border: 0; border-radius: var(--rund); cursor: pointer;
+	}
+	.palette .ikon { flex: none; }
+	.palette .werk .wort { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.palette kbd { font-size: 11px; color: var(--tinte-2); }
+	.palette .werk:hover:not(:disabled), .palette .formwahl button:hover { color: var(--tinte); background: var(--senke); }
+	.palette .werk.an { color: var(--blatt); background: var(--tinte); }
+	.palette .werk.an kbd { color: inherit; opacity: 0.8; }
+	.palette .werk:disabled { opacity: 0.4; cursor: default; }
+	/* Festgehalten (Doppelklick): ein Punkt im Akzent, wie alles, was gerade lebt. */
+	.palette .werk.fest::after { content: ''; position: absolute; right: 3px; top: 3px; width: 5px; height: 5px; border-radius: 50%; background: var(--akzent); }
+	.palette .gruppe {
+		display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 26px;
+		margin-top: 3px; padding: 3px 2px 0 6px; border-top: 1px solid var(--linie);
+		font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--tinte-2);
+	}
+	.palette .formwahl { display: flex; gap: 2px; }
+	.palette .formwahl button {
+		display: flex; align-items: center; gap: 3px; height: 22px; padding: 0 5px; color: var(--tinte-2);
+		background: none; border: 1px solid transparent; border-radius: var(--rund); cursor: pointer;
+	}
+	.palette .formwahl button.an { color: var(--tinte); border-color: var(--tinte); }
+	.fenster {
+		flex: 0 1 auto; min-height: 0; overflow-y: auto; padding: 10px 12px 12px;
+		background: var(--blatt); border: 1px solid var(--linie); border-radius: var(--rund);
+		box-shadow: var(--heben);
+	}
+	.fkopf { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; font-size: 12.5px; font-weight: 600; color: var(--tinte); }
+	.fkopf em { font-style: normal; font-weight: 400; font-size: 11px; color: var(--tinte-2); white-space: nowrap; }
+	.fkopf em.lebt { color: var(--akzent-tief); font-weight: 600; }
+	.fkopf .zurueck { font: inherit; font-size: 11px; font-weight: 500; padding: 2px 7px; color: var(--tinte-2); background: var(--blatt); border: 1px solid var(--linie); border-radius: var(--rund); cursor: pointer; }
+	.fkopf .zurueck:hover { color: var(--tinte); border-color: var(--linie-stark); }
+	.fenster .tasten { margin: 10px 0 0; font-size: 11px; line-height: 1.45; color: var(--tinte-2); }
+	.fenster .wahl { margin-bottom: 8px; }
+	.fenster .wahl button { flex: 1; padding: 5px 6px; font-size: 12px; }
+	.fenster .bildrahmen { margin-bottom: 0; gap: 6px; }
+	.fenster .pflanzwerte { gap: 6px; }
+	.fenster .bildrahmen .unter { margin-top: 0; }
+	.fenster .bildrahmen .wahl { margin-bottom: 0; }
+	.fenster .bildrahmen .regelzeile { grid-template-columns: 62px 1fr 44px; gap: 6px; }
+	.fenster .tatzeile button { padding: 6px 8px; font-size: 12px; }
+	.fenster.entwurf .zahlen { margin-bottom: 10px; }
+	.fenster.entwurf .zahlen.zwei { grid-template-columns: 1fr 1fr; }
+	.fenster.entwurf .zahlen.zwei label { grid-template-columns: 1fr; gap: 3px; font-size: 11.5px; }
+	.fenster.entwurf .zahlen.zwei select { width: 100%; text-align: left; }
+	.fenster.entwurf .zahlen.zwei .mit input { width: 100%; }
+	.fenster.entwurf .zahlen.zwei .stufen input { flex: 1; min-width: 0; }
+	/* Ein Wink ohne Auftrag: kein Fenster, nur eine Zeile auf Papier. */
+	.wink {
+		margin: 0; padding: 8px 10px; font-size: 11.5px; line-height: 1.45; color: var(--tinte-2);
+		background: var(--blatt); border: 1px solid var(--linie); border-radius: var(--rund);
+	}
+	.hakenzeile { display: flex; align-items: center; gap: 7px; margin-top: 10px; font-size: 12.5px; color: var(--tinte-2); cursor: pointer; }
+	.hakenzeile input { accent-color: var(--tinte); }
+	.pflanzwerte { display: grid; gap: 10px; }
+	.pflanzwerte.bearbeitet { padding: 8px; border: 1.5px solid var(--akzent-tief); border-radius: var(--rund); background: var(--akzent-flor); }
+	.pflanzwerte .gewaehlt { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 11.5px; color: var(--tinte); }
+	.pflanzwerte .gewaehlt span { flex: 1 1 100%; }
+	.pflanzwerte .gewaehlt .zurueck { border: 1px solid var(--linie); background: var(--blatt); color: var(--tinte-2); font: inherit; font-size: 11px; padding: 2px 7px; border-radius: var(--rund); cursor: pointer; }
+	.entwurf .zahlen.drei { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+	.entwurf .zahlen label { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; font-size: 12.5px; color: var(--tinte-2); }
+	.entwurf .zahlen.drei label { grid-template-columns: 1fr; gap: 3px; font-size: 11.5px; }
+	.entwurf input[type='number'], .entwurf select {
+		width: 64px; min-width: 0; padding: 4px 6px; font: inherit; font-size: 12.5px; text-align: right;
+		border: 1px solid var(--linie); border-radius: var(--rund); background: var(--blatt); color: var(--tinte);
+	}
+	.entwurf .zahlen.drei input[type='number'] { width: 100%; }
+	.entwurf select { width: auto; text-align: left; }
+	.entwurf .mit { display: flex; align-items: center; gap: 4px; }
+	.entwurf .mit em { font-style: normal; font-size: 11px; color: var(--tinte-3); }
+	.entwurf .stufen { display: flex; align-items: center; gap: 3px; }
+	.entwurf .stufen input { width: 46px; text-align: center; }
+	.entwurf .stufen button {
+		width: 24px; height: 26px; padding: 0; font: inherit; line-height: 1; color: var(--tinte-2);
+		background: var(--blatt); border: 1px solid var(--linie); border-radius: var(--rund); cursor: pointer;
+	}
+	.entwurf .stufen button:hover:not(:disabled) { color: var(--tinte); border-color: var(--linie-stark); }
+	.entwurf .stufen button:disabled { opacity: 0.42; cursor: default; }
+	.entwurf .farbzeile { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+	.entwurf .farbzeile input[type='color'] { width: 38px; height: 30px; padding: 0; border: 1px solid var(--linie); border-radius: var(--rund); background: none; cursor: pointer; }
+	.entwurf .farbzeile button {
+		padding: 6px 10px; font: inherit; font-size: 12px; color: var(--tinte-2); background: var(--blatt);
+		border: 1px solid var(--linie); border-radius: var(--rund); cursor: pointer;
+	}
+	.entwurf .farbzeile input.still { opacity: 0.45; }
+	.entwurf .farbzeile button.an { background: var(--tinte); border-color: var(--tinte); color: var(--blatt); }
+	.entwurf .farbzeile button:disabled { opacity: 0.42; cursor: default; }
 	.tatzeile.zweite { margin-top: 5px; }
 	.tatzeile button {
-		flex: 1; padding: 7px 4px; cursor: pointer; font-size: 12.5px; font-weight: 500;
+		flex: 1; padding: 7px 8px; cursor: pointer; font-size: 12.5px; font-weight: 500;
 		background: var(--grund); color: var(--tinte);
 		border: 1px solid var(--linie); border-radius: var(--rund);
 	}
@@ -2897,12 +3519,12 @@
 	.ausgaben button:hover:not(:disabled) { border-color: var(--linie-stark); }
 	.ausgaben button:disabled { opacity: 0.5; cursor: wait; }
 	.ausgaben strong { font-size: 13px; font-weight: 500; }
-	.ausgaben em { font-size: 10.5px; font-style: normal; color: var(--tinte-2); align-self: center; }
+	.ausgaben em { font-size: 11px; font-style: normal; color: var(--tinte-2); align-self: center; }
 	.ausgaben span { grid-column: 1 / -1; font-size: 11.5px; color: var(--tinte-3); }
 
 	.vertrag {
 		margin: 0; padding: 10px 11px; max-height: 260px; overflow: auto;
-		font-size: 10.5px; line-height: 1.5;
+		font-size: 11px; line-height: 1.5;
 		background: var(--grund); border: 1px solid var(--linie); border-radius: var(--rund);
 	}
 
@@ -2951,8 +3573,10 @@
 		padding: 0 18px; font-size: 11px; color: var(--tinte-2);
 		border-top: 1px solid var(--linie); background: var(--blatt);
 	}
-	.zeile .recht { margin-left: auto; color: var(--tinte-3); }
-	.zeile .ortname { color: var(--tinte); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40ch; }
+	/* Eine Zeile, nie zwei: Wird es eng, kürzt zuerst die Quellenangabe rechts, dann der Ort (Kritik, 09.11.2026). */
+	.zeile > * { flex: none; white-space: nowrap; }
+	.zeile .recht { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; margin-left: auto; color: var(--tinte-3); }
+	.zeile .ortname { flex: 0 1 auto; min-width: 8ch; color: var(--tinte); font-weight: 500; overflow: hidden; text-overflow: ellipsis; max-width: 40ch; }
 
 	/* Notebook-Schirme: dichter setzen. Es geht nichts verloren, die Zeilen
 	   ruecken nur zusammen. */
@@ -2976,6 +3600,7 @@
 	}
 
 	@media (max-width: 940px) {
+		.arbeit { width: min(270px, calc(100% - 28px)); }
 		.werk { height: auto; min-height: 100dvh; }
 		.flaeche { grid-template-columns: minmax(0, 1fr); }
 		/* Die Buehne folgt dem Seitenverhaeltnis des Blattes, sonst steht oben
@@ -3030,7 +3655,9 @@
 	.bildrahmen p { margin: 0; font-size: 11px; color: var(--tinte-3); }
 	/* Zweiter Knopf unter „Bild ausgeben“: 3D-Druck. */
 	.fuss .zweit { margin-top: 8px; background: var(--blatt); color: var(--tinte); }
-	.fuss .zweit.an { background: var(--tinte); color: var(--blatt); }
+	/* Offen heißt gedrückt, nicht schwarz: Schwarz trägt nur die eine Hauptaktion, hier die Druckdatei im Fenster. */
+	.fuss .zweit.an { background: var(--senke); color: var(--tinte); box-shadow: inset 0 0 0 1.5px var(--tinte); }
+	.fuss .haupt.leise { background: var(--blatt); color: var(--tinte); }
 	.flaeche { position: relative; }
 	.druckfenster {
 		/* Schwebend, links bündig, oben, unten und links derselbe Abstand (Volker, 05.11.2026). */
@@ -3066,20 +3693,26 @@
 		font: inherit; font-size: 12.5px; font-weight: 600; color: var(--tinte); cursor: pointer; text-align: left;
 	}
 	.baumfenster .bandknopf em { margin-left: auto; font-style: normal; font-weight: 400; font-size: 11px; color: var(--tinte-2); }
-	.baumfenster .bandknopf .pfeil { font-size: 10px; color: var(--tinte-2); transition: transform 0.15s; }
+	.baumfenster .bandknopf .pfeil { font-size: 11px; color: var(--tinte-2); transition: transform 0.15s; }
 	.baumfenster .bandknopf .pfeil.auf { transform: rotate(90deg); }
 	.baumfenster .unter { font-size: 11px; color: var(--tinte-2); margin-top: 4px; }
 	/* Mit Auswahl wirken die Regler auf die gewählten Gebiete: dann ein Rahmen in Akzent. */
-	.baumfenster .pflanzwerte { display: grid; gap: 10px; }
-	.baumfenster .pflanzwerte.bearbeitet { padding: 10px; border: 1.5px solid var(--akzent-tief); border-radius: var(--rund); background: var(--akzent-flor); }
-	.baumfenster .gewaehlt { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--tinte); }
-	.baumfenster .gewaehlt span { flex: 1; }
-	.baumfenster .gewaehlt .zurueck { border: 1px solid var(--linie); background: var(--blatt); color: var(--tinte-2); font: inherit; font-size: 11px; padding: 2px 7px; border-radius: var(--rund); cursor: pointer; }
 	.druckfenster .band {
+		display: flex; align-items: center; justify-content: space-between; width: calc(100% + 32px);
+		font: inherit; text-align: left; cursor: pointer; border-inline: 0;
 		margin: 8px -16px 2px; padding: 8px 16px;
 		background: var(--senke); border-block: 1px solid var(--linie);
 		font-size: 12.5px; font-weight: 600; letter-spacing: 0.01em; color: var(--tinte);
 	}
+	.druckfenster .band::after {
+		content: ''; width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent;
+		border-top: 5px solid currentColor; transition: transform 0.15s;
+	}
+	.druckfenster .band[aria-expanded='false']::after { transform: rotate(-90deg); }
+	.druckfenster .band:hover { background: var(--linie); }
+	/* Über der Arbeitsspalte, genau so breit: Das Aussehen der Bäume verdeckt das Blatt nicht mehr. */
+	.baumfenster.schmal { left: 14px; top: 14px; bottom: 14px; width: 270px; }
+	.baumfenster.schmal .bildrahmen .regelzeile { grid-template-columns: 82px 1fr 46px; gap: 6px; }
 	.druckkopf.zwei { margin-bottom: 12px; }
 	.druckkopf .feld { margin: 0; }
 	.druckkopf em { font-style: normal; font-size: 11px; color: var(--tinte-2); white-space: nowrap; }

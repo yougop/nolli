@@ -61,6 +61,7 @@ const NACH_KLASSE: Record<Nutzungsklasse, string> = {
 
 /** Die Vorgabe für einen Baukörper, nach `MATERIAL_REGELN`. */
 export function materialFuer(o: Objekt): string {
+	if (o.herkunft === 'design') return 'design';
 	if (o.zustand === 'erhalt' || o.ebene === 'erhalt') return 'kept';
 	return NACH_KLASSE[o.klasse ?? 'unbestimmt'] ?? 'undetermined';
 }

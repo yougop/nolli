@@ -23,7 +23,8 @@ await s.evaluateOnNewDocument(() => { try { localStorage.clear(); localStorage.s
 await s.goto('http://localhost:5185/', { waitUntil: 'networkidle2' });
 const warte = (ms) => new Promise(r => setTimeout(r, ms));
 const klick = (t) => s.evaluate((t) => {
-  const b = [...document.querySelectorAll('button')].find(x => x.textContent.trim() === t);
+  // Darstellungen tragen Lang- und Kurznamen (07.11.2026), Werkzeuge der Palette Wort und Kürzel (09.11.2026).
+  const b = [...document.querySelectorAll('button')].find(x => (x.querySelector('.wort, .lang')?.textContent ?? x.textContent).trim() === t);
   if (b) { b.click(); return true; } return false;
 }, t);
 const texte = new Set();
@@ -46,7 +47,19 @@ for (const d of ['Inverted', 'Line', 'Use', 'Top view', 'White model', 'Data dep
 await klick('3D model'); await warte(1500);
 console.log('Terrain', await klick('Terrain')); await warte(8000); await sammeln();
 await klick('Figure-ground'); await warte(800); await sammeln();
-await klick('Polygon'); await sammeln(); await klick('Pick');
+await klick('Polygon'); await sammeln(); await klick('Select');
+// Seit 09.11.2026: der Schritt „Design“ zwischen Cleanup und Export.
+await klick('Continue to design'); await warte(1500);
+await sammeln();
+for (const w of ['Green', 'Trees', 'Select', 'Building']) { await klick(w); await warte(300); await sammeln(); }
+// Ein Gebäude zeichnen, damit Arbeitsfenster, Formen und Kennzahlen Text tragen.
+const k = await s.evaluate(() => { const r = document.querySelector('.huelle canvas').getBoundingClientRect(); return [r.x + r.width * 0.55, r.y + r.height * 0.72]; });
+await s.mouse.move(k[0] - 60, k[1] - 30); await s.mouse.down(); for (let i = 1; i <= 6; i++) await s.mouse.move(k[0] - 60 + i * 20, k[1] - 30 + i * 10); await s.mouse.up(); await warte(300); await sammeln();
+for (const w of ['Raise', 'Courtyard']) { await klick(w); await warte(200); await sammeln(); }
+await s.keyboard.press('v'); await klick('+ Setback storey'); await warte(300); await sammeln();
+await s.keyboard.press('a'); await s.mouse.move(k[0] - 20, k[1] - 5); await s.mouse.down(); for (let i = 1; i <= 5; i++) await s.mouse.move(k[0] - 20 + i * 6, k[1] - 5 + i * 3); await s.mouse.up(); await warte(300); await sammeln();
+await s.keyboard.press('Escape'); await warte(200); await sammeln(); await s.keyboard.press('Escape');
+await s.screenshot({ path: ziel + '/3-design.png' });
 await klick('Continue to export'); await warte(1500);
 await sammeln();
 await s.screenshot({ path: ziel + '/3-export.png' });

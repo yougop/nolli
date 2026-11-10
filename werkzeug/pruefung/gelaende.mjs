@@ -42,7 +42,7 @@ console.log('Treffer:', await s.evaluate(() => document.querySelector('.treffer 
 await s.click('.treffer button');
 await warte(1500);
 console.log('holen:', await knopf('Bestandsdaten holen', true));
-console.log('Bestand da:', await bisKnopf('Weiter zur Ausgabe', 180000));
+console.log('Bestand da:', await bisKnopf('Weiter zum Entwerfen', 180000));
 // Der Geländeschalter ist nur im 3D-Modell bedienbar, also erst dorthin.
 console.log('3D:', await knopf('3D-Modell', true));
 await warte(1500);
@@ -52,6 +52,9 @@ const titel = await s.evaluate(() => [...document.querySelectorAll('button')].fi
 console.log('Titel:', titel);
 await warte(8000);
 await s.screenshot({ path: ziel + '/3d.png' });
+// Seit 09.11.2026 liegt „Entwerfen“ zwischen Bereinigen und Ausgabe.
+await knopf('Weiter zum Entwerfen');
+await new Promise(r => setTimeout(r, 500));
 await knopf('Weiter zur Ausgabe');
 await warte(1500);
 await s.screenshot({ path: ziel + '/ausgabe.png' });

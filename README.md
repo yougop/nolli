@@ -1,7 +1,7 @@
 # Nolli
 
 **Site context for urban design, straight from OpenStreetMap.** Pick a place,
-set a frame, clean up the existing fabric, and take it out as figure-ground
+set a frame, clean up the existing fabric, draw your own buildings into it, and take it out as figure-ground
 plans, a CAD drawing, a 3D context model for Rhino, a file for the 3D printer,
 and a data contract that every later tool can rely on.
 
@@ -30,15 +30,16 @@ Overture Maps.
 | **UCX package** | Everything above in one ZIP, e.g. `UCX_Prato_2026-11-05.zip`, plus all data as JSON, the parts of buildings beyond the frame (`model_outside.obj`, they still cast shadows into it) and a README in the interface language |
 | **`frame.json`** | The data contract: frame, projection, scale, provenance, caveats, and the table of contents of the package |
 
-## The three steps
+## The four steps
 
 | | |
 |---|---|
 | **1 · Frame** | Search a place or drag a rectangle. The aspect ratio snaps; width, height, area and metres per pixel update live. Nolli checks whether a 12 m deep row of buildings is still at least 12 px wide at the chosen output size — below that, building edges merge. Fetching can be cancelled. Once data is fetched, a dashed line shows how far it reaches: drag the frame smaller within it and nothing is fetched again. The map stays flat and north-up. |
-| **2 · Clean up** | Click objects or draw a polygon to remove them or keep them; a click on a building part takes the whole house. Trees can be removed too. Removed objects stay visible as ghosts and are listed by ID in the contract. While drawing a polygon, the right mouse button takes back the last point and the view can still be panned. A site area clears everything inside and cuts streets at its boundary. Nolli removes buildings that cannot be buildings on its own, and offers to fill gaps from Overture (see below). |
-| **3 · Export** | One image, the drawing, the model, the 3D print, the data contract, or the complete package. |
+| **2 · Clean up** | Clean-up only takes away; everything new is added in the Design step. The tools sit beside the sheet: select (V), polygon (P). Click objects or draw a polygon; a work window then offers remove, keep and reset. A click on a building part takes the whole house; Trees can be removed too. Removed objects stay visible as ghosts and are listed by ID in the contract. While drawing a polygon, the right mouse button takes back the last point and the view can still be panned. A site area clears everything inside and cuts streets at its boundary. Nolli removes buildings that cannot be buildings on its own, and offers to fill gaps from Overture (see below). |
+| **3 · Design** | Draw your own buildings and green areas into the cleaned-up plan. The tools float beside the sheet, ordered by intent: **Select** (V) · draw new: **Building** (B), **Green** (G), **Trees** (T) · shape a building: **Raise** (U), **Courtyard** (A). Rectangle (R) or polygon (P) is a switch, not a tool; after a shape the tool returns to select, a double-click keeps it. Rectangles align with the nearest building edge (Alt: square to the sheet), polygons keep 45° steps with Shift; corners snap visibly, points and whole buildings also catch the building lines of neighbours (a dash-dotted guide shows which, two at once in their crossing; Alt switches it off), edges show their lengths. Below the tools a **work window** appears when there is something to do: storeys, storey height and use of the selection, length, depth and rotation of a rectangle, the options for planting. **A building grows by saying which area continues upwards.** *Raise* a drawn area by one storey or more: it stands on whatever is highest beneath it — a setback storey, a tower on a podium, a second step on the first. *+ Setback storey* does the usual in one click: one storey on top, set back 2.5 m all round, then adjusted with its handles. A *courtyard* is cut through all storeys, or only the ground floor for a passage. Raised areas move with the building when its storeys change, and the storeys stand as numbers in the plan (5, +1). The **section** is a true cut through the building, across or along, with the neighbours the line meets and the median height of the surroundings; drag an upper edge in it to change storeys. Upper parts are dashed in the plans and stand as bodies in the white model, 3D and the 3D print. Existing buildings under a new one are outlined in red and removed with one click. New buildings have their own colour or that of the existing ones; trees under them disappear. On the right: footprint, gross floor area, green area and — with a site area — site coverage and floor area ratio, calculated live. |
+| **4 · Export** | One image, the drawing, the model, the 3D print, the data contract, or the complete package. New buildings go into all of them. |
 
-The row above the sheet is the same in steps 2 and 3: the styles, three switches (labels, trees, terrain) and the menus for map, buildings and light. Labels grow with the sheet, so a 4K image carries the same lettering as the screen, at any zoom. Each style keeps its own map, building and light settings — a desaturated 3D look no longer bends the figure-ground plan; a dot on a style shows it has its own values, and ↺ resets all.
+**Ctrl+Z undoes and Ctrl+Y redoes in every step** — removing, keeping, the site area, planting and designing share one history. One rule holds in every step: the row above the sheet says what the sheet shows, the tools beside the sheet are where you act, the rail on the right is where you read, and the status line carries the frame. The row above the sheet is the same in steps 2 to 4: the styles, three switches (labels, trees, terrain) and the menus for map, buildings and light. Labels grow with the sheet, so a 4K image carries the same lettering as the screen, at any zoom. Each style keeps its own map, building and light settings — a desaturated 3D look no longer bends the figure-ground plan; a dot on a style shows it has its own values, and ↺ resets all.
 
 **Trees** have one window, sorted by where they come from, each with an eye, a count and its own look (shape, size, height, variation, colour), one set for the plans and one for the 3D model:
 
@@ -202,6 +203,10 @@ grid north = true north at the centre). The exact definition is in
 
 ![The model imported into Rhino 8: textured ground, trees, nothing mapped by hand. HafenCity (Hamburg)](docs/rhino-import.png)
 
+## Versions
+
+Nolli is numbered since **1.0.0** (9 November 2026, with the Design step). The first number changes when the data contract breaks, the second with new features, the third with fixes. The version stands next to the logo — its tooltip adds the build (the git commit) — and in every package as `provenance.generated.release`, next to the build in `provenance.generated.version`.
+
 ## Data contract: UCX
 
 The package format is called UCX, Urban Context Exchange. Nolli writes it;
@@ -222,6 +227,14 @@ names lives in [`werkzeug/src/lib/vertrag.ts`](werkzeug/src/lib/vertrag.ts).
 - **Every package knows where it comes from.** `provenance.generated` names
   the tool, its build and the time; later tools append to `provenance.edits`.
 - **Time is local:** `time_zone` names the IANA zone at the frame centre.
+- **Designed is not surveyed.** Buildings drawn in Nolli carry `origin: design`,
+  `source: design` and `storey_height_m` in `data/bodies.json` and the `design`
+  material; they are named `new_…` in `model.obj`, lie on `N_NEW` in the
+  drawing and on the layer `new` in `model.3dm`, and `frame.json` lists them
+  under `new`. A building with setbacks, cut-outs or extra volumes is written
+  as one body per storey band with `min_height_m`, all carrying the same
+  `design_id`. Designed green areas lie on `N_NEW_GREEN`, are listed under
+  `new_green` and counted as `new_green` in `areas_m2`.
 - **Additions only.** New fields such as `min_height_m`, `replaced_by_parts`,
   `roof_shape` and `roof_height_m` are added without breaking older readers.
 
@@ -264,6 +277,7 @@ Manual scripts in `werkzeug/pruefung/`, run against a preview on port 5185
 | `pruefung/vertrag.mjs` | Contract name tables are reversible |
 | `pruefung/sprache.mjs <dir>` | Walks the English interface and reports German leftovers |
 | `pruefung/gelaende.mjs <dir> [place]` | Builds a package with terrain at a real place. Uses live data |
+| `pruefung/entwurf.mjs <dir> [w] [h]` | Plays through clean-up and design at a window size (default 1280×720), saves images and reports whether the work window or the rail scrolls |
 | `pruefung/leiste.mjs` | Lists the styles and switches the interface offers, read from the source |
 | `pruefung/stand.mjs live\|merken\|seither` | Compares the published app with the local build, records a delivery |
 

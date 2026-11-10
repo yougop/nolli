@@ -1,5 +1,5 @@
 import { dxfEbene } from '../vertrag';
-import { type Gelaende, feldImRahmen, hoehenlinien, aequidistanz, aufsNetz, netzHoehe, tiefsteUnter } from '../geo/gelaende';
+import { type Gelaende, feldImRahmen, hoehenlinien, aequidistanz, aufsNetz, netzHoehe, bodenUnter } from '../geo/gelaende';
 import { sichtEbene, type Objekt } from '../osm';
 import { alleRinge } from '../zeichnen';
 import type { Rahmen } from '../geo/rahmen';
@@ -79,11 +79,13 @@ export function planZuege(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | nul
 	};
 	const zug = (ebene: string, punkte: Punkt[], zu: boolean, fuss: number | null = null) =>
 		zugLokal(ebene, punkte.map(([x, y]) => versatz(x, y)), zu, fuss);
-	const bau = new Set(['gebaeude', 'erhalt', 'overture']);
+	const bau = new Set(['gebaeude', 'erhalt', 'overture', 'neubau']);
 	for (const o of objekte) {
 		if (o.zustand === 'gestrichen' && !mitGestrichenen) continue;
-		const ebene = o.zustand === 'gestrichen' ? dxfEbene(stift('gestrichen').dxf) : dxfEbene(stift(sichtEbene(o)).dxf);
-		const fuss = netz && gelaende && bau.has(sichtEbene(o)) ? tiefsteUnter(gelaende, o.ringe) : null;
+		// Eigene Grünflächen aus „Entwerfen“ auf eigener Ebene, neben dem Grün aus OSM.
+		const ebene = o.zustand === 'gestrichen' ? dxfEbene(stift('gestrichen').dxf)
+			: o.herkunft === 'design' && o.ebene === 'gruen' ? dxfEbene('N_NEU_GRUEN') : dxfEbene(stift(sichtEbene(o)).dxf);
+		const fuss = netz && gelaende && bau.has(sichtEbene(o)) ? bodenUnter(gelaende, o) : null;
 		for (const ring of alleRinge(o)) {
 			if (ring.length < 2) continue;
 			if (o.art === 'flaeche') {
@@ -127,11 +129,12 @@ export function alsDxf(objekte: Objekt[], r: Rahmen, mitGestrichenen = false, ge
 	s += p(0, 'ENDSEC');
 
 	// Ebenentabelle. Dieselbe Stifttabelle wie auf dem Bildschirm.
-	s += p(0, 'SECTION') + p(2, 'TABLES') + p(0, 'TABLE') + p(2, 'LAYER') + p(70, STIFTE.length + 1 + (gelaende ? 2 : 0));
+	s += p(0, 'SECTION') + p(2, 'TABLES') + p(0, 'TABLE') + p(2, 'LAYER') + p(70, STIFTE.length + 2 + (gelaende ? 2 : 0));
 	for (const st of STIFTE) {
 		s += p(0, 'LAYER') + p(2, dxfEbene(st.dxf)) + p(70, 0) + p(62, st.dxfFarbe) + p(6, 'CONTINUOUS');
 	}
 	s += p(0, 'LAYER') + p(2, dxfEbene('N_BESCHRIFTUNG')) + p(70, 0) + p(62, 8) + p(6, 'CONTINUOUS');
+	s += p(0, 'LAYER') + p(2, dxfEbene('N_NEU_GRUEN')) + p(70, 0) + p(62, stift('gruen').dxfFarbe) + p(6, 'CONTINUOUS');
 	if (gelaende) {
 		s += p(0, 'LAYER') + p(2, dxfEbene('N_HOEHENLINIE')) + p(70, 0) + p(62, 33) + p(6, 'CONTINUOUS');
 		s += p(0, 'LAYER') + p(2, dxfEbene('N_HOEHENLINIE_HAUPT')) + p(70, 0) + p(62, 32) + p(6, 'CONTINUOUS');

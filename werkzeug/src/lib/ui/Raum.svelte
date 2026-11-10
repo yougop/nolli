@@ -13,7 +13,7 @@
 	import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 	import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
 	import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
-	import { feldImRahmen, tiefsteUnter, hoeheBei, aufsNetz } from '$lib/geo/gelaende';
+	import { feldImRahmen, bodenUnter, tiefsteUnter, hoeheBei, aufsNetz } from '$lib/geo/gelaende';
 	import { baumForm, kronenForm, herkunftVon, HERKUENFTE, type Herkunft } from '$lib/export/baeume';
 	import type { StiftId } from '$lib/stifte';
 	import { KARTE_GLSL, mitte } from '$lib/anpassen';
@@ -187,11 +187,23 @@
 				m.map = bodenbild(r, voll);
 				alt?.dispose();
 				zeichne();
-			} else if (takt === schaerfTakt && !aktiv) veraltet = true;   // beim Zurückkommen nachholen
+			} else if (takt === schaerfTakt && !aktiv) scharfFehlt = true;   // beim Zurückkommen nachholen
 			if (takt === schaerfTakt) schaerft = false;
 		});
 	}	/** Wofür zuletzt gebaut wurde, als Schlüssel: `z.rahmen` ist bei jedem Lesen ein neues Objekt. */
 	let gebautFuer = '';
+	/**
+	 * Was die Szene bestimmt, als Liste zum Vergleichen (Volker, 09.11.2026:
+	 * „das Hin- und Herschalten ist glitchy"). Jede Darstellung bringt ihre
+	 * eigenen Kantenwerte mit; das meldete jedes Umschalten als Änderung, und
+	 * die Szene samt Bodenbild wurde jedes Mal neu gebaut. Jetzt nur noch,
+	 * wenn sich hier wirklich etwas geändert hat.
+	 */
+	const szenenStand = () => [z.objekte, z.entwurf, z.sichtbar, z.bereinigt, z.plangebiet, z.kasten, z.kanten.an, z.ausgabeBreite, z.gelaendeJetzt, schema] as unknown[];
+	let gebautStand: unknown[] | null = null;
+	const standAnders = () => { const s = szenenStand(); return !gebautStand || s.some((v, i) => v !== gebautStand![i]); };
+	let baeumeFehlen = false;
+	let scharfFehlt = false;
 	const rahmenSchluessel = (r: Rahmen | null) => (r ? `${r.x0}|${r.y0}|${r.x1}|${r.y1}` : '');
 
 	/**
@@ -385,9 +397,10 @@
 			pixelBreite: c.width, verhaeltnis: r.verhaeltnis
 		});
 		const ohneBauten = new Set<StiftId>(
-			[...z.sichtbar].filter((s) => s !== 'gebaeude' && s !== 'erhalt' && s !== 'overture')
+			[...z.sichtbar].filter((s) => s !== 'gebaeude' && s !== 'erhalt' && s !== 'overture' && s !== 'neubau')
 		);
-		zeichneBlatt(c.getContext('2d')!, z.objekte, tex, {
+		// Mit den eigenen Grünflächen; die Neubauten stehen als Körper darauf.
+		zeichneBlatt(c.getContext('2d')!, z.alle, tex, {
 			kanten: { ...z.kanten },
 			darstellung: 'modell3d', bereinigt: z.bereinigt, beschriftung: false,
 			plangebiet: z.plangebiet, rahmenZeigen: false,
@@ -410,7 +423,7 @@
 	 */
 	const feld = $derived(z.gelaendeJetzt && z.rahmen ? feldImRahmen(z.gelaendeJetzt, z.rahmen) : null);
 	/** Wie hoch das Modell über seinem tiefsten Punkt reicht. Für Kamera und Einrahmung. */
-	const modellHoehe = () => Math.max(hoechstes(z.objekte) + (feld ? feld.max - feld.min : 0), 1);
+	const modellHoehe = () => Math.max(hoechstes(z.alle) + (feld ? feld.max - feld.min : 0), 1);
 
 	/**
 	 * Die Bäume für sich (Volker, 07.11.2026: „Immer wenn man beim 3D-Modell
@@ -500,6 +513,8 @@
 
 	function bauen() {
 		gebautFuer = rahmenSchluessel(z.rahmen);
+		gebautStand = szenenStand();
+		linienStand = `${z.kanten.karteDicke}|${z.kanten.karteDeckkraft}`;
 		const r = z.rahmen;
 		if (!r || !szene) return;
 		const g = z.gelaendeJetzt, f = feld;
@@ -516,11 +531,14 @@
 		const ersetzt = umrisseMitTeilen(z.objekte);
 		const bauten = z.objekte.filter((o) => o.ebene === 'gebaeude' && sichtbar(o) && !ersetzt.has(o.id));
 		const bleibt = z.objekte.filter((o) => o.ebene === 'erhalt' && sichtbar(o) && !ersetzt.has(o.id));
+		// Die Neubauten als Bauteile je Geschossband (`teileVon`), Grünflächen liegen im Bodenbild.
+		const neu = z.sichtbar.has('neubau') ? z.neubauTeile.filter((t) => t.ebene === 'neubau') : [];
 
-		const koerper = (liste: typeof bauten, farbe: number) => {
+		const koerper = (liste: typeof bauten, farbe: number, eigen = false) => {
+			if (!liste.length) return null;
 			const geo = new THREE.BufferGeometry();
 			geo.setAttribute('position', new THREE.BufferAttribute(
-				baukoerper(liste, r, g ? (o) => tiefsteUnter(g, o.ringe) - bezug : undefined), 3));
+				baukoerper(liste, r, g ? (o) => bodenUnter(g, o) - bezug : undefined), 3));
 			geo.computeVertexNormals();
 			// Rückseiten werden weggeschnitten. Das ist nur erlaubt, weil die
 			// Umlaufrichtung der Ringe in raum.ts vereinheitlicht wird.
@@ -533,8 +551,9 @@
 				polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1
 			});
 			stoff.userData.vorgabe = farbe;
-			koerperStoffe.push(stoff);
-			flaecheSetzen(stoff);
+			// Neubauten behalten ihre Farbe, auch wenn die Gebäudefläche eingestellt ist.
+			if (eigen) neubauStoff = stoff;
+			else { koerperStoffe.push(stoff); flaecheSetzen(stoff); }
 			const m = new THREE.Mesh(geo, stoff);
 			m.castShadow = true; m.receiveShadow = true;
 			szene!.add(m); geloescht.push(m);
@@ -548,7 +567,7 @@
 			 */
 			if (z.kanten.an) {
 				const lg = new LineSegmentsGeometry();
-				lg.setPositions(baukanten(liste, r, g ? (o) => tiefsteUnter(g, o.ringe) - bezug : undefined));
+				lg.setPositions(baukanten(liste, r, g ? (o) => bodenUnter(g, o) - bezug : undefined));
 				const kanten = new LineSegments2(lg, kantenStoff);
 				szene!.add(kanten); geloescht.push(kanten);
 				/**
@@ -585,6 +604,9 @@
 		// Umbras warmes Weiß.
 		koerper(bauten, 0xedece7);
 		koerper(bleibt, 0xc7c5c1);
+		neubauStoff = null;
+		koerper(neu, z.neubauFarbe ? new THREE.Color(z.neubauFarbe).getHex() : 0xedece7, true);
+		if (neubauStoff && !z.neubauFarbe) flaecheSetzen(neubauStoff);
 
 		/**
 		 * Kronen als Ikosaeder, eine Instanz je Baum.
@@ -1089,7 +1111,6 @@
 	$effect(() => {
 		const el = huelle;
 		if (!el) return;
-		messen();
 		/**
 		 * Ohne Mitlesen. Dieser Effekt gehört der Leinwand: Läse er, was `bauen`
 		 * nebenbei liest, verwürfe jeder Zug an einem Regler den ganzen
@@ -1097,13 +1118,20 @@
 		 * 4,4 s je Reglerschritt, fast alles Shaderübersetzung).
 		 */
 		untrack(() => {
+			messen();
 			aufbauen(el, Math.max(200, el.clientWidth), Math.max(150, el.clientHeight));
 			// Wird der Zeichner neu aufgebaut — beim Wechsel des Schemas etwa —,
 			// ist die Szene danach leer. Der Aufbau muss sich selbst genuegen und
 			// darf nicht darauf warten, dass sich zufaellig die Daten aendern.
 			neuBauen();
+			/**
+			 * Auch das noch ohne Mitlesen: `anfordern` fragt `aktiv`. Außerhalb von
+			 * `untrack` hing die Leinwand dadurch am Umschalten; jeder Wechsel
+			 * zwischen Plan und 3D warf den Zeichner samt Shadern weg und baute ihn
+			 * neu (Volker, 09.11.2026: „glitchy").
+			 */
+			anfordern();
 		});
-		anfordern();
 		const beob = new ResizeObserver(() => { messen(); anfordern(); });
 		beob.observe(el);
 		return () => {
@@ -1118,14 +1146,15 @@
 		};
 	});
 	$effect(() => {
-		z.objekte; z.sichtbar; z.bereinigt; z.plangebiet; z.kasten; feld;
+		z.objekte; z.entwurf; z.sichtbar; z.bereinigt; z.plangebiet; z.kasten; feld;
 		z.kanten.an; z.ausgabeBreite; z.rahmen; z.gelaendeJetzt; schema;
 		if (!renderer) return;
-		if (!untrack(() => aktiv)) { veraltet = true; return; }
+		// Ruht die Ansicht, vergleicht das Zurückkommen den Stand (unten).
+		if (!untrack(() => aktiv)) return;
 		// Nur auf die Werte oben hin neu bauen. `bauen` liest nebenbei mehr —
 		// etwa alle Kanteneinstellungen fürs Bodenbild —, und jeder Zug an
 		// einem Regler baute sonst die ganze Szene neu: 4,6 s je Schritt.
-		untrack(neuBauen);
+		untrack(() => { if (standAnders()) neuBauen(); });
 	});
 	/** Nur die Bäume neu, wenn sich nur an ihnen etwas ändert. */
 	$effect(() => {
@@ -1133,7 +1162,11 @@
 		for (const h of HERKUENFTE) { const w = z.baumLooks.raum[h]; w.art; w.groesse; w.hoehe; w.streuung; }
 		z.waldListe; z.bestandAn; z.naturListe;
 		if (!renderer) return;
-		if (!untrack(() => aktiv)) { veraltet = true; return; }
+		// Ruhend nur vormerken: Beim Zurückkommen die Bäume neu, nicht die ganze Szene.
+		if (!untrack(() => aktiv)) { baeumeFehlen = true; return; }
+		// Steht die Szene noch nicht oder wird gerade gebaut, bringt `bauen` die Bäume mit.
+		// Sonst standen sie beim Neuladen eine Weile allein im Bild (Volker, 09.11.2026).
+		if (!gebautStand || bauGeplant) return;
 		untrack(() => { baeumeBauen(); anfordern(); });
 	});
 	// Zurück in die Ansicht: nachholen, was ruhend liegen blieb. Ein neuer
@@ -1142,7 +1175,11 @@
 		if (!aktiv || !renderer) return;
 		untrack(() => {
 			if (rahmenSchluessel(z.rahmen) !== gebautFuer) zuruecksetzen();
-			if (veraltet) { veraltet = false; neuBauen(); }
+			if (veraltet || standAnders()) { veraltet = false; baeumeFehlen = false; scharfFehlt = false; neuBauen(); }
+			else {
+				if (baeumeFehlen) { baeumeFehlen = false; baeumeBauen(); }
+				if (scharfFehlt) { scharfFehlt = false; schaerfen(); }
+			}
 			messen();
 		});
 		anfordern();
@@ -1155,13 +1192,16 @@
 	 */
 	let bodenNetz: THREE.Mesh | null = null;
 	let linienTakt: ReturnType<typeof setTimeout> | undefined;
+	let linienStand = '';
 	$effect(() => {
-		z.kanten.karteDicke; z.kanten.karteDeckkraft;
+		// Nur wenn die Werte des 3D-Modells sich ändern; die der Pläne gehen die Textur nichts an.
+		const jetzt = `${z.kanten.karteDicke}|${z.kanten.karteDeckkraft}`;
+		if (!aktiv || jetzt === untrack(() => linienStand)) return;
 		clearTimeout(linienTakt);
 		linienTakt = setTimeout(() => {
 			const r = z.rahmen, m = bodenNetz?.material as THREE.MeshStandardMaterial | undefined;
-			if (!r || !m) return;
-			if (!aktiv) { veraltet = true; return; }
+			if (!r || !m || !aktiv) return;
+			linienStand = jetzt;
 			const alt = m.map;
 			m.map = bodenbild(r);
 			alt?.dispose();
@@ -1173,6 +1213,17 @@
 	 * kein Neubau. Ohne Wert die Vorgabe, Bestand hell, Erhalt etwas dunkler.
 	 */
 	let koerperStoffe: THREE.MeshStandardMaterial[] = [];
+	let neubauStoff: THREE.MeshStandardMaterial | null = null;
+	// Die Farbe der Neubauten: nur den Stoff umfärben, nicht neu bauen.
+	$effect(() => {
+		const f = z.neubauFarbe;
+		z.kanten.flaeche;
+		if (!neubauStoff) return;
+		// Ohne eigene Farbe wie der Bestand, samt eingestellter Gebäudefläche.
+		if (f) neubauStoff.color.set(f);
+		else { neubauStoff.userData.vorgabe = 0xedece7; flaecheSetzen(neubauStoff); }
+		anfordern();
+	});
 	function flaecheSetzen(m: THREE.MeshStandardMaterial) {
 		const f = z.kanten.flaeche;
 		if (f == null) m.color.set(m.userData.vorgabe as number);

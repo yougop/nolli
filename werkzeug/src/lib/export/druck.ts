@@ -1,10 +1,10 @@
 import earcut from 'earcut';
 import polygonClipping, { type MultiPolygon } from 'polygon-clipping';
 import { zipSync, strToU8 } from 'fflate';
-import { unterkante, umrisseMitTeilen, type Objekt } from '../osm';
+import { unterkante, umrisseMitTeilen, istBau, type Objekt } from '../osm';
 import { hatDach, dachKoerper, rechteck } from '../dach';
 import { amRahmen, drin, gegenUhr, mitUhr } from '../schneiden';
-import { type Gelaende, tiefsteUnter, feldImRahmen, netzHoehe, type Feld } from '../geo/gelaende';
+import { type Gelaende, bodenUnter, feldImRahmen, netzHoehe, type Feld } from '../geo/gelaende';
 import type { Rahmen } from '../geo/rahmen';
 
 /**
@@ -110,14 +110,26 @@ function zuKlein(teile: [number, number][][], ganz: boolean, hoeheM: number, k: 
  * `abstand` an seiner Kante. Für Antennen gilt mehr (`gestuetzt`): Ein Mast
  * auf dem Dach bricht auch dann ab, wenn er im Haus steckt.
  */
+/**
+ * Schwebt ein Bauteil frei, wie eine Brücke oder ein Vordach aus OSM?
+ *
+ * Die oberen Teile eines eigenen Gebäudes aus „Entwerfen" tun das nicht: Ein
+ * Staffelgeschoss oder ein Aufsatz steht auf dem Teil darunter. Mit „Schwebende
+ * Teile: Weglassen" fehlte sonst alles über dem ersten Geschossband, und der
+ * Druck zeigte das Gebäude ohne Staffel und Aufsatz (Volker, 09.11.2026). Sie
+ * werden deshalb immer bis auf die Platte durchgezogen, gleich was gewählt ist;
+ * ein Durchgang im Erdgeschoss ist im Druck damit geschlossen.
+ */
+const schwebtFrei = (o: Objekt) => unterkante(o) > 0 && o.herkunft !== 'design';
+
 type Nachbar = { id: string; huelle: [number, number, number, number]; ringe: [number, number][][]; hoeheM: number; breiteM: number };
 function nachbarn(objekte: Objekt[], ersetzt: Set<string>, weg: Set<string>, w: Druckwahl): Nachbar[] {
 	const aus: Nachbar[] = [];
 	for (const o of objekte) {
-		if ((o.ebene !== 'gebaeude' && o.ebene !== 'erhalt') || o.zustand === 'gestrichen' || !o.ringe.length || ersetzt.has(o.id) || weg.has(o.id)) continue;
+		if (!istBau(o) || o.zustand === 'gestrichen' || !o.ringe.length || ersetzt.has(o.id) || weg.has(o.id)) continue;
 		// Was nicht gedruckt wird, stützt auch nicht (Volker, 06.11.2026: ein
 		// Turm in einem schwebenden Bauteil stand bei „Weglassen“ frei und war nicht rot).
-		if (w.schwebend === 'weglassen' && unterkante(o) > 0) continue;
+		if (w.schwebend === 'weglassen' && schwebtFrei(o)) continue;
 		let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
 		for (const ring of o.ringe) for (const [x, y] of ring) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
 		let breiteM = 0;
@@ -274,8 +286,8 @@ export function druckMasse(objekte: Objekt[], r: Rahmen, w: Druckwahl) {
 	const weg = new Set(w.weglassen ?? []);
 	const nb = nachbarn(objekte, ersetzt, weg, w);
 	for (const o of objekte) {
-		if ((o.ebene !== 'gebaeude' && o.ebene !== 'erhalt') || o.zustand === 'gestrichen' || !o.ringe.length || ersetzt.has(o.id) || weg.has(o.id)) continue;
-		if (unterkante(o) > 0 && w.schwebend === 'weglassen') continue;
+		if (!istBau(o) || o.zustand === 'gestrichen' || !o.ringe.length || ersetzt.has(o.id) || weg.has(o.id)) continue;
+		if (schwebtFrei(o) && w.schwebend === 'weglassen') continue;
 		// Hülle über alle Außenringe, nicht nur den ersten: ein Anbau als zweiter
 		// Ring läge sonst in einer Kachel, die die Zählung nie ansieht.
 		let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
@@ -369,11 +381,11 @@ export function druckModell(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | n
 			const { netz: platte, wasser } = grundplatte(rs, m.k, see && tief > 0 ? see : null, tief, x0, y0, x1, y1);
 			const haeuser: Netz = [], kleine: Netz = [];
 			for (const roh of objekte) {
-				if (roh.ebene !== 'gebaeude' && roh.ebene !== 'erhalt') continue;
+				if (!istBau(roh)) continue;
 				if (roh.zustand === 'gestrichen' || !roh.ringe.length || ersetzt.has(roh.id) || weg.has(roh.id)) continue;
 				const schwebt = unterkante(roh) > 0;
-				if (schwebt && w.schwebend === 'weglassen') continue;
-				const lassen = schwebt && w.schwebend === 'belassen';
+				if (schwebtFrei(roh) && w.schwebend === 'weglassen') continue;
+				const lassen = schwebtFrei(roh) && w.schwebend === 'belassen';
 				const o: Objekt = schwebt && !lassen ? { ...roh, unterM: undefined } : roh;
 				const { teile, ganz, c } = stuecke(o, x0, y0, x1, y1, m.k);
 				if (!teile.length) continue;
@@ -383,7 +395,7 @@ export function druckModell(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | n
 				if (klein && gestuetzt(klein, teile, o, nb, m.k)) klein = null;
 				if (klein && w.klein === 'weglassen') continue;
 				const ziel = klein ? kleine : haeuser;
-				const boden = gelaende ? tiefsteUnter(gelaende, o.ringe) : 0;
+				const boden = gelaende ? bodenUnter(gelaende, o) : 0;
 				// Fuß in mm, versenkt; darüber zählen die Meter des Hauses unverzerrt.
 				const fussMm = plattenZ(boden) - VERSENKT_MM;
 				/**

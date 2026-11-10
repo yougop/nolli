@@ -1,9 +1,9 @@
 import { objName } from '../vertrag';
-import { type Gelaende, tiefsteUnter, feldImRahmen } from '../geo/gelaende';
+import { type Gelaende, bodenUnter, feldImRahmen } from '../geo/gelaende';
 import earcut from 'earcut';
 import { kronenKoerper } from './baeume';
 import type { Baum } from '$lib/analysedaten';
-import { unterkante, umrisseMitTeilen, type Objekt } from '../osm';
+import { unterkante, umrisseMitTeilen, istBau, type Objekt } from '../osm';
 import { hatDach, dachKoerper } from '../dach';
 import type { Rahmen } from '../geo/rahmen';
 import { drin, amRahmen, gegenUhr, mitUhr, verschoben } from '../schneiden';
@@ -79,7 +79,7 @@ export function alsObj(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | null =
 	const ersetzt = umrisseMitTeilen(objekte);
 
 	for (const o of objekte) {
-		if (o.ebene !== 'gebaeude' && o.ebene !== 'erhalt') continue;
+		if (!istBau(o)) continue;
 		if (o.zustand === 'gestrichen') continue;
 		if (ersetzt.has(o.id)) continue;
 		if (!o.ringe.length) continue;
@@ -94,7 +94,7 @@ export function alsObj(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | null =
 		 * Innen und vor der Kante wie bei den flachen Körpern getrennt.
 		 */
 		if (hatDach(o)) {
-			const boden = gelaende ? tiefsteUnter(gelaende, o.ringe) : 0;
+			const boden = gelaende ? bodenUnter(gelaende, o) : 0;
 			const ganz = o.ringe.length === 1 && !nachAussen;
 			const marke = o.hoeheGeschaetzt ? '_hoehe_geschaetzt' : '';
 			const stuecke = teil === 'innen'
@@ -136,7 +136,7 @@ export function alsObj(objekte: Objekt[], r: Rahmen, gelaende: Gelaende | null =
 		// noch seine eigene Höhe, und er bekommt einen Boden.
 		const u = unterkante(o);
 		const h = (o.hoeheM ?? 8) - u;
-		const fuss = (gelaende ? tiefsteUnter(gelaende, o.ringe) : 0) + u;
+		const fuss = (gelaende ? bodenUnter(gelaende, o) : 0) + u;
 
 		/** Einen Satz Aussenringe mit ihren Loechern als ein Objekt schreiben. */
 		const schreiben = (name: string, teile: [number, number][][], loch: [number, number][][]) => {

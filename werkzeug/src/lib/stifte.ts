@@ -18,7 +18,7 @@
  */
 export type StiftId =
 	| 'gruen' | 'wasser' | 'bahn' | 'strasse' | 'grenze' | 'bau' | 'gebaeude' | 'overture' | 'baum'
-	| 'erhalt' | 'gestrichen' | 'plangebiet' | 'rahmen';
+	| 'erhalt' | 'neubau' | 'gestrichen' | 'plangebiet' | 'rahmen';
 
 export type Stift = {
 	id: StiftId;
@@ -52,6 +52,11 @@ export const STIFTE: Stift[] = [
 	 */
 	{ id: 'overture',   name: 'Overture',       dxf: 'N_OVERTURE',   mm: 0.25, hell: '#111111', dunkel: '#E8EAE7', fuellung: true,  dxfFarbe: 30 },
 	{ id: 'erhalt',     name: 'Erhalt',         dxf: 'N_ERHALT',     mm: 0.50, hell: '#111111', dunkel: '#E8EAE7', fuellung: true,  dxfFarbe: 7 },
+	/**
+	 * Eigene Gebäude aus dem Schritt „Entwerfen" (09.11.2026). Die Farbe hier
+	 * ist die Vorgabe; im Werkzeug lässt sie sich ändern (`z.neubauFarbe`).
+	 */
+	{ id: 'neubau',     name: 'Neubau',         dxf: 'N_NEUBAU',     mm: 0.35, hell: '#D0563B', dunkel: '#E07A5F', fuellung: true,  dxfFarbe: 1 },
 	{ id: 'gestrichen', name: 'Gestrichen',     dxf: 'N_GESTRICHEN', mm: 0.18, hell: '#C3C3C3', dunkel: '#44484C', fuellung: false, dxfFarbe: 9 },
 	{ id: 'plangebiet', name: 'Plangebiet',     dxf: 'N_PLANGEBIET', mm: 0.70, hell: '#8CA82F', dunkel: '#A6C23F', fuellung: false, akzent: true, dxfFarbe: 1 },
 	{ id: 'rahmen',     name: 'Rahmen',         dxf: 'N_RAHMEN',     mm: 0.70, hell: '#8CA82F', dunkel: '#A6C23F', fuellung: false, akzent: true, dxfFarbe: 1 }

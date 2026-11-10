@@ -65,7 +65,12 @@ export type Objekt = {
 	 * `quelleGeometrie` nennt, woher der Umriss stammt, etwa „Microsoft ML
 	 * Buildings“ — für die Namensnennung und für den Vertrag.
 	 */
-	herkunft?: 'overture';
+	/** `design`: eigenes Gebäude aus „Entwerfen“ (09.11.2026), wie im Materialschema. */
+	herkunft?: 'overture' | 'design';
+	/** Nur Teile aus „Entwerfen“: die Kennung des Gebäudes oder der Grünfläche, zu der sie gehören. */
+	entwurf?: string;
+	/** Alle Grundrisse eines Neubaus: Daran hängt der gemeinsame Boden seiner Teile. */
+	fussRinge?: [number, number][][];
 	quelleGeometrie?: string;
 	/**
 	 * Denkmalstatus, wie OpenStreetMap ihn fuehrt.
@@ -685,5 +690,8 @@ export function zweifelhafteGebaeude(objekte: Objekt[]): Zweifel[] {
  * `overture`, damit sie sich getrennt schalten lassen. Als Erhalt gesetzt,
  * gehören sie zum Erhalt wie jedes andere Haus.
  */
+/** Ein Baukörper: Bestand, Erhalt oder Neubau. */
+export const istBau = (o: Objekt) => o.ebene === 'gebaeude' || o.ebene === 'erhalt' || o.ebene === 'neubau';
+
 export const sichtEbene = (o: Objekt): StiftId =>
 	o.herkunft === 'overture' && o.ebene === 'gebaeude' ? 'overture' : o.ebene;

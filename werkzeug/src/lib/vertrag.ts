@@ -54,6 +54,9 @@ export const FELDER: Record<string, string> = {
 	objekte: 'objects',
 	gestrichen: 'removed',
 	erhalt: 'kept',
+	neubau: 'new',
+	neu_gruen: 'new_green',
+	entwurf_id: 'design_id',
 	baeume: 'trees',
 	vorgabe_krone_m: 'default_crown_m',
 	stammhoehe_m: 'trunk_height_m',
@@ -109,6 +112,7 @@ export const FELDER: Record<string, string> = {
 	art: 'kind',
 	kreuzt_rahmen: 'crosses_frame',
 	geschosse: 'storeys',
+	geschosshoehe_m: 'storey_height_m',
 	denkmal: 'heritage',
 	adresse: 'address',
 	nutzung: 'osm_building',
@@ -160,7 +164,7 @@ export const FELDER: Record<string, string> = {
 /** Aufgezählte Werte, je Feldname (dem deutschen). */
 export const WERTE: Record<string, Record<string, string>> = {
 	art: { gebaeude: 'building', teil: 'part' },
-	quelle: { gemessen: 'measured', geschosse: 'storeys', luftbild: 'imagery', annahme: 'assumed', knoten: 'node', flaeche: 'area' },
+	quelle: { entwurf: 'design', gemessen: 'measured', geschosse: 'storeys', luftbild: 'imagery', annahme: 'assumed', knoten: 'node', flaeche: 'area' },
 	klasse: { wohnen: 'residential', gewerbe: 'commercial', oeffentlich: 'public', neben: 'ancillary', unbestimmt: 'undetermined' },
 	zustand: { normal: 'normal', gestrichen: 'removed', erhalt: 'kept' },
 	gruppe: {
@@ -215,6 +219,7 @@ export const DATEIEN: Record<string, string> = {
 export const OBJ_NAMEN: [string, string][] = [
 	['gebaeude_', 'building_'],
 	['erhalt_', 'kept_'],
+	['neubau_', 'new_'],
 	['_hoehe_geschaetzt', '_height_estimated'],
 	['_ausserhalb', '_outside'],
 	['baum_', 'tree_'],
@@ -233,6 +238,8 @@ export const DXF_EBENEN: Record<string, string> = {
 	N_GEBAEUDE: 'N_BUILDINGS',
 	N_OVERTURE: 'N_OVERTURE',
 	N_ERHALT: 'N_KEPT',
+	N_NEUBAU: 'N_NEW',
+	N_NEU_GRUEN: 'N_NEW_GREEN',
 	N_GESTRICHEN: 'N_REMOVED',
 	N_PLANGEBIET: 'N_SITE',
 	N_RAHMEN: 'N_FRAME',

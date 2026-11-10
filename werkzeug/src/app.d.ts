@@ -3,6 +3,7 @@
 declare global {
 	/** Git-Kennung des Builds, gesetzt in `vite.config.ts`. */
 	const __NOLLI_STAND__: string;
+	const __NOLLI_VERSION__: string;
 	namespace App {
 		// interface Error {}
 		// interface Locals {}

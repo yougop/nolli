@@ -28,10 +28,10 @@
  */
 import wasmUrl from 'rhino3dm/rhino3dm.wasm?url';
 import earcut from 'earcut';
-import { unterkante, umrisseMitTeilen, type Objekt } from '../osm';
+import { unterkante, umrisseMitTeilen, istBau, type Objekt } from '../osm';
 import { hatDach, dachKoerper, DACH_NAME } from '../dach';
 import type { Rahmen } from '../geo/rahmen';
-import { type Gelaende, tiefsteUnter, feldImRahmen, hoeheBei, aufsNetz } from '../geo/gelaende';
+import { type Gelaende, bodenUnter, feldImRahmen, hoeheBei, aufsNetz } from '../geo/gelaende';
 import { amRahmen, drin, gegenUhr, mitUhr, verschoben } from '../schneiden';
 import { MATERIALIEN, materialFuer } from '../material';
 import { planZuege } from './dxf';
@@ -68,6 +68,8 @@ export type Rhino3dmEingabe = {
 	textur?: Uint8Array;
 	/** Kantenfarbe aus „Gebäude": die Farbe der Gebäudeebenen, mit der Rhino Kanten zeichnet. */
 	kantenHell?: boolean;
+	/** Farbe der Neubauten aus „Entwerfen“, für ihre Ebene. */
+	neubauFarbe?: string | null;
 	/** Lage der linken unteren Rahmenecke, für den Erdanker. */
 	ecke?: { lat: number; lon: number };
 };
@@ -137,6 +139,7 @@ export async function als3dm(e: Rhino3dmEingabe): Promise<Uint8Array> {
 		[dxfEbene('N_GRENZE')]: { eltern: OSM, farbe: '#6E6E6B' },
 		[dxfEbene('N_WASSER')]: { eltern: OSM, farbe: '#3F5866' },
 		[dxfEbene('N_GRUEN')]: { eltern: OSM, farbe: '#55654A' },
+		[dxfEbene('N_NEU_GRUEN')]: { farbe: '#55654A' },
 		[dxfEbene('N_BAHN')]: { eltern: OSM, farbe: '#333331' },
 		[dxfEbene('N_BAU')]: { eltern: OSM, farbe: '#6B5F4E' },
 		[dxfEbene('N_BESCHRIFTUNG')]: { eltern: OSM, farbe: '#4A4A48' },
@@ -151,6 +154,8 @@ export async function als3dm(e: Rhino3dmEingabe): Promise<Uint8Array> {
 	 * die Fläche zeigt das Material (Volker, 04.11.2026).
 	 */
 	const KANTE = e.kantenHell ? '#F4F4F2' : '#2B2B29';
+	/** Neubauten in Rhino in ihrer Farbe aus „Entwerfen“. */
+	const NEU_KANTE = e.neubauFarbe ?? KANTE;
 	const DRAUSSEN = 'outside';
 	/** Das Geländenetz, wie es unten geschrieben wird; die Fußlinien liegen genau darauf. */
 	const feld = gelaende ? feldImRahmen(gelaende, r) : null;
@@ -198,7 +203,7 @@ export async function als3dm(e: Rhino3dmEingabe): Promise<Uint8Array> {
 		if (o.herkunft) a.setUserString('origin', o.herkunft);
 		// Die Oberkante über dem Boden, wie `height_m` in den Daten.
 		a.setUserString('height_m', (o.hoeheM ?? 8).toFixed(2));
-		a.setUserString('height_source', !o.hoeheGeschaetzt ? 'measured' : o.geschosse ? 'storeys'
+		a.setUserString('height_source', o.herkunft === 'design' ? 'design' : !o.hoeheGeschaetzt ? 'measured' : o.geschosse ? 'storeys'
 			: o.herkunft && o.hoeheM !== undefined ? 'imagery' : 'assumed');
 		if (o.geschosse) a.setUserString('storeys', String(o.geschosse));
 		if (o.klasse) a.setUserString('use_class', WERTE.klasse[o.klasse] ?? o.klasse);
@@ -243,12 +248,12 @@ export async function als3dm(e: Rhino3dmEingabe): Promise<Uint8Array> {
 	// als Hülle braucht, schaltet sie ein.
 	const ersetzt = umrisseMitTeilen(objekte);
 	for (const o of objekte) {
-		if (o.ebene !== 'gebaeude' && o.ebene !== 'erhalt') continue;
+		if (!istBau(o)) continue;
 		if (o.zustand === 'gestrichen' || !o.ringe.length) continue;
 		// Schwebende Teile beginnen an ihrer Unterkante; die Extrusion ist geschlossen.
 		const u = unterkante(o);
 		const h = (o.hoeheM ?? 8) - u;
-		const fuss = (gelaende ? tiefsteUnter(gelaende, o.ringe) : 0) + u;
+		const fuss = (gelaende ? bodenUnter(gelaende, o) : 0) + u;
 		const zer = o.ringe.map((x) => amRahmen(x, r.x0, r.y0, r.x1, r.y1));
 		const lzer = (o.loecher ?? []).map((x) => amRahmen(x, r.x0, r.y0, r.x1, r.y1));
 		const ccw = gegenUhr, cw = mitUhr;
@@ -259,6 +264,8 @@ export async function als3dm(e: Rhino3dmEingabe): Promise<Uint8Array> {
 		if (feld && u === 0 && !ersetzt.has(o.id)) for (const k of [...innen, ...linnen]) fussLinie(o, k);
 		const klasseEbene = ersetzt.has(o.id)
 			? ebene('outlines_with_parts', { eltern: BAU, farbe: '#6E6E6B', sichtbar: false })
+			: o.ebene === 'neubau'
+			? ebene('new', { eltern: BAU, farbe: NEU_KANTE, material: mat })
 			: o.herkunft === 'overture'
 			? ebene('overture', { eltern: BAU, farbe: KANTE, material: mat })
 			: ebene(mat, { eltern: BAU, farbe: KANTE, material: mat });
@@ -358,7 +365,7 @@ export async function als3dm(e: Rhino3dmEingabe): Promise<Uint8Array> {
 
 	// ---- Kurven der Zeichnung ---------------------------------------------
 	const { zuege, texte } = planZuege(objekte, r, gelaende, !!gelaende);
-	const gebaeudeEbenen = new Set(['N_GEBAEUDE', 'N_ERHALT', 'N_OVERTURE'].map(dxfEbene));
+	const gebaeudeEbenen = new Set(['N_GEBAEUDE', 'N_ERHALT', 'N_OVERTURE', 'N_NEUBAU'].map(dxfEbene));
 
 	for (const zg of zuege) {
 		// Die Gebäudeumrisse stehen schon als Körper da.

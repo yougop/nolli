@@ -241,6 +241,9 @@ export function hoeheBei(g: Gelaende, x: number, y: number): number {
  * Rasterpunkte im Innern — eine Mulde mitten unter einer Halle soll nicht
  * durchrutschen.
  */
+/** Der Boden eines Körpers. Die Teile eines Neubaus teilen ihn, sonst stünden sie am Hang nicht aufeinander. */
+export const bodenUnter = (g: Gelaende, o: { ringe: [number, number][][]; fussRinge?: [number, number][][] }) => tiefsteUnter(g, o.fussRinge ?? o.ringe);
+
 export function tiefsteUnter(g: Gelaende, ringe: [number, number][][]): number {
 	let tief = Infinity;
 	for (const ring of ringe) {

@@ -227,6 +227,23 @@ Die Schiene ist in Teile zerlegt, jeder mit `16px 18px` Innenabstand und einer u
 
 Ein einziger Umbruchpunkt bei `940px`: die Schiene rutscht unter die Bühne, die Bühne nimmt das Seitenverhältnis des Blattes an (bei der Karte feste `56vh`), die Schrittleiste wird zur vollbreiten Reihe gleicher Teile, Kopf und Statuszeile brechen um.
 
+### Was steht wo (seit 09.11.2026, Impeccable-Kritik)
+
+Eine Regel für alle Schritte: **Oben steht, was das Blatt zeigt. Links am Blatt wird getan. Rechts wird gelesen. Unten steht der Rahmen.**
+
+| Ort | Trägt | Trägt nicht |
+|---|---|---|
+| Leiste über dem Blatt | Darstellung, Schalter, Aussehen (Karte, Gebäude, Licht, Bäume) | Werkzeuge |
+| Arbeitsspalte links am Blatt (`270px`) | Palette mit Werkzeugen (Icon, Wort, Kürzel) und darunter das Arbeitsfenster | Kennzahlen, Erklärtexte |
+| Schiene rechts | Buchführung, Kennzahlen, Ebenen, Datenlage, die eine Hauptaktion | Werkzeuge, Aktionen an einer Auswahl |
+| Statuszeile | Ort, Gitter, Maßstab, Objekte | – |
+
+**Die Arbeitsspalte** steht in Bereinigen und Entwerfen, solange ein Plan gezeigt wird. Das Blatt weicht ihr aus (`--blatt-links`), nichts verdeckt den Plan. Die Palette ordnet nach Absicht, nicht nach Geometrie: Wählen · Neu zeichnen (Gebäude, Grün, Bäume) · Gebäude formen (Aufstocken, Hof). Geformt wird additiv: Man zeichnet die Fläche, die weiter nach oben geht, statt abzuziehen, was wegfällt; Rechteck oder Polygon ist ein Schalter, kein Werkzeug. Es gibt genau einen Werkzeugzustand.
+
+**Das Arbeitsfenster** erscheint nur, wenn es etwas zu tun gibt: bei einer Auswahl oder einem Werkzeug mit Optionen. Regeln: höchstens eines zur Zeit; es öffnet und schließt mit Werkzeug oder Auswahl; bei 1280×720 ohne inneres Scrollen; unten eine Zeile mit den Tasten des Augenblicks statt Absätzen. Ohne Auftrag steht dort höchstens ein einzeiliger Wink.
+
+**Icons der Palette** sind einfarbig in `currentColor`, eine Strichstärke (1,6 auf 20). Farbe bleibt dem Blatt vorbehalten; die einzige Ausnahme in der Oberfläche ist das Rot gestrichelter Aussparungen, weil es dort dasselbe bedeutet wie im Plan.
+
 ### Named Rules
 
 **The Bedienung neben ihrer Zahl Rule.** Jedes Bedienelement steht im selben Teil wie der Wert, den es erzeugt: Seitenverhältnis und Ausgabebreite über der Maßliste, Auswahl über der Buchführung, Bildfassung über der Ausgabe. Eine Einstellung, deren Folge man nicht im selben Blick sieht, gehört nicht in die Schiene.
@@ -274,7 +291,7 @@ Ränder sind durchweg `1px solid var(--linie)`; der einzige Randwechsel im Syste
 - **Trefferliste:** Rahmenloser Stapel in einem `4px`-Kasten, Zeilen durch Haarlinien getrennt, Titel 13px/500, Ort 11.5px in `--tinte-2`, Hover `--senke`.
 
 ### Navigation
-- **Schrittleiste:** Drei Knöpfe mittig im Kopf. Jeder trägt eine `18px`-Kreisziffer in Mono. Ruhend: `--tinte-2`, durchsichtig. Aktuell: Fläche `--senke`, Rand `--linie`, Ziffer umgekehrt (Tintenkreis, Blatt-Ziffer). Gesperrt: `--tinte-3` mit einem Titel, der sagt, was zuerst zu tun ist.
+- **Schrittleiste:** Vier Knöpfe mittig im Kopf (Rahmen, Bereinigen, Entwerfen, Ausgeben). Jeder trägt eine `18px`-Kreisziffer in Mono. Ruhend: `--tinte-2`, durchsichtig. Aktuell: Fläche `--senke`, Rand `--linie`, Ziffer umgekehrt (Tintenkreis, Blatt-Ziffer). Gesperrt: `--tinte-3` mit einem Titel, der sagt, was zuerst zu tun ist.
 
 ### Cards / Containers
 - **Ausgabekarte:** Zwei-Spalten-Raster auf `--grund`, `10px 12px`, Radius `4px`, Rand `--linie`. Titel 13px/500, rechts ein Mono-Etikett mit dem, was herauskommt (`DXF · 9 Ebenen`), darunter über die volle Breite eine Zeile in `--tinte-3`, die den Inhalt der Datei beschreibt. Beim Schreiben wechselt das Mono-Etikett auf `schreibt …` und die Karte auf `opacity: 0.5`, `cursor: wait`.

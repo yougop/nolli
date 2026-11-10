@@ -5,7 +5,7 @@
 	import { Rahmen } from '$lib/geo/rahmen';
 	import { zeichneBlatt } from '$lib/zeichnen';
 	import type { druckMasse } from '$lib/export/druck';
-	import type { Objekt } from '$lib/osm';
+	import { istBau, type Objekt } from '$lib/osm';
 	import { drin, ringflaeche } from '$lib/schneiden';
 
 	/**
@@ -58,7 +58,7 @@
 		const x = r.x0 + ((e.clientX - b.left) / b.width) * B, y = r.y1 - ((e.clientY - b.top) / b.height) * H;
 		let best: Objekt | null = null, fl = Infinity;
 		for (const o of objekte) {
-			if ((o.ebene !== 'gebaeude' && o.ebene !== 'erhalt') || o.zustand === 'gestrichen' || !o.ringe.length) continue;
+			if (!istBau(o) || o.zustand === 'gestrichen' || !o.ringe.length) continue;
 			if (!o.ringe.some((ring) => drin([x, y], ring))) continue;
 			const f = Math.abs(ringflaeche(o.ringe[0]));
 			if (f < fl) { fl = f; best = o; }

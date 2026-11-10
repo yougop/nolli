@@ -39,6 +39,9 @@ console.log('Bäume an:', await klick('Bäume'));
 console.log('3D:', await s.evaluate(() => { const b = [...document.querySelectorAll('.sichtleiste button')].find((x) => x.querySelector('.lang')?.textContent.trim() === '3D-Modell'); b?.click(); return !!b; }));
 await new Promise(r => setTimeout(r, 6000));
 await s.screenshot({ path: ziel + '/3d-baeume.png' });
+// Seit 09.11.2026 liegt „Entwerfen“ zwischen Bereinigen und Ausgabe.
+console.log('zum Entwerfen:', await klick('Weiter zum Entwerfen'));
+await new Promise(r => setTimeout(r, 500));
 console.log('zur Ausgabe:', await klick('Weiter zur Ausgabe'));
 await new Promise(r => setTimeout(r, 2000));
 // Seit 06.11.2026 stehen Modell und Paket unter „Weitere Dateien“, ab Werk zugeklappt.

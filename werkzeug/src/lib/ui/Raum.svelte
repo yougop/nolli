@@ -6,7 +6,8 @@
 	import { N8AOPass } from 'n8ao';
 	import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 	import { z } from '$lib/zustand.svelte';
-	import { sichtEbene, umrisseMitTeilen } from '$lib/osm';
+	import { sichtEbene, umrisseMitTeilen, unterkante } from '$lib/osm';
+	import { amRahmen } from '$lib/schneiden';
 	import { Rahmen, BILDFORMATE } from '$lib/geo/rahmen';
 	import { zeichneBlatt } from '$lib/zeichnen';
 	import { baukoerper, baukanten, hoechstes } from '$lib/raum';
@@ -580,16 +581,23 @@
 				 */
 				if (f) {
 					const pos: number[] = [];
-					for (const o of liste)
-						for (const ring of [...o.ringe, ...(o.loecher ?? [])]) {
+					// Nur im Rahmen und nur, was auf dem Boden steht (10.11.2026: am Rand liefen
+					// die Umrisse über die Platte hinaus). Die Rahmenkante selbst bekommt keine Linie.
+					const amRand = (x: number, y: number) => Math.min(Math.abs(x), Math.abs(y), Math.abs(x - (r.x1 - r.x0)), Math.abs(y - (r.y1 - r.y0))) < 0.01;
+					for (const o of liste) {
+						if (unterkante(o) > 0) continue;
+						for (const roh of [...o.ringe, ...(o.loecher ?? [])]) {
+							const ring = amRahmen(roh, r.x0, r.y0, r.x1, r.y1).innen;
 							if (ring.length < 3) continue;
 							const lokal = ring.map(([x, y]) => [x - r.x0, y - r.y0] as [number, number]);
 							const zug = aufsNetz(f, [...lokal, lokal[0]]);
 							for (let i = 1; i < zug.length; i++) {
+								if (amRand(zug[i - 1][0], zug[i - 1][1]) && amRand(zug[i][0], zug[i][1])) continue;
 								const [ax, ay, az] = zug[i - 1], [bx, by, bz] = zug[i];
 								pos.push(ax, az - bezug + 0.2, -ay, bx, bz - bezug + 0.2, -by);
 							}
 						}
+					}
 					if (pos.length) {
 						const fg = new LineSegmentsGeometry();
 						fg.setPositions(pos);

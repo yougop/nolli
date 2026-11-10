@@ -525,28 +525,38 @@ export function baeumeAus(rest: Rest[]) {
 			...(istNadelbaum(e.tags) ? { nadel: true } : {})
 		});
 	}
-	/**
-	 * Baumreihen (Volker, 07.11.2026). `natural=tree_row` ist eine Linie
-	 * entlang einer Straße oder eines Wegs, ohne Einzelbäume. Gesetzt wird
-	 * alle `REIHE_ABSTAND_M` Meter ein Baum, mit Merkmalen der Reihe
-	 * (`leaf_type`, `genus`); wo schon ein eingetragener Baum steht, keiner.
-	 */
-	const REIHE_ABSTAND_M = 8;
-	const einzeln = aus.slice();
+	return aus;
+}
+
+/**
+ * Baumreihen (Volker, 07.11.2026). `natural=tree_row` ist eine Linie
+ * entlang einer Straße oder eines Wegs, ohne Einzelbäume. Gesetzt wird alle
+ * `abstandM` Meter ein Baum, mit Merkmalen der Reihe (`leaf_type`); wo schon
+ * ein eingetragener Baum steht, keiner. Seit 10.11.2026 ein eigenes Band mit
+ * Abstand, Krone und Variation (Volker: „Die Baumreihen müssen da auch
+ * auftauchen mit Optionen“).
+ */
+export type ReihenWahl = { abstandM: number; kroneM: number; variation: number };
+export const REIHEN_VORGABE: ReihenWahl = { abstandM: 8, kroneM: BAUM.vorgabeKroneM, variation: 0 };
+export function reihenAus(rest: Rest[], einzeln: Baum[], w: ReihenWahl): Baum[] {
+	const aus: Baum[] = [];
+	const d = Math.max(2, w.abstandM);
+	const hash = (x: number, y: number) => { const v = Math.sin(x * 12.9898 + y * 78.233 + 7 * 39.425) * 43758.5453; return v - Math.floor(v); };
 	const nah = (x: number, y: number) => einzeln.some((b) => Math.abs(b.x - x) < 4 && Math.abs(b.y - y) < 4 && Math.hypot(b.x - x, b.y - y) < 4);
 	for (const e of rest) {
 		if (e.tags.natural !== 'tree_row' || !e.punkte || e.punkte.length < 2) continue;
 		const nadel = istNadelbaum(e.tags);
-		let rest0 = REIHE_ABSTAND_M / 2, n = 0;
+		let rest0 = d / 2, n = 0;
 		for (let i = 1; i < e.punkte.length; i++) {
 			const [ax, ay] = e.punkte[i - 1], [bx, by] = e.punkte[i];
 			const l = Math.hypot(bx - ax, by - ay);
 			let t = rest0;
 			while (t <= l) {
 				const x = ax + ((bx - ax) * t) / l, y = ay + ((by - ay) * t) / l;
-				if (!nah(x, y)) aus.push({ id: `${e.id}:${n}`, x, y, krone: BAUM.vorgabeKroneM, gemessen: false, reihe: true, ...(nadel ? { nadel: true } : {}) });
+				const krone = Math.max(1, w.kroneM * (1 + w.variation * (2 * hash(x, y) - 1)));
+				if (!nah(x, y)) aus.push({ id: `${e.id}:${n}`, x, y, krone, gemessen: false, reihe: true, ...(nadel ? { nadel: true } : {}) });
 				n++;
-				t += REIHE_ABSTAND_M;
+				t += d;
 			}
 			rest0 = t - l;
 		}
@@ -566,7 +576,8 @@ export function baeumeAus(rest: Rest[]) {
  * Höchstens `hoechstens` Bäume; reicht das nicht, wird das Raster weiter.
  */
 export function waldBaeume(objekte: { ebene: string; zustand: string; ringe: [number, number][][]; loecher?: [number, number][][]; wald?: 'laub' | 'nadel' | 'misch' | 'busch' }[],
-	rest: Rest[], box: [number, number, number, number], abstandM: number, hoechstens = 30000): { baeume: Baum[]; abstandM: number } {
+	rest: Rest[], box: [number, number, number, number], abstandM: number, hoechstens = 30000, ballung = 0,
+	kroneM = BAUM.vorgabeKroneM * 1.1, variation = 0.18): { baeume: Baum[]; abstandM: number } {
 	type Flaeche = { ringe: [number, number][][]; loecher: [number, number][][]; art: 'laub' | 'nadel' | 'misch' | 'busch' };
 	const flaechen: Flaeche[] = [];
 	for (const o of objekte) if (o.ebene === 'gruen' && o.wald && o.wald !== 'busch' && o.zustand !== 'gestrichen') flaechen.push({ ringe: o.ringe, loecher: o.loecher ?? [], art: o.wald });
@@ -615,6 +626,8 @@ export function waldBaeume(objekte: { ebene: string; zustand: string; ringe: [nu
 				const k = `${gx}:${gy}`;
 				if (gesehen.has(k)) continue;   // überlappende Flächen
 				gesehen.add(k);
+				const gb = geballt(x, y, gx, gy, ballung);
+				if (!gb.bleibt) continue;
 				// Gebüsch: niedrige Büsche, 2,5 bis 4 m breit, nur jede zweite Rasterstelle frei.
 				if (f.art === 'busch') {
 					if (hash(gx, gy, 6) < 0.25) continue;
@@ -625,7 +638,7 @@ export function waldBaeume(objekte: { ebene: string; zustand: string; ringe: [nu
 				const nadel = f.art === 'nadel' || (f.art === 'misch' && hash(gx, gy, 3) < 0.4);
 				// Krone unabhängig vom Abstand, 5,4 bis 7,8 m: Der Abstand regelt die
 				// Dichte, nicht die Größe (Volker, 06.11.2026: bei 20 m wurden sie riesig).
-				baeume.push({ id: `wald:${gx}:${gy}`, x, y, krone: BAUM.vorgabeKroneM * (0.9 + 0.4 * hash(gx, gy, 4)), gemessen: false, wald: true, ...(nadel ? { nadel: true } : {}) });
+				baeume.push({ id: `wald:${gx}:${gy}`, x, y, krone: Math.max(1, kroneM * (1 + variation * (2 * hash(gx, gy, 4) - 1))) * gb.groesse, gemessen: false, wald: true, ...(nadel ? { nadel: true } : {}) });
 				if (baeume.length >= hoechstens) return { baeume, abstandM: d };
 			}
 	}
@@ -640,6 +653,27 @@ export function waldBaeume(objekte: { ebene: string; zustand: string; ringe: [nu
  * Bei Ballung 0 gleichmäßig, bei 1 Gruppen mit Lichtungen dazwischen. Wo es
  * dicht ist, werden die Gehölze auch etwas größer.
  */
+/**
+ * Ballung für alle Herkünfte (Volker, 10.11.2026): dasselbe weiche Rauschen
+ * in zwei Maßstäben (40 m und 13 m) wie bei den Naturflächen. Gibt zurück, ob
+ * der Platz besetzt bleibt, und den Größenfaktor der Krone; bei 0 bleibt
+ * alles, wie es war.
+ */
+export function geballt(x: number, y: number, gx: number, gy: number, ballung: number): { bleibt: boolean; groesse: number } {
+	if (!ballung) return { bleibt: true, groesse: 1 };
+	const hash = (a: number, b: number, n: number) => { const v = Math.sin(a * 12.9898 + b * 78.233 + n * 39.425) * 43758.5453; return v - Math.floor(v); };
+	const rauschen = (m: number, n: number) => {
+		const ix = Math.floor(x / m), iy = Math.floor(y / m), fx = x / m - ix, fy = y / m - iy;
+		const s = (t: number) => t * t * (3 - 2 * t);
+		const a = hash(ix, iy, n), b = hash(ix + 1, iy, n), c = hash(ix, iy + 1, n), d = hash(ix + 1, iy + 1, n);
+		const u = s(fx), v = s(fy);
+		return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+	};
+	const n = 0.65 * rauschen(40, 21) + 0.35 * rauschen(13, 22);
+	const dicht = Math.min(1, Math.max(0, (n - 0.35) / 0.3));
+	return { bleibt: hash(gx, gy, 13) <= 1 - ballung + ballung * dicht, groesse: 1 - 0.25 * ballung + 0.4 * ballung * dicht };
+}
+
 export type NaturWahl = { abstandM: number; kroneM: number; variation: number; ballung: number };
 export const NATUR_VORGABE: NaturWahl = { abstandM: 5, kroneM: 3.5, variation: 0.35, ballung: 0.7 };
 export function naturBaeume(objekte: { ebene: string; zustand: string; ringe: [number, number][][]; loecher?: [number, number][][]; wald?: string }[],

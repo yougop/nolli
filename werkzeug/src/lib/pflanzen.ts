@@ -1,4 +1,4 @@
-import type { Baum } from './analysedaten';
+import { geballt, type Baum } from './analysedaten';
 import type { Objekt } from './osm';
 
 /**
@@ -22,12 +22,14 @@ export type Pflanzwahl = {
 	abstandM: number;
 	kroneM: number;
 	variation: number;
+	/** Ballung wie bei Wald und Naturflächen; 0 ist gleichmäßig. */
+	ballung?: number;
 	art: 'laub' | 'nadel' | 'misch';
 	nadelAnteil: number;
 	freiGebaeude: boolean; freiWasser: boolean; freiStrassen: boolean;
 };
 export const PFLANZ_VORGABE: Pflanzwahl = {
-	werkzeug: 'pinsel', radieren: false, pinselM: 25, abstandM: 8, kroneM: 6, variation: 0.3,
+	werkzeug: 'pinsel', radieren: false, pinselM: 25, abstandM: 8, kroneM: 6, variation: 0.3, ballung: 0,
 	art: 'laub', nadelAnteil: 0.3, freiGebaeude: true, freiWasser: true, freiStrassen: true
 };
 
@@ -109,7 +111,10 @@ export function pflanzen(objekte: Objekt[], schon: Baum[], w: Pflanzwahl, box: [
 		for (let gx = Math.floor(box[0] / d); gx * d <= box[2]; gx++) {
 			const x = (gx + 0.15 + 0.7 * zufall(gx, gy, d)) * d, y = (gy + 0.15 + 0.7 * zufall(gx, gy, d + 1)) * d;
 			if (!drin(x, y) || zuNah(x, y) || !frei(objekte, w, x, y)) continue;
-			neu.push(baumAn(x, y, w, `${gx}:${gy}:${d}`));
+			const gb = geballt(x, y, gx, gy, w.ballung ?? 0);
+			if (!gb.bleibt) continue;
+			const b = baumAn(x, y, w, `${gx}:${gy}:${d}`);
+			neu.push(gb.groesse === 1 ? b : { ...b, krone: b.krone * gb.groesse });
 			merke(neu[neu.length - 1]);
 		}
 	return neu;

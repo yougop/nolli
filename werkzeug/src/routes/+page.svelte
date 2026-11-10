@@ -403,7 +403,7 @@
 		const gleich = <T extends object>(a: T, b: T) => (Object.keys(b) as (keyof T)[]).every((k) => a[k] === b[k]);
 		return !istNeutral(l.karte) || !gleich(l.kanten, KANTEN_VORGABE) || !gleich(l.sonne, SONNE_VORGABE);
 	};
-	let bandAuf = $state<Record<Herkunft, boolean>>({ bestand: true, wald: false, natur: false, ergaenzt: false });
+	let bandAuf = $state<Record<Herkunft | 'reihe', boolean>>({ bestand: true, reihe: false, wald: false, natur: false, ergaenzt: false });
 	const satzName: 'raum' | 'plan' = $derived(raeumlich ? 'raum' : 'plan');
 	// „Alle gleich": Jede Änderung am Aussehen von Bestand geht an die anderen drei Herkünfte mit.
 	$effect(() => {
@@ -1460,6 +1460,12 @@
 				onpointerdown={() => z.pflanzAenderungBeginnen()} oninput={(e) => z.pflanzSetzen('variation', Number((e.currentTarget as HTMLInputElement).value))} />
 			<em class="mono">±{Math.round(z.pflanzWahl.variation * 100)} %</em>
 		</label>
+		<label class="regelzeile">
+			<span>{t().baeume.ballung}</span>
+			<input type="range" min="0" max="1" step="0.05" disabled={z.pflanzWahl.radieren && !z.pflanzAuswahl.size} value={z.pflanzWahl.ballung ?? 0}
+				onpointerdown={() => z.pflanzAenderungBeginnen()} oninput={(e) => z.pflanzSetzen('ballung', Number((e.currentTarget as HTMLInputElement).value))} />
+			<em class="mono">{Math.round((z.pflanzWahl.ballung ?? 0) * 100)} %</em>
+		</label>
 		<div class="wahl schmal" role="group" aria-label={t().pflanzen.art}>
 			{#each [['laub', t().pflanzen.laub], ['nadel', t().pflanzen.nadel], ['misch', t().pflanzen.misch]] as [id, name]}
 				<button type="button" class:an={z.pflanzWahl.art === id} aria-pressed={z.pflanzWahl.art === id} disabled={z.pflanzWahl.radieren && !z.pflanzAuswahl.size} onclick={() => { z.pflanzAenderungBeginnen(); z.pflanzSetzen('art', id as 'laub'); }}>{name}</button>
@@ -2234,7 +2240,7 @@
 				<button type="button" disabled={baumVorgabe(h)} onclick={() => (z.baumLooks[satzName][h] = { ...(satzName === 'raum' ? SATZ_RAUM : SATZ_PLAN)[h] })}>{t().sicht.karteZurueck}</button>
 			</div>
 		{/snippet}
-		{#snippet bandKopf(h: Herkunft, n: number, an: boolean, schalten: () => void)}
+		{#snippet bandKopf(h: Herkunft | 'reihe', n: number, an: boolean, schalten: () => void)}
 			<div class="bandkopf">
 				<button type="button" class="auge" class:aus={!an} aria-pressed={an} onclick={schalten} title={an ? t().baeume.ausblenden : t().baeume.einblenden}>
 					<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">{#if an}<path d="M1 8s2.6-4.5 7-4.5S15 8 15 8s-2.6 4.5-7 4.5S1 8 1 8z"/><circle cx="8" cy="8" r="2"/>{:else}<path d="M2 2l12 12M6.4 3.8A7 7 0 0 1 8 3.5C12.4 3.5 15 8 15 8a12 12 0 0 1-2 2.6M4 5.3A12 12 0 0 0 1 8s2.6 4.5 7 4.5a7 7 0 0 0 2.4-.4"/>{/if}</svg>
@@ -2266,10 +2272,30 @@
 						{@render aussehen('bestand')}
 					{/if}
 					<!-- Bestand -->
-					{@render bandKopf('bestand', z.baeumeStehend.length, z.bestandAn, () => (z.bestandAn = !z.bestandAn))}
+					{@render bandKopf('bestand', z.baeumeStehend.filter((b) => !b.reihe).length, z.bestandAn, () => (z.bestandAn = !z.bestandAn))}
 					{#if bandAuf.bestand}
-						<p class="hinweis leise">{t().baeume.bestandWas(z.baeumeStehend.filter((b) => b.reihe).length)}</p>
+						<p class="hinweis leise">{t().baeume.bestandWas(0)}</p>
 						{#if !z.baumGleich[satzName]}{@render aussehen('bestand')}{/if}
+					{/if}
+					<!-- Baumreihen (10.11.2026): eigenes Band, Aussehen wie Bestand. -->
+					{@render bandKopf('reihe', z.baeumeStehend.filter((b) => b.reihe).length, z.reihenAn, () => (z.reihenAn = !z.reihenAn))}
+					{#if bandAuf.reihe}
+						<label class="regelzeile">
+							<span>{t().baeume.dichte}</span>
+							<input type="range" min="3" max="20" step="0.5" disabled={!z.reihenAn} bind:value={z.reihenWahl.abstandM} />
+							<em class="mono">{zahl(z.reihenWahl.abstandM)} m</em>
+						</label>
+						<label class="regelzeile">
+							<span>{t().pflanzen.krone}</span>
+							<input type="range" min="2" max="14" step="0.5" disabled={!z.reihenAn} bind:value={z.reihenWahl.kroneM} />
+							<em class="mono">{zahl(z.reihenWahl.kroneM)} m</em>
+						</label>
+						<label class="regelzeile">
+							<span>{t().pflanzen.variation}</span>
+							<input type="range" min="0" max="0.5" step="0.05" disabled={!z.reihenAn} bind:value={z.reihenWahl.variation} />
+							<em class="mono">±{Math.round(z.reihenWahl.variation * 100)} %</em>
+						</label>
+						<p class="hinweis leise">{t().baeume.reiheWas}</p>
 					{/if}
 					<!-- Wald -->
 					{@render bandKopf('wald', z.waldListe.baeume.length, z.waldAn, () => (z.waldAn = !z.waldAn))}
@@ -2278,6 +2304,21 @@
 							<span>{t().sicht.waldAbstand}</span>
 							<input type="range" min="5" max="20" step="1" disabled={!z.waldAn} bind:value={z.waldAbstand} />
 							<em class="mono">{z.waldAbstand} m</em>
+						</label>
+						<label class="regelzeile">
+							<span>{t().baeume.ballung}</span>
+							<input type="range" min="0" max="1" step="0.05" disabled={!z.waldAn} bind:value={z.waldBallung} />
+							<em class="mono">{Math.round(z.waldBallung * 100)} %</em>
+						</label>
+						<label class="regelzeile">
+							<span>{t().pflanzen.krone}</span>
+							<input type="range" min="2" max="14" step="0.2" disabled={!z.waldAn} bind:value={z.waldKrone} />
+							<em class="mono">{zahl(Math.round(z.waldKrone * 10) / 10)} m</em>
+						</label>
+						<label class="regelzeile">
+							<span>{t().pflanzen.variation}</span>
+							<input type="range" min="0" max="0.6" step="0.02" disabled={!z.waldAn} bind:value={z.waldVariation} />
+							<em class="mono">±{Math.round(z.waldVariation * 100)} %</em>
 						</label>
 						<p class="hinweis leise">{t().baeume.waldWas(Math.round(z.waldListe.abstandM))}</p>
 						{#if !z.baumGleich[satzName]}{@render aussehen('wald')}{/if}
@@ -2311,6 +2352,15 @@
 					<!-- Ergänzt -->
 					{@render bandKopf('ergaenzt', z.gepflanzt.length, z.gepflanztAn, () => (z.gepflanztAn = !z.gepflanztAn))}
 					{#if bandAuf.ergaenzt}
+						{#each [['abstandM', t().baeume.dichte, 2, 20, 0.5, (v: number) => `${zahl(v)} m`], ['kroneM', t().pflanzen.krone, 1, 14, 0.5, (v: number) => `${zahl(v)} m`], ['variation', t().pflanzen.variation, 0, 0.6, 0.05, (v: number) => `±${Math.round(v * 100)} %`], ['ballung', t().baeume.ballung, 0, 1, 0.05, (v: number) => `${Math.round(v * 100)} %`]] as [k, name, min, max, schritt, text]}
+							{@const sk = k as 'abstandM' | 'kroneM' | 'variation' | 'ballung'}
+							<label class="regelzeile">
+								<span>{name}</span>
+								<input type="range" min={min as number} max={max as number} step={schritt as number} disabled={!z.gepflanztAn} value={z.pflanzAlleWert(sk)}
+									onpointerdown={() => z.pflanzAlleBeginnen()} oninput={(e) => z.pflanzAlleSetzen(sk, Number((e.currentTarget as HTMLInputElement).value))} />
+								<em class="mono">{(text as (v: number) => string)(z.pflanzAlleWert(sk))}</em>
+							</label>
+						{/each}
 						<p class="hinweis leise">{t().baeume.ergaenztWas}</p>
 						{#if !z.baumGleich[satzName]}{@render aussehen('ergaenzt')}{/if}
 					{/if}

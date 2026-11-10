@@ -15,7 +15,7 @@ import { SATZ_PLAN, SATZ_RAUM, satzKopie, satzAus, type Baumwahl, type Baumsatz 
 import { PFLANZ_VORGABE, gebietAnwenden, ausGebieten, type Pflanzwahl, type Gebiet, type Form } from './pflanzen';
 import { holeGelaende, wasserEbnen, netzWeite, type Gelaende } from './geo/gelaende';
 import { holeOverture, gebaeudeErgaenzen, placesAus, type Place } from './overture';
-import { netzAus, nutzflaechenAus, poisAus, halteAus, restAus, baeumeAus, waldBaeume, naturBaeume, NATUR_VORGABE, type NaturWahl, type Baum,
+import { netzAus, nutzflaechenAus, poisAus, halteAus, restAus, baeumeAus, reihenAus, REIHEN_VORGABE, type ReihenWahl, waldBaeume, naturBaeume, NATUR_VORGABE, type NaturWahl, type Baum,
 	type Netz, type Nutzflaeche, type Poi, type Haltestelle, type Linie, type Rest } from './analysedaten';
 import polygonClipping from 'polygon-clipping';
 import { ENTWURF_VORGABE, NEUBAU_FARBE, MIN_SEITE_M, neubau, mitWahl, mitRechteck, verschoben, gedreht, neubauVerschoben, neubauGedreht,
@@ -80,7 +80,7 @@ const kastenAus = (s: string | null): Kasten | null => {
  * Licht von kühl (−1) über neutral (0) bis warm (1).
  */
 export const SONNE_VORGABE: { azimut: number; hoehe: number; an: boolean; helligkeit: number; waerme: number } =
-	{ azimut: 315, hoehe: 49, an: true, helligkeit: 1.5, waerme: 0 };
+	{ azimut: 315, hoehe: 49, an: true, helligkeit: 1.35, waerme: 0 };
 
 /** Was eine Darstellung sich merkt: Karte, Gebäudekanten, Bäume. */
 type Look = { karte: Anpassung; kanten: typeof KANTEN_VORGABE; sonne: typeof SONNE_VORGABE };
@@ -367,6 +367,21 @@ class Zustand {
 		this.pflanzGebiete = this.pflanzGebiete.map((g) => this.pflanzAuswahl.has(g.id) ? { ...g, wahl: { ...g.wahl, [k]: v } } : g);
 		this.pflanzNeu();
 	}
+	/** Was die Regler unter „Ergänzt“ treffen: alles Gepflanzte, kein Radieren, keine Einzelbäume aus Listen. */
+	private pflanzGetroffen(g: Gebiet) { return !g.radieren && g.form.art !== 'fest'; }
+	/** Der Wert, den „Ergänzt“ zeigt: der des ersten Gebiets, sonst die Wahl fürs nächste Pflanzen. */
+	pflanzAlleWert(k: 'abstandM' | 'kroneM' | 'variation' | 'ballung'): number {
+		const g = this.pflanzGebiete.find((x) => this.pflanzGetroffen(x));
+		return (g ? g.wahl[k] : this.pflanzWahl[k]) ?? 0;
+	}
+	pflanzAlleBeginnen() { if (this.pflanzGebiete.some((g) => this.pflanzGetroffen(g))) this.pflanzMerken(); }
+	/** Aus dem Bäume-Fenster (10.11.2026): ein Wert für alles Gepflanzte und fürs nächste Pflanzen. */
+	pflanzAlleSetzen(k: 'abstandM' | 'kroneM' | 'variation' | 'ballung', v: number) {
+		this.pflanzWahl[k] = v;
+		if (!this.pflanzGebiete.some((g) => this.pflanzGetroffen(g))) return;
+		this.pflanzGebiete = this.pflanzGebiete.map((g) => (this.pflanzGetroffen(g) ? { ...g, wahl: { ...g.wahl, [k]: v } } : g));
+		this.pflanzNeu();
+	}
 	/** Vor dem ersten Zug an einem Regler mit Auswahl: für Rückgängig merken. */
 	pflanzAenderungBeginnen() { if (this.pflanzAuswahl.size) this.pflanzMerken(); }
 	pflanzAuswahlWeg() {
@@ -378,9 +393,13 @@ class Zustand {
 	}
 	/** Die Bäume, die stehen bleiben: Was Modell, Bild und Paket bekommen. */
 	get baeumeStehend() {
-		const weg = this.baumGestrichen;
-		return weg.size ? this.baumpunkte.filter((b) => !b.id || !weg.has(b.id)) : this.baumpunkte;
+		const weg = this.baumGestrichen, alle = this.reihenListe.length ? [...this.baumpunkte, ...this.reihenListe] : this.baumpunkte;
+		return weg.size ? alle.filter((b) => !b.id || !weg.has(b.id)) : alle;
 	}
+	/** Baumreihen: an oder aus im Modell, und wie dicht und groß sie gesetzt werden. */
+	reihenAn = $state(true);
+	reihenWahl = $state<ReihenWahl>({ ...REIHEN_VORGABE });
+	reihenListe = $derived.by(() => reihenAus(this.rest, this.baumpunkte, { ...this.reihenWahl }));
 	/**
 	 * Erfundene Bäume in Waldflächen (`waldBaeume`), im Rahmen plus 150 m, wie
 	 * die echten. Nur für die Körper in Ansicht, OBJ und 3DM; `data/trees.json`
@@ -388,12 +407,12 @@ class Zustand {
 	 */
 	private waldMerk: { schluessel: unknown[]; liste: { baeume: Baum[]; abstandM: number } } | null = null;
 	/** Waldbäume für einen Abstand, gemerkt, solange Daten und Rahmen gleich bleiben. */
-	waldFuer(wald: boolean, abstand: number): { baeume: Baum[]; abstandM: number } {
+	waldFuer(wald: boolean, abstand: number, ballung = this.waldBallung, krone = this.waldKrone, variation = this.waldVariation): { baeume: Baum[]; abstandM: number } {
 		const k = this._kasten;
 		if (!k || !wald) return { baeume: [], abstandM: abstand };
-		const schluessel = [this.objekte, this.rest, k, abstand];
+		const schluessel = [this.objekte, this.rest, k, abstand, ballung, krone, variation];
 		if (this.waldMerk && this.waldMerk.schluessel.every((v, i) => v === schluessel[i])) return this.waldMerk.liste;
-		const liste = waldBaeume(this.objekte, this.rest, [k.x0 - 150, k.y0 - 150, k.x1 + 150, k.y1 + 150], abstand);
+		const liste = waldBaeume(this.objekte, this.rest, [k.x0 - 150, k.y0 - 150, k.x1 + 150, k.y1 + 150], abstand, 30000, ballung, krone, variation);
 		this.waldMerk = { schluessel, liste };
 		return liste;
 	}
@@ -405,6 +424,11 @@ class Zustand {
 	bestandAn = $state(true);
 	waldAn = $state(true);
 	waldAbstand = $state(9);
+	/** Ballung im Wald (10.11.2026); 0 ist das bisherige gleichmäßige Raster. */
+	waldBallung = $state(0);
+	/** Krone und Variation im Wald (10.11.2026); ab Werk wie bisher, 5,4 bis 7,8 m. */
+	waldKrone = $state(6.6);
+	waldVariation = $state(0.18);
 	/** Gehölze in Naturflächen (Gebüsch, Heide): an/aus und Verteilung. */
 	naturAn = $state(true);
 	naturWahl = $state<NaturWahl>({ ...NATUR_VORGABE });
@@ -435,10 +459,11 @@ class Zustand {
 	/** Der Satz der gezeigten Darstellung. */
 	get baumSatz(): Baumsatz { return darstellungVon(this.darstellung).bauweise === 'raum' ? this.baumLooks.raum : this.baumLooks.plan; }
 	/** Die Waldbäume. */
-	waldListe = $derived.by(() => this.waldFuer(this.waldAn, this.waldAbstand));
+	waldListe = $derived.by(() => this.waldFuer(this.waldAn, this.waldAbstand, this.waldBallung, this.waldKrone, this.waldVariation));
 	/** Was als Baum gebaut oder gezeichnet wird: die eingeschalteten Herkünfte. */
 	get baeumeModell(): Baum[] {
-		const alle = [...(this.bestandAn ? this.baeumeStehend : []), ...this.waldListe.baeume, ...this.naturListe, ...(this.gepflanztAn ? this.gepflanzt : [])];
+		const stehend = this.baeumeStehend;
+		const alle = [...(this.bestandAn ? stehend.filter((b) => !b.reihe) : []), ...(this.reihenAn ? stehend.filter((b) => b.reihe) : []), ...this.waldListe.baeume, ...this.naturListe, ...(this.gepflanztAn ? this.gepflanzt : [])];
 		return this.unterNeubauWeg(alle);
 	}
 	/** Wo ein Neubau steht, steht kein Baum mehr (09.11.2026). */
@@ -1648,7 +1673,7 @@ class Zustand {
 			sonne: $state.snapshot(this.sonne),
 			baumLooks: $state.snapshot(this.baumLooks),
 			baumGleich: $state.snapshot(this.baumGleich),
-			bestandAn: this.bestandAn, waldAn: this.waldAn, waldAbstand: this.waldAbstand, naturAn: this.naturAn, naturWahl: $state.snapshot(this.naturWahl),
+			bestandAn: this.bestandAn, reihenAn: this.reihenAn, reihenWahl: $state.snapshot(this.reihenWahl), waldAn: this.waldAn, waldAbstand: this.waldAbstand, waldBallung: this.waldBallung, waldKrone: this.waldKrone, waldVariation: this.waldVariation, naturAn: this.naturAn, naturWahl: $state.snapshot(this.naturWahl),
 			druck: $state.snapshot(this.druck),
 			ergaenzung: this.ergaenzung,
 			zweifel: this.zweifel,
@@ -1767,8 +1792,13 @@ class Zustand {
 		this.baumLooks = { plan: satzAus(p.baumLooks?.plan, SATZ_PLAN), raum: satzAus(p.baumLooks?.raum ?? altSatz, SATZ_RAUM) };
 		this.baumGleich = { plan: p.baumGleich?.plan ?? false, raum: p.baumGleich?.raum ?? false };
 		this.bestandAn = p.bestandAn ?? true;
+		this.reihenAn = p.reihenAn ?? true;
+		this.reihenWahl = { ...REIHEN_VORGABE, ...(p.reihenWahl ?? {}) };
 		this.waldAn = p.waldAn ?? alt3d?.wald ?? true;
 		this.waldAbstand = p.waldAbstand ?? alt3d?.waldAbstand ?? 9;
+		this.waldBallung = p.waldBallung ?? 0;
+		this.waldKrone = p.waldKrone ?? 6.6;
+		this.waldVariation = p.waldVariation ?? 0.18;
 		this.naturAn = p.naturAn ?? true;
 		this.naturWahl = { ...NATUR_VORGABE, ...(p.naturWahl ?? {}) };
 		this.sonne = { ...SONNE_VORGABE, ...(gezeigt?.sonne ?? p.sonne ?? {}) };
@@ -1842,7 +1872,7 @@ class Zustand {
 		gestrichen += this.baumGestrichen.size;
 		return JSON.stringify([this._kasten, this.verhaeltnis.name, this.ausgabeBreite, this.darstellung, this.beschriftung,
 			this.bereinigt, this.baeume, this.gelaende, [...this.sichtbar].sort(), this.plangebiet, this.alleLooks(),
-			this.sonne, this.baumLooks, this.baumGleich, this.bestandAn, this.waldAn, this.waldAbstand, this.naturAn, this.naturWahl, this.druck, this.bild3d, this.datenStand, this.objekte.length, this.vorrat.length,
+			this.sonne, this.baumLooks, this.baumGleich, this.bestandAn, this.reihenAn, this.reihenWahl, this.waldAn, this.waldAbstand, this.waldBallung, this.waldKrone, this.waldVariation, this.naturAn, this.naturWahl, this.druck, this.bild3d, this.datenStand, this.objekte.length, this.vorrat.length,
 			gestrichen, erhalt, beschnitten, overture, this.places.length, this.gepflanzt.length, this.gepflanztAn, this.entwurf.map((o) => (o.fest ? { ...o, fest: { ...o.fest, p: o.fest.p.length } } : o)), this.neubauFarbe]);
 	}
 	get projektGeaendert() { return !!this.projektName && this.abdruck() !== this.projektAbdruck; }

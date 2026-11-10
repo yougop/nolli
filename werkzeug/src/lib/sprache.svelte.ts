@@ -80,7 +80,8 @@ const de = {
 		titel: 'Bäume',
 		giltFuer: (raum: boolean): string => raum ? 'Aussehen gilt für das 3D-Modell, OBJ und 3DM' : 'Aussehen gilt für alle Pläne',
 		anschalten: 'Bäume anschalten',
-		herkunft: { bestand: 'Bestand', wald: 'Wald', natur: 'Naturflächen', ergaenzt: 'Ergänzt' },
+		herkunft: { bestand: 'Bestand', reihe: 'Baumreihen', wald: 'Wald', natur: 'Naturflächen', ergaenzt: 'Ergänzt' },
+		reiheWas: 'Aus Baumreihen in OpenStreetMap (natural=tree_row), entlang der Linie gesetzt, Lage geschätzt. Sie sehen aus wie der Bestand und stehen als osm_tree_row in data/trees.json.',
 		dichte: 'Abstand',
 		ballung: 'Ballung',
 		naturWas: 'Gehölze ohne Stamm auf Gebüsch und Heide, geschätzt. Ballung verteilt sie in Gruppen mit Lichtungen statt gleichmäßig. Nicht in data/trees.json.',
@@ -93,7 +94,7 @@ const de = {
 		gleichGruppe: 'Aussehen je Herkunft oder für alle gleich',
 		jeHerkunft: 'Je Herkunft',
 		alleGleich: 'Alle gleich',
-		ergaenztWas: 'Von Hand gepflanzt. Gepflanzt wird beim Entwerfen mit dem Werkzeug Bäume (T), hier steht nur das Aussehen.'
+		ergaenztWas: 'Von Hand gepflanzt, beim Entwerfen mit dem Werkzeug Bäume (T). Die Regler gelten für alles Gepflanzte und fürs nächste Pflanzen.'
 	},
 	pflanzen: {
 		titel: 'Bäume pflanzen',
@@ -692,7 +693,8 @@ const en: typeof de = {
 		titel: 'Trees',
 		giltFuer: (raum: boolean): string => raum ? 'Look applies to the 3D model, OBJ and 3DM' : 'Look applies to all plans',
 		anschalten: 'Switch trees on',
-		herkunft: { bestand: 'Existing', wald: 'Woodland', natur: 'Natural areas', ergaenzt: 'Added' },
+		herkunft: { bestand: 'Existing', reihe: 'Tree rows', wald: 'Woodland', natur: 'Natural areas', ergaenzt: 'Added' },
+		reiheWas: 'From tree rows in OpenStreetMap (natural=tree_row), placed along the line, position estimated. They look like the existing trees and are listed as osm_tree_row in data/trees.json.',
 		dichte: 'Spacing',
 		ballung: 'Clumping',
 		naturWas: 'Trunkless shrubs on scrub and heath, estimated. Clumping groups them with clearings instead of an even spread. Not in data/trees.json.',
@@ -705,7 +707,7 @@ const en: typeof de = {
 		gleichGruppe: 'Look per origin or the same for all',
 		jeHerkunft: 'Per origin',
 		alleGleich: 'All the same',
-		ergaenztWas: 'Planted by hand. Plant in the Design step with the Trees tool (T); only the look is set here.'
+		ergaenztWas: 'Planted by hand in the Design step with the Trees tool (T). The sliders apply to everything planted and to what you plant next.'
 	},
 	pflanzen: {
 		titel: 'Plant trees',
